@@ -1,0 +1,27 @@
+name: agent_runtime
+description: Agent execution engine plugin (native ForegroundService / Background Audio)
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ai_plugin_interface:
+    path: ../ai_plugin_interface
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  pigeon: ^22.7.4
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.agent_runtime
+        pluginClass: AgentRuntimePlugin
+      ios:
+        pluginClass: AgentRuntimePlugin

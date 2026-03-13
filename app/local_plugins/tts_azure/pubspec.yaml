@@ -1,0 +1,26 @@
+name: tts_azure
+description: Azure Text-to-Speech plugin
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ai_plugin_interface:
+    path: ../ai_plugin_interface
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.tts_azure
+        pluginClass: TtsAzurePlugin
+      ios:
+        pluginClass: TtsAzurePlugin

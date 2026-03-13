@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "execution": "automatic",
+    "permissions": {
+      "allow": [
+        "Bash(*)"
+      ]
+    }
+  }
+}

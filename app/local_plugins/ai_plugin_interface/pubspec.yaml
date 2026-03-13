@@ -1,0 +1,16 @@
+name: ai_plugin_interface
+description: Shared abstract interfaces and data classes for AI plugins
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  pigeon: ^22.7.4

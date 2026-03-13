@@ -1,0 +1,19 @@
+name: translation_aliyun
+description: Aliyun translation plugin (pure Dart HTTP)
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ai_plugin_interface:
+    path: ../ai_plugin_interface
+  http: ^1.3.0
+  crypto: ^3.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

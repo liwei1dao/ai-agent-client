@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Agent Client — UI 效果图 v2</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --primary: #6C63FF;
+  --primary-light: #EEF0FF;
+  --primary-dark: #4A42D9;
+  --surface: #FFFFFF;
+  --bg: #F0F2F8;
+  --text: #1A1A2E;
+  --text-2: #6B7280;
+  --border: #E5E7EB;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --chat-type: #6C63FF;
+  --translate-type: #0EA5E9;
+}
+body {
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: #DDE1F0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 16px 48px;
+  gap: 48px;
+}
+.page-header { text-align: center; }
+.page-header h1 { font-size: 26px; font-weight: 700; color: var(--primary-dark); }
+.page-header p { color: var(--text-2); margin-top: 6px; font-size: 14px; }
+
+/* ===== 行分组 ===== */
+.row-group { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+.row-label {
+  font-size: 12px; font-weight: 700; color: var(--primary-dark);
+  letter-spacing: 1px; text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px;
+}
+.row-label::before, .row-label::after {
+  content: ''; flex: 1; height: 1px; background: rgba(108,99,255,0.2); min-width: 40px;
+}
+.screens-row { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; }
+
+/* ===== 手机外框 ===== */
+.phone-frame { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.phone-label {
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+  text-align: center; max-width: 200px; line-height: 1.4;
+}
+.phone-shell {
+  width: 360px; height: 756px;
+  background: #16213E; border-radius: 46px; padding: 11px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.07);
+  position: relative;
+}
+.phone-shell::before {
+  content: ''; position: absolute; top: 16px; left: 50%;
+  transform: translateX(-50%); width: 110px; height: 26px;
+  background: #16213E; border-radius: 13px; z-index: 10;
+}
+.phone-screen {
+  width: 100%; height: 100%; background: var(--bg);
+  border-radius: 37px; overflow: hidden;
+  display: flex; flex-direction: column; position: relative;
+}
+
+/* ===== 通用组件 ===== */
+.status-bar {
+  height: 42px; background: var(--surface);
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 0 20px 6px; flex-shrink: 0;
+}
+.status-bar .time { font-size: 13px; font-weight: 700; color: var(--text); }
+.status-icons { display: flex; gap: 4px; font-size: 12px; }
+
+.top-bar {
+  background: var(--surface); padding: 8px 16px 10px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.top-bar .title { font-size: 17px; font-weight: 700; color: var(--text); }
+.top-bar .subtitle { font-size: 11px; color: var(--text-2); }
+.icon-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--primary-light); display: flex;
+  align-items: center; justify-content: center; font-size: 15px; cursor: pointer;
+}
+
+.bottom-nav {
+  height: 70px; background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: flex-start; padding-top: 8px; flex-shrink: 0;
+}
+.nav-item {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; gap: 3px; cursor: pointer; padding-top: 2px;
+}
+.nav-icon { font-size: 22px; }
+.nav-label { font-size: 10px; font-weight: 600; color: var(--text-2); }
+.nav-item.active .nav-label { color: var(--primary); }
+.nav-dot { width: 4px; height: 4px; background: var(--primary); border-radius: 50%; margin-top: -2px; }
+
+::-webkit-scrollbar { display: none; }
+
+/* ===== Agent 类型徽章 ===== */
+.badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 700; padding: 2px 7px;
+  border-radius: 10px; flex-shrink: 0;
+}
+.badge.chat { background: #EEF0FF; color: #4A42D9; }
+.badge.translate { background: #E0F2FE; color: #0369A1; }
+.badge.stt { background: #FEF3C7; color: #92400E; }
+.badge.tts { background: #F0FDF4; color: #14532D; }
+.badge.llm { background: #FAF5FF; color: #6B21A8; }
+.badge.trans { background: #EFF6FF; color: #1D4ED8; }
+.badge.ok { background: #ECFDF5; color: #065F46; }
+.badge.missing { background: #FEF3C7; color: #92400E; }
+
+/* ============================================================
+   1. AGENTS HOME SCREEN
+   ============================================================ */
+.agents-body { flex: 1; overflow-y: auto; padding: 14px 14px 4px; }
+.agents-grid { display: flex; flex-direction: column; gap: 10px; }
+
+.agent-card {
+  background: var(--surface); border-radius: 16px; padding: 14px 14px 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  display: flex; flex-direction: column; gap: 10px;
+  border-left: 4px solid transparent;
+}
+.agent-card.chat-type { border-left-color: var(--chat-type); }
+.agent-card.translate-type { border-left-color: var(--translate-type); }
+
+.agent-card-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+}
+.agent-info { display: flex; flex-direction: column; gap: 3px; }
+.agent-name { font-size: 15px; font-weight: 700; color: var(--text); }
+.agent-meta { font-size: 11px; color: var(--text-2); }
+
+.agent-services {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px;
+}
+.agent-card-bottom {
+  display: flex; align-items: center; justify-content: space-between;
+  border-top: 1px solid var(--border); padding-top: 10px;
+}
+.last-used { font-size: 11px; color: var(--text-2); }
+.open-btn {
+  height: 28px; padding: 0 14px; border-radius: 14px;
+  background: var(--primary); color: white;
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; gap: 4px;
+}
+
+.fab {
+  position: sticky; bottom: 14px; right: 14px;
+  align-self: flex-end;
+  width: 52px; height: 52px; border-radius: 26px;
+  background: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; color: white;
+  box-shadow: 0 6px 20px rgba(108,99,255,0.45);
+  cursor: pointer; margin-top: 12px;
+}
+
+/* ============================================================
+   2. ADD AGENT MODAL
+   ============================================================ */
+.modal-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.45); z-index: 20;
+  display: flex; align-items: flex-end;
+}
+.modal-sheet {
+  width: 100%; background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  padding: 0 0 24px;
+  max-height: 88%;
+  display: flex; flex-direction: column;
+}
+.modal-handle {
+  width: 40px; height: 4px; background: var(--border);
+  border-radius: 2px; margin: 12px auto 0;
+}
+.modal-title {
+  font-size: 16px; font-weight: 700; color: var(--text);
+  padding: 14px 20px 4px;
+}
+.modal-body { padding: 4px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+
+.form-label { font-size: 12px; font-weight: 700; color: var(--text-2); margin-bottom: 6px; }
+.form-input {
+  width: 100%; height: 40px; border-radius: 10px;
+  background: var(--bg); border: 1.5px solid var(--border);
+  padding: 0 12px; font-size: 14px; color: var(--text);
+  display: flex; align-items: center;
+}
+.form-input.active { border-color: var(--primary); background: var(--primary-light); }
+.form-textarea {
+  width: 100%; height: 72px; border-radius: 10px;
+  background: var(--bg); border: 1.5px solid var(--border);
+  padding: 10px 12px; font-size: 13px; color: var(--text-2);
+  line-height: 1.5;
+}
+.type-selector { display: flex; gap: 8px; }
+.type-btn {
+  flex: 1; height: 40px; border-radius: 10px; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--text-2); cursor: pointer;
+}
+.type-btn.selected.chat { border-color: var(--chat-type); background: #EEF0FF; color: var(--chat-type); }
+.type-btn.selected.translate { border-color: var(--translate-type); background: #E0F2FE; color: var(--translate-type); }
+
+.service-select {
+  width: 100%; height: 42px; border-radius: 10px;
+  background: var(--bg); border: 1.5px solid var(--border);
+  padding: 0 12px; display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; color: var(--text);
+}
+.service-select .selected-service {
+  display: flex; align-items: center; gap: 8px;
+}
+.service-select .service-dot { width: 8px; height: 8px; border-radius: 50%; }
+.service-select .service-dot.configured { background: var(--success); }
+
+.modal-footer {
+  padding: 12px 20px 0;
+  display: flex; gap: 10px;
+}
+.modal-btn {
+  flex: 1; height: 44px; border-radius: 22px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.modal-btn.primary { background: var(--primary); color: white; box-shadow: 0 4px 14px rgba(108,99,255,0.4); }
+.modal-btn.cancel { background: var(--bg); color: var(--text-2); }
+
+/* ============================================================
+   3. CHAT AGENT SCREEN
+   ============================================================ */
+.agent-top-bar {
+  background: var(--surface); padding: 8px 14px 10px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.agent-avatar {
+  width: 36px; height: 36px; border-radius: 18px;
+  background: linear-gradient(135deg, var(--primary), #A78BFA);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.agent-top-info { flex: 1; }
+.agent-top-name { font-size: 15px; font-weight: 700; color: var(--text); }
+.agent-top-status { font-size: 11px; color: var(--success); display: flex; align-items: center; gap: 4px; }
+.agent-top-status::before { content: '●'; }
+
+.service-chips {
+  padding: 7px 14px; display: flex; gap: 6px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  flex-shrink: 0; overflow-x: auto;
+}
+.s-chip {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600;
+  white-space: nowrap; flex-shrink: 0;
+}
+.s-chip.llm { background: #FAF5FF; color: #6B21A8; }
+.s-chip.stt { background: #FEF3C7; color: #92400E; }
+.s-chip.tts { background: #F0FDF4; color: #14532D; }
+.s-chip .dot { width: 5px; height: 5px; border-radius: 50%; }
+.s-chip.llm .dot { background: #9333EA; }
+.s-chip.stt .dot { background: #D97706; }
+.s-chip.tts .dot { background: #16A34A; }
+
+.chat-area {
+  flex: 1; overflow-y: auto; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px; background: var(--bg);
+}
+.msg { display: flex; flex-direction: column; max-width: 82%; gap: 3px; }
+.msg.user { align-self: flex-end; align-items: flex-end; }
+.msg.ai { align-self: flex-start; align-items: flex-start; }
+.msg-avatar { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), #A78BFA); display: flex; align-items: center; justify-content: center; font-size: 10px; }
+.msg-sender { font-size: 10px; color: var(--text-2); display: flex; align-items: center; gap: 4px; }
+.bubble {
+  padding: 9px 13px; border-radius: 16px; font-size: 13px; line-height: 1.55;
+}
+.bubble.user { background: var(--primary); color: white; border-bottom-right-radius: 4px; }
+.bubble.ai { background: var(--surface); color: var(--text); border-bottom-left-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.bubble.streaming::after { content: '▋'; color: var(--primary); animation: blink 1s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+.msg-time { font-size: 10px; color: var(--text-2); padding: 0 3px; }
+
+.stt-indicator {
+  padding: 7px 12px; background: #FFFBEB; border-left: 3px solid var(--warning);
+  border-radius: 8px; font-size: 12px; color: #92400E;
+  display: flex; align-items: center; gap: 8px;
+}
+.wave { display: flex; gap: 2px; align-items: center; }
+.wave span { width: 3px; background: var(--warning); border-radius: 2px; animation: wave 0.8s ease-in-out infinite; }
+.wave span:nth-child(1){height:8px} .wave span:nth-child(2){height:14px;animation-delay:.1s}
+.wave span:nth-child(3){height:10px;animation-delay:.2s} .wave span:nth-child(4){height:16px;animation-delay:.3s}
+.wave span:nth-child(5){height:8px;animation-delay:.4s}
+@keyframes wave { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(1.8)} }
+
+.input-bar {
+  padding: 9px 12px 14px; background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 7px; flex-shrink: 0;
+}
+.voice-btn {
+  width: 38px; height: 38px; border-radius: 50%; background: var(--primary);
+  display: flex; align-items: center; justify-content: center; font-size: 17px;
+  box-shadow: 0 3px 10px rgba(108,99,255,0.4); flex-shrink: 0;
+}
+.text-input {
+  flex: 1; height: 38px; background: var(--bg); border: 1.5px solid var(--border);
+  border-radius: 19px; padding: 0 13px; font-size: 13px; color: var(--text-2);
+  display: flex; align-items: center;
+}
+.send-btn {
+  width: 38px; height: 38px; border-radius: 50%; background: var(--primary);
+  display: flex; align-items: center; justify-content: center; font-size: 15px; color: white;
+}
+
+/* ============================================================
+   4. SERVICES DEMO SCREEN
+   ============================================================ */
+.demo-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.services-section-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;
+}
+.section-h { font-size: 13px; font-weight: 700; color: var(--text); }
+.add-service-btn {
+  height: 28px; padding: 0 12px; border-radius: 14px;
+  background: var(--primary); color: white; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; gap: 4px;
+}
+
+.services-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.service-item {
+  background: var(--surface); border-radius: 12px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 5px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.service-item-top { display: flex; align-items: center; justify-content: space-between; }
+.service-name { font-size: 12px; font-weight: 700; color: var(--text); }
+.service-vendor { font-size: 10px; color: var(--text-2); }
+.service-status { display: flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: var(--success); }
+.service-status::before { content: '●'; font-size: 8px; }
+
+.demo-section-header { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+
+.demo-card {
+  background: var(--surface); border-radius: 14px; padding: 13px 14px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+}
+.demo-card-title {
+  font-size: 13px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+}
+.demo-row { display: flex; gap: 7px; margin-bottom: 9px; align-items: center; }
+.demo-sel {
+  flex: 1; height: 30px; background: var(--bg); border: 1.5px solid var(--border);
+  border-radius: 8px; padding: 0 9px; font-size: 11px; color: var(--text);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.demo-sel .caret { color: var(--text-2); font-size: 10px; }
+.demo-btn-sm {
+  height: 30px; padding: 0 12px; border-radius: 15px;
+  background: var(--primary); color: white; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; gap: 4px; white-space: nowrap;
+}
+.demo-btn-sm.red { background: var(--danger); }
+.demo-btn-sm.green { background: var(--success); }
+.demo-result {
+  background: var(--bg); border-radius: 9px; padding: 9px 11px;
+  font-size: 12px; color: var(--text); line-height: 1.5; min-height: 36px;
+}
+.demo-result.active { border: 1.5px solid var(--primary); background: var(--primary-light); }
+.demo-result.recording { border: 1.5px solid var(--warning); background: #FFFBEB; }
+.demo-result .ph { color: var(--text-2); }
+
+/* ============================================================
+   5. ADD SERVICE MODAL
+   ============================================================ */
+.seg-control {
+  display: flex; background: var(--bg); border-radius: 10px; padding: 3px; gap: 2px;
+}
+.seg-btn {
+  flex: 1; height: 30px; border-radius: 8px; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  color: var(--text-2);
+}
+.seg-btn.active { background: var(--surface); color: var(--primary); box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+
+.vendor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.vendor-btn {
+  height: 44px; border-radius: 10px; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--text-2); cursor: pointer;
+}
+.vendor-btn.selected { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+
+.key-input-group { display: flex; flex-direction: column; gap: 8px; }
+.key-row { display: flex; flex-direction: column; gap: 4px; }
+.key-label { font-size: 11px; font-weight: 600; color: var(--text-2); }
+.key-input {
+  height: 36px; border-radius: 9px; background: var(--bg);
+  border: 1.5px solid var(--border); padding: 0 11px;
+  font-size: 12px; color: var(--text-2); font-family: monospace;
+  display: flex; align-items: center;
+}
+.key-input.filled { border-color: var(--success); background: #F0FDF4; color: var(--text); }
+.test-conn-btn {
+  height: 36px; border-radius: 9px; background: var(--bg);
+  border: 1.5px dashed var(--primary); color: var(--primary);
+  font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+
+/* ============================================================
+   6. SETTINGS SCREEN
+   ============================================================ */
+.settings-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.settings-section {
+  background: var(--surface); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+}
+.section-title {
+  padding: 10px 14px; font-size: 12px; font-weight: 700; color: var(--primary);
+  background: var(--primary-light); display: flex; align-items: center; gap: 5px;
+}
+.setting-row {
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-label { font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.setting-value { font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 4px; }
+.toggle { width: 42px; height: 23px; background: var(--primary); border-radius: 12px; position: relative; }
+.toggle::after { content:''; position:absolute; right:3px; top:3px; width:17px; height:17px; background:white; border-radius:50%; }
+.toggle.off { background: var(--border); }
+.toggle.off::after { right:auto; left:3px; }
+.voice-select-row { padding: 0 14px 12px; }
+.voice-select {
+  width: 100%; height: 36px; background: var(--bg); border: 1.5px solid var(--border);
+  border-radius: 9px; padding: 0 11px; font-size: 12px; color: var(--text);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.prompt-preview {
+  margin: 0 14px 12px;
+  background: var(--bg); border-radius: 9px; padding: 9px 11px;
+  font-size: 12px; color: var(--text-2); line-height: 1.5;
+  border-left: 3px solid var(--primary); font-style: italic;
+}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>AI Agent Client — UI 设计效果图 v2</h1>
+  <p>Agent 面板 · 添加 Agent · 对话界面 · 服务管理+演示 · 添加服务 · 全局设置</p>
+</div>
+
+<!-- ==================== ROW 1: Agent 面板 + 添加 Agent ==================== -->
+<div class="row-group">
+  <div class="row-label">主流程：Agent 管理</div>
+  <div class="screens-row">
+
+    <!-- 1. Agents 面板 -->
+    <div class="phone-frame">
+      <div class="phone-label">🤖 Agent 面板 (首页)<br>展示所有已配置的 Agent</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <div class="status-icons">📶 🔋</div>
+          </div>
+          <div class="top-bar">
+            <div>
+              <div class="title">我的 Agents</div>
+              <div class="subtitle">3 个 Agent · 后台运行中 🟢</div>
+            </div>
+            <div class="icon-btn">⚙️</div>
+          </div>
+
+          <div class="agents-body">
+            <div class="agents-grid">
+
+              <!-- Agent 卡片 1 -->
+              <div class="agent-card chat-type">
+                <div class="agent-card-top">
+                  <div class="agent-info">
+                    <div class="agent-name">🤖 通用助手</div>
+                    <div class="agent-meta">创建于 3 天前</div>
+                  </div>
+                  <span class="badge chat">聊天</span>
+                </div>
+                <div class="agent-services">
+                  <span class="badge llm">GPT-4o</span>
+                  <span class="badge stt">Azure STT</span>
+                  <span class="badge tts">Azure TTS 晓晓</span>
+                </div>
+                <div class="agent-card-bottom">
+                  <span class="last-used">今天 09:41</span>
+                  <div class="open-btn">打开 →</div>
+                </div>
+              </div>
+
+              <!-- Agent 卡片 2 -->
+              <div class="agent-card chat-type">
+                <div class="agent-card-top">
+                  <div class="agent-info">
+                    <div class="agent-name">💻 代码助手</div>
+                    <div class="agent-meta">创建于 1 天前</div>
+                  </div>
+                  <span class="badge chat">聊天</span>
+                </div>
+                <div class="agent-services">
+                  <span class="badge llm">Claude Sonnet</span>
+                  <span class="badge tts">Azure TTS 云希</span>
+                </div>
+                <div class="agent-card-bottom">
+                  <span class="last-used">昨天 16:20</span>
+                  <div class="open-btn">打开 →</div>
+                </div>
+              </div>
+
+              <!-- Agent 卡片 3 -->
+              <div class="agent-card translate-type">
+                <div class="agent-card-top">
+                  <div class="agent-info">
+                    <div class="agent-name">🌐 中英翻译</div>
+                    <div class="agent-meta">创建于 2 天前</div>
+                  </div>
+                  <span class="badge translate">翻译</span>
+                </div>
+                <div class="agent-services">
+                  <span class="badge trans">DeepL</span>
+                  <span class="badge stt">Azure STT</span>
+                  <span class="badge tts">Azure TTS</span>
+                </div>
+                <div class="agent-card-bottom">
+                  <span class="last-used">今天 08:15</span>
+                  <div class="open-btn" style="background:var(--translate-type)">打开 →</div>
+                </div>
+              </div>
+
+              <!-- 空卡片占位 -->
+              <div style="background:var(--surface);border-radius:16px;padding:14px;box-shadow:0 2px 12px rgba(0,0,0,0.06);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:130px;border:2px dashed var(--border);">
+                <div style="font-size:28px;">+</div>
+                <div style="font-size:12px;color:var(--text-2);text-align:center;">添加新 Agent</div>
+              </div>
+
+            </div>
+            <div class="fab">+</div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active">
+              <div class="nav-icon">🤖</div>
+              <div class="nav-label" style="color:var(--primary);">Agents</div>
+              <div class="nav-dot"></div>
+            </div>
+            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 添加 Agent 弹窗（聊天类型已选） -->
+    <div class="phone-frame">
+      <div class="phone-label">➕ 添加 Agent<br>选择类型 → 配置服务 → 提示词/音色</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <div class="status-icons">📶 🔋</div>
+          </div>
+          <!-- 背景模糊态 -->
+          <div style="flex:1;background:var(--bg);filter:brightness(0.7);"></div>
+          <div class="bottom-nav" style="filter:brightness(0.7);">
+            <div class="nav-item active"><div class="nav-icon">🤖</div><div class="nav-label" style="color:var(--primary);">Agents</div></div>
+            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+          </div>
+          <!-- Modal -->
+          <div class="modal-overlay">
+            <div class="modal-sheet">
+              <div class="modal-handle"></div>
+              <div class="modal-title">添加 Agent</div>
+              <div class="modal-body">
+
+                <div>
+                  <div class="form-label">Agent 名称</div>
+                  <div class="form-input active">英语学习助手</div>
+                </div>
+
+                <div>
+                  <div class="form-label">Agent 类型</div>
+                  <div class="type-selector">
+                    <div class="type-btn selected chat">💬 聊天</div>
+                    <div class="type-btn">🌐 翻译</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">LLM 服务 *</div>
+                  <div class="service-select">
+                    <div class="selected-service">
+                      <div class="service-dot configured"></div>
+                      <span>OpenAI · GPT-4o</span>
+                    </div>
+                    <span style="color:var(--text-2);font-size:12px;">▾</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">STT 服务（语音输入，可选）</div>
+                  <div class="service-select">
+                    <div class="selected-service">
+                      <div class="service-dot configured"></div>
+                      <span>Azure STT · zh-CN</span>
+                    </div>
+                    <span style="color:var(--text-2);font-size:12px;">▾</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">TTS 服务（语音输出，可选）</div>
+                  <div class="service-select">
+                    <div class="selected-service">
+                      <div class="service-dot configured"></div>
+                      <span>Azure TTS</span>
+                    </div>
+                    <span style="color:var(--text-2);font-size:12px;">▾</span>
+                  </div>
+                  <!-- 音色选择（TTS 选中后展开） -->
+                  <div style="margin-top:8px;padding:10px 12px;background:var(--bg);border-radius:10px;border:1.5px solid var(--border);">
+                    <div style="font-size:11px;font-weight:700;color:var(--text-2);margin-bottom:6px;">音色选择</div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--primary);color:white;font-size:11px;font-weight:600;">晓晓 · 女声</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">云希 · 男声</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">晓伊 · 活泼</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">系统提示词</div>
+                  <div class="form-textarea">你是一位专业的英语教师，帮助用户学习英语。请用中英双语回答，并在每次回答后提供一个相关的英语小知识。</div>
+                </div>
+
+              </div>
+              <div class="modal-footer">
+                <div class="modal-btn cancel">取消</div>
+                <div class="modal-btn primary">创建 Agent</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 翻译 Agent 配置示例 -->
+    <div class="phone-frame">
+      <div class="phone-label">🌐 添加翻译 Agent<br>配置翻译服务 + 语言对 + 音色</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <div class="status-icons">📶 🔋</div>
+          </div>
+          <div style="flex:1;background:var(--bg);filter:brightness(0.7);"></div>
+          <div class="bottom-nav" style="filter:brightness(0.7);">
+            <div class="nav-item active"><div class="nav-icon">🤖</div><div class="nav-label" style="color:var(--primary);">Agents</div></div>
+            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+          </div>
+          <div class="modal-overlay">
+            <div class="modal-sheet">
+              <div class="modal-handle"></div>
+              <div class="modal-title">添加 Agent</div>
+              <div class="modal-body">
+
+                <div>
+                  <div class="form-label">Agent 名称</div>
+                  <div class="form-input active">日语翻译专家</div>
+                </div>
+
+                <div>
+                  <div class="form-label">Agent 类型</div>
+                  <div class="type-selector">
+                    <div class="type-btn">💬 聊天</div>
+                    <div class="type-btn selected translate">🌐 翻译</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">翻译服务 *</div>
+                  <div class="service-select">
+                    <div class="selected-service">
+                      <div class="service-dot configured"></div>
+                      <span>DeepL API</span>
+                    </div>
+                    <span style="color:var(--text-2);font-size:12px;">▾</span>
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:8px;">
+                  <div style="flex:1;">
+                    <div class="form-label">源语言</div>
+                    <div class="service-select"><span>自动检测</span><span style="color:var(--text-2);font-size:12px;">▾</span></div>
+                  </div>
+                  <div style="display:flex;align-items:flex-end;padding-bottom:4px;color:var(--text-2);">→</div>
+                  <div style="flex:1;">
+                    <div class="form-label">目标语言</div>
+                    <div class="service-select"><span>日语 (JA)</span><span style="color:var(--text-2);font-size:12px;">▾</span></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">STT 服务（语音输入，可选）</div>
+                  <div class="service-select">
+                    <div class="selected-service">
+                      <div class="service-dot" style="background:var(--border);"></div>
+                      <span style="color:var(--text-2);">不启用语音输入</span>
+                    </div>
+                    <span style="color:var(--text-2);font-size:12px;">▾</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">TTS 服务（朗读译文，可选）</div>
+                  <div class="service-select">
+                    <div class="selected-service">
+                      <div class="service-dot configured"></div>
+                      <span>Azure TTS</span>
+                    </div>
+                    <span style="color:var(--text-2);font-size:12px;">▾</span>
+                  </div>
+                  <div style="margin-top:8px;padding:10px 12px;background:var(--bg);border-radius:10px;border:1.5px solid var(--border);">
+                    <div style="font-size:11px;font-weight:700;color:var(--text-2);margin-bottom:6px;">日语音色选择</div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--translate-type);color:white;font-size:11px;font-weight:600;">Nanami · 女声</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">Keita · 男声</div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+              <div class="modal-footer">
+                <div class="modal-btn cancel">取消</div>
+                <div class="modal-btn primary" style="background:var(--translate-type);">创建 Agent</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== ROW 2: Agent 使用界面 ==================== -->
+<div class="row-group">
+  <div class="row-label">Agent 使用界面</div>
+  <div class="screens-row">
+
+    <!-- 4. 聊天 Agent 界面 -->
+    <div class="phone-frame">
+      <div class="phone-label">💬 聊天 Agent 界面<br>语音录入 + 流式输出 + TTS 播放</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <div class="status-icons">📶 🔋</div>
+          </div>
+
+          <div class="agent-top-bar">
+            <div style="font-size:20px;cursor:pointer;color:var(--text-2);">‹</div>
+            <div class="agent-avatar">🤖</div>
+            <div class="agent-top-info">
+              <div class="agent-top-name">通用助手</div>
+              <div class="agent-top-status">在线</div>
+            </div>
+            <div class="icon-btn">⋯</div>
+          </div>
+
+          <div class="service-chips">
+            <div class="s-chip llm"><div class="dot"></div>GPT-4o</div>
+            <div class="s-chip stt"><div class="dot"></div>Azure STT zh-CN</div>
+            <div class="s-chip tts"><div class="dot"></div>Azure TTS 晓晓</div>
+          </div>
+
+          <div class="chat-area">
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar">🤖</div> 通用助手</div>
+              <div class="bubble ai">你好！我是通用助手，由 GPT-4o 驱动。你可以用文字或语音和我对话，我会用晓晓的声音回答你 😊</div>
+              <div class="msg-time">09:40</div>
+            </div>
+
+            <div class="msg user">
+              <div class="msg-sender">你</div>
+              <div class="bubble user">Flutter 适合做什么类型的应用？</div>
+              <div class="msg-time">09:41</div>
+            </div>
+
+            <div class="stt-indicator">
+              <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
+              <span>正在识别："Flutter 最擅长..."</span>
+            </div>
+
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar">🤖</div> GPT-4o</div>
+              <div class="bubble ai streaming">Flutter 非常适合以下类型的应用：
+
+**① 跨平台移动 App** — iOS + Android 一套代码
+**② 企业内部工具** — 快速交付，UI 一致
+**③ 实时数据可视化** — 高帧率绘图能力出色
+
+</div>
+              <div class="msg-time">09:41</div>
+            </div>
+          </div>
+
+          <div class="input-bar">
+            <div class="voice-btn">🎤</div>
+            <div class="text-input">继续提问...</div>
+            <div class="send-btn">↑</div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active"><div class="nav-icon">🤖</div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. 翻译 Agent 界面 -->
+    <div class="phone-frame">
+      <div class="phone-label">🌐 翻译 Agent 界面<br>语言对 + 原文 / 译文 + 音色播放</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <div class="status-icons">📶 🔋</div>
+          </div>
+
+          <div class="agent-top-bar">
+            <div style="font-size:20px;cursor:pointer;color:var(--text-2);">‹</div>
+            <div class="agent-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div>
+            <div class="agent-top-info">
+              <div class="agent-top-name">中英翻译</div>
+              <div class="agent-top-status">DeepL · 在线</div>
+            </div>
+            <div class="icon-btn">⋯</div>
+          </div>
+
+          <div class="service-chips">
+            <div class="s-chip" style="background:#EFF6FF;color:#1D4ED8;"><div style="width:5px;height:5px;border-radius:50%;background:#3B82F6;"></div>DeepL</div>
+            <div class="s-chip stt"><div class="dot"></div>Azure STT</div>
+            <div class="s-chip tts"><div class="dot"></div>Azure TTS 晓晓</div>
+          </div>
+
+          <div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--bg);">
+            <!-- 语言栏 -->
+            <div style="background:var(--surface);border-radius:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+                <div style="font-size:16px;font-weight:700;color:var(--translate-type);">自动检测</div>
+                <div style="font-size:10px;color:var(--text-2);">已识别: 英语</div>
+              </div>
+              <div style="width:34px;height:34px;border-radius:50%;background:#E0F2FE;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--translate-type);">⇄</div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+                <div style="font-size:16px;font-weight:700;color:var(--translate-type);">中文</div>
+                <div style="font-size:10px;color:var(--text-2);">目标语言</div>
+              </div>
+            </div>
+            <!-- 原文 -->
+            <div style="background:var(--surface);border-radius:14px;padding:12px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+              <div style="font-size:11px;font-weight:700;color:var(--text-2);margin-bottom:8px;display:flex;justify-content:space-between;"><span>原文</span><span style="font-size:10px;background:#EFF6FF;color:#1D4ED8;padding:2px 7px;border-radius:9px;font-weight:600;">DeepL</span></div>
+              <div style="font-size:14px;color:var(--text);line-height:1.6;">Artificial intelligence is transforming how we work and live.</div>
+              <div style="margin-top:10px;display:flex;gap:8px;">
+                <div style="flex:none;height:32px;padding:0 12px;border-radius:16px;border:1.5px solid var(--translate-type);color:var(--translate-type);font-size:12px;font-weight:600;display:flex;align-items:center;gap:4px;">🎤 语音</div>
+                <div style="flex:1;height:32px;border-radius:16px;background:var(--translate-type);color:white;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">翻译 →</div>
+              </div>
+            </div>
+            <!-- 译文 -->
+            <div style="background:var(--surface);border-radius:14px;padding:12px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+              <div style="font-size:11px;font-weight:700;color:var(--text-2);margin-bottom:8px;display:flex;justify-content:space-between;"><span>译文</span><div style="display:flex;gap:8px;font-size:15px;">🔊 📋</div></div>
+              <div style="font-size:15px;color:var(--translate-type);font-weight:500;line-height:1.6;">人工智能正在改变我们工作和生活的方式。</div>
+            </div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active"><div class="nav-icon">🤖</div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== ROW 3: 服务管理 + 添加服务 ==================== -->
+<div class="row-group">
+  <div class="row-label">服务管理 &amp; 演示</div>
+  <div class="screens-row">
+
+    <!-- 6. 服务管理+演示页 -->
+    <div class="phone-frame">
+      <div class="phone-label">🧪 服务管理 + 演示<br>已配置服务列表 + 各能力测试</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <div class="status-icons">📶 🔋</div>
+          </div>
+          <div class="top-bar">
+            <div>
+              <div class="title">服务中心</div>
+              <div class="subtitle">已配置 7 个服务</div>
+            </div>
+          </div>
+
+          <div class="demo-body">
+
+            <!-- 已配置服务 -->
+            <div>
+              <div class="services-section-header">
+                <div class="section-h">已配置服务</div>
+                <div class="add-service-btn">+ 添加服务</div>
+              </div>
+            </div>
+            <div class="services-grid">
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge llm">LLM</span><div class="service-status">已连接</div></div>
+                <div class="service-name">GPT-4o</div>
+                <div class="service-vendor">OpenAI · sk-proj-••••</div>
+              </div>
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge llm">LLM</span><div class="service-status">已连接</div></div>
+                <div class="service-name">Claude Sonnet</div>
+                <div class="service-vendor">Anthropic · sk-ant-••••</div>
+              </div>
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge stt">STT</span><div class="service-status">已连接</div></div>
+                <div class="service-name">Azure STT</div>
+                <div class="service-vendor">eastasia · ••••5f8a</div>
+              </div>
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge tts">TTS</span><div class="service-status">已连接</div></div>
+                <div class="service-name">Azure TTS</div>
+                <div class="service-vendor">晓晓 / 云希 / 晓伊</div>
+              </div>
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge stt">STT</span><div class="service-status">已连接</div></div>
+                <div class="service-name">阿里云 STT</div>
+                <div class="service-vendor">中文优化</div>
+              </div>
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge trans">翻译</span><div class="service-status">已连接</div></div>
+                <div class="service-name">DeepL</div>
+                <div class="service-vendor">免费版 · ••••:fx</div>
+              </div>
+            </div>
+
+            <!-- 演示 -->
+            <div class="demo-section-header">快速测试</div>
+
+            <!-- STT Demo -->
+            <div class="demo-card">
+              <div class="demo-card-title">🎙 STT 识别测试</div>
+              <div class="demo-row">
+                <div class="demo-sel">Azure STT <span class="caret">▾</span></div>
+                <div class="demo-sel">zh-CN <span class="caret">▾</span></div>
+                <div class="demo-btn-sm green">▶ 开始</div>
+              </div>
+              <div class="demo-result recording">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                  <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
+                  <span style="font-size:10px;color:#D97706;font-weight:700;">识别中</span>
+                </div>
+                今天天气怎么样...
+              </div>
+            </div>
+
+            <!-- TTS Demo -->
+            <div class="demo-card">
+              <div class="demo-card-title">🔊 TTS 合成测试</div>
+              <div class="demo-row">
+                <div class="demo-sel">Azure TTS <span class="caret">▾</span></div>
+                <div class="demo-sel">晓晓 <span class="caret">▾</span></div>
+                <div class="demo-btn-sm">▶ 播放</div>
+              </div>
+              <div class="demo-result active">欢迎使用 AI Agent 测试平台！</div>
+              <div style="height:4px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden;">
+                <div style="height:100%;background:var(--primary);border-radius:2px;width:60%;"></div>
+              </div>
+              <div style="font-size:10px;color:var(--text-2);margin-top:4px;text-align:center;">2.2s / 3.6s</div>
+            </div>
+
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item"><div class="nav-icon">🤖</div><div class="nav-label">Agents</div></div>
+            <div class="nav-item active"><div class="nav-icon">🧪</div><div class="nav-label" style="color:var(--primary);">服务</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. 添加服务弹窗 -->
+    <div class="phone-frame">
+      <div class="phone-label">➕ 添加服务<br>选类型 → 选厂商 → 填 Key → 测试</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <div style="flex:1;background:var(--bg);filter:brightness(0.7);"></div>
+          <div class="bottom-nav" style="filter:brightness(0.7);">
+            <div class="nav-item"><div class="nav-icon">🤖</div><div class="nav-label">Agents</div></div>
+            <div class="nav-item active"><div class="nav-icon">🧪</div><div class="nav-label" style="color:var(--primary);">服务</div></div>
+            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+          </div>
+          <div class="modal-overlay">
+            <div class="modal-sheet">
+              <div class="modal-handle"></div>
+              <div class="modal-title">添加服务</div>
+              <div class="modal-body">
+
+                <div>
+                  <div class="form-label">服务类型</div>
+                  <div class="seg-control">
+                    <div class="seg-btn">STT</div>
+                    <div class="seg-btn">TTS</div>
+                    <div class="seg-btn active">LLM</div>
+                    <div class="seg-btn">翻译</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">选择服务商</div>
+                  <div class="vendor-grid">
+                    <div class="vendor-btn selected">🟢 OpenAI</div>
+                    <div class="vendor-btn">🔵 Anthropic</div>
+                    <div class="vendor-btn">🟡 Google Gemini</div>
+                    <div class="vendor-btn">🔴 通义千问</div>
+                    <div class="vendor-btn">⚫ DeepSeek</div>
+                    <div class="vendor-btn">🟠 豆包</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">服务名称（可自定义）</div>
+                  <div class="form-input active">我的 GPT-4o</div>
+                </div>
+
+                <div class="key-input-group">
+                  <div class="form-label">API 配置</div>
+                  <div class="key-row">
+                    <div class="key-label">API Key *</div>
+                    <div class="key-input filled">sk-proj-••••••••••••••••ABCD</div>
+                  </div>
+                  <div class="key-row">
+                    <div class="key-label">Base URL（可选，用于代理）</div>
+                    <div class="key-input">https://api.openai.com/v1</div>
+                  </div>
+                  <div class="key-row">
+                    <div class="key-label">默认 Model</div>
+                    <div class="key-input filled">gpt-4o</div>
+                  </div>
+                </div>
+
+                <div class="test-conn-btn">🔌 测试连接</div>
+
+              </div>
+              <div class="modal-footer">
+                <div class="modal-btn cancel">取消</div>
+                <div class="modal-btn primary">保存服务</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. 全局设置 -->
+    <div class="phone-frame">
+      <div class="phone-label">⚙️ 全局设置<br>通用参数 · 后台服务 · 关于</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <div class="top-bar">
+            <div><div class="title">设置</div><div class="subtitle">全局参数配置</div></div>
+          </div>
+
+          <div class="settings-body">
+
+            <!-- 后台服务 -->
+            <div class="settings-section">
+              <div class="section-title">🔧 后台服务</div>
+              <div class="setting-row">
+                <div class="setting-label">🟢 服务状态</div>
+                <div class="setting-value" style="color:var(--success);font-weight:700;">运行中</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🔋 电池优化排除</div>
+                <div class="toggle"></div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🔄 开机自启</div>
+                <div class="toggle off"></div>
+              </div>
+            </div>
+
+            <!-- 对话通用设置 -->
+            <div class="settings-section">
+              <div class="section-title">💬 对话通用</div>
+              <div class="setting-row">
+                <div class="setting-label">📜 最大历史消息数</div>
+                <div class="setting-value">20 条 ›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🌡 默认 Temperature</div>
+                <div class="setting-value">0.7 ›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🔢 默认 Max Tokens</div>
+                <div class="setting-value">2048 ›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">💬 Markdown 渲染</div>
+                <div class="toggle"></div>
+              </div>
+            </div>
+
+            <!-- 语音通用设置 -->
+            <div class="settings-section">
+              <div class="section-title">🎙 语音通用</div>
+              <div class="setting-row">
+                <div class="setting-label">📡 STT 采样率</div>
+                <div class="setting-value">16000 Hz ›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🔊 TTS 语速</div>
+                <div class="setting-value">1.0x ›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🎚 TTS 音调</div>
+                <div class="setting-value">1.0x ›</div>
+              </div>
+            </div>
+
+            <!-- 关于 -->
+            <div class="settings-section">
+              <div class="section-title">ℹ️ 关于</div>
+              <div class="setting-row">
+                <div class="setting-label">版本</div>
+                <div class="setting-value">v1.0.0</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">📂 查看日志</div>
+                <div class="setting-value">›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🗑 清除所有数据</div>
+                <div class="setting-value" style="color:var(--danger);">›</div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item"><div class="nav-icon">🤖</div><div class="nav-label">Agents</div></div>
+            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
+            <div class="nav-item active"><div class="nav-icon">⚙️</div><div class="nav-label" style="color:var(--primary);">设置</div><div class="nav-dot"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 说明 -->
+<div style="max-width:1100px;width:100%;background:white;border-radius:20px;padding:22px 28px;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+  <h2 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:14px;">📐 v2 设计变化说明</h2>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:12px;color:var(--text-2);line-height:1.7;">
+    <div><strong style="color:var(--text);">导航结构（3 Tab）</strong><br>
+      🤖 Agents（首页面板）<br>🧪 服务中心（管理+演示）<br>⚙️ 全局设置</div>
+    <div><strong style="color:var(--text);">Agent 面板</strong><br>
+      列表展示所有 Agent 卡片<br>区分聊天(紫色)/翻译(蓝色)类型<br>显示关联服务徽章 + 最近使用时间</div>
+    <div><strong style="color:var(--text);">添加 Agent 流程</strong><br>
+      名称 → 类型 → 选已配置服务 →<br>音色选择（TTS选后展开）→<br>提示词（聊天）/ 语言对（翻译）</div>
+    <div><strong style="color:var(--text);">服务中心</strong><br>
+      统一管理所有已配置服务<br>+ 添加服务按钮一键打开弹窗<br>下方保留各能力快速测试卡片</div>
+    <div><strong style="color:var(--text);">添加服务流程</strong><br>
+      类型(STT/TTS/LLM/翻译) →<br>厂商选择 → API Key 填写 →<br>测试连接 → 保存（一次配置，反复复用）</div>
+    <div><strong style="color:var(--text);">补充配置项</strong><br>
+      提示词：在添加 Agent 时配置<br>TTS 音色：选择 TTS 服务后展开音色列表<br>全局设置：语速/音调/采样率/历史条数</div>
+  </div>
+</div>
+
+</body>
+</html>

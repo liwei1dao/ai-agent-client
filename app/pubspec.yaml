@@ -1,0 +1,66 @@
+name: ai_agent_client
+description: AI Agent Client — voice/text agent with background execution
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Navigation
+  go_router: ^14.6.3
+
+  # Env / config
+  flutter_dotenv: ^5.2.1
+
+  # Unique IDs (requestId generation in text mode)
+  uuid: ^4.5.1
+
+  # HTTP
+  http: ^1.3.0
+
+  # Persistence
+  shared_preferences: ^2.3.4
+
+  # Local plugins
+  ai_plugin_interface:
+    path: local_plugins/ai_plugin_interface
+  agent_runtime:
+    path: local_plugins/agent_runtime
+  local_db:
+    path: local_plugins/local_db
+  stt_azure:
+    path: local_plugins/stt_azure
+  tts_azure:
+    path: local_plugins/tts_azure
+  llm_openai:
+    path: local_plugins/llm_openai
+  sts_doubao:
+    path: local_plugins/sts_doubao
+  translation_deepl:
+    path: local_plugins/translation_deepl
+  translation_aliyun:
+    path: local_plugins/translation_aliyun
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  pigeon: ^22.7.4
+  riverpod_generator: ^2.6.1
+  build_runner: ^2.4.14
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env

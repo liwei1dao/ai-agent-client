@@ -1,0 +1,25 @@
+name: local_db
+description: Native SQLite data center (Room on Android, GRDB on iOS)
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  pigeon: ^22.7.4
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.local_db
+        pluginClass: LocalDbPlugin
+      ios:
+        pluginClass: LocalDbPlugin
