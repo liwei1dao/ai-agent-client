@@ -39,6 +39,26 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
     await _load();
   }
 
+  Future<void> updateService({
+    required String id,
+    required String type,
+    required String vendor,
+    required String name,
+    required Map<String, dynamic> config,
+  }) async {
+    final existing = state.firstWhere((s) => s.id == id);
+    final dto = ServiceConfigDto(
+      id: id,
+      type: type,
+      vendor: vendor,
+      name: name,
+      configJson: jsonEncode(config),
+      createdAt: existing.createdAt,
+    );
+    await _db.upsertServiceConfig(dto);
+    await _load();
+  }
+
   Future<void> removeService(String id) async {
     await _db.deleteServiceConfig(id);
     await _load();

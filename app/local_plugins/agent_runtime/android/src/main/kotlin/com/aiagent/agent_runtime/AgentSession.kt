@@ -1,6 +1,9 @@
 package com.aiagent.agent_runtime
 
+import android.content.Context
+import android.util.Log
 import com.aiagent.local_db.AppDatabase
+import com.aiagent.agent_runtime.pipeline.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +25,7 @@ class AgentSession(
     private val config: AgentSessionConfig,
     private val db: AppDatabase,
     private val eventSink: AgentEventSink,
+    private val context: Context,
 ) {
     enum class State { IDLE, LISTENING, STT, LLM, TTS, PLAYING, ERROR }
 
@@ -37,14 +41,71 @@ class AgentSession(
 
     private var activeJob: Job? = null
 
+    // STS 模式：端到端实时语音对话（stsPluginName 以 "sts_" 开头）
+    private val isStsAgent  = config.stsPluginName?.startsWith("sts_")  == true
+    // AST 模式：端到端语音翻译（stsPluginName 以 "ast_" 开头）
+    private val isAstAgent = config.stsPluginName?.startsWith("ast_") == true
+
+    init {
+        Log.d("AgentSession", "init: sessionId=$sessionId isStsAgent=$isStsAgent isAstAgent=$isAstAgent stsPluginName=${config.stsPluginName} stsConfigJson=${config.stsConfigJson?.take(100)}")
+    }
+
     // Pipeline 节点（懒加载，依赖插件注册）
     private val vadEngine = VadEngine(sessionId, eventSink)
-    private val sttNode = SttPipelineNode(sessionId, config, db, eventSink) { reqId ->
-        // STT 产出 finalResult 时回调，触发 LLM 管线
-        onUserInput(reqId, it)
-    }
+    private val sttNode = SttPipelineNode(
+        sessionId, config, db, eventSink,
+        onFinalResult = { reqId, text ->
+            // call 模式：native 直接驱动 LLM 管线
+            // short_voice 模式：由 Flutter 在松手时通过 sendText 驱动，避免双重触发
+            if (config.inputMode == "call") onUserInput(reqId, text)
+        },
+        onSpeechStart = { interruptForVoiceInput() },
+    )
     private val llmNode = LlmPipelineNode(sessionId, config, db, eventSink)
-    private val ttsNode = TtsPipelineNode(sessionId, config, eventSink)
+    private val ttsNode = TtsPipelineNode(sessionId, config, eventSink, context)
+
+    // STS pipeline（端到端语音对话，只在 sts agent 时使用）
+    private val stsNode: StsRealtimePipelineNode? =
+        if (isStsAgent) StsRealtimePipelineNode(sessionId, config, eventSink,
+            onSpeechStart = { interruptForVoiceInput() })
+        else null
+
+    // AST pipeline（端到端语音翻译，只在 ast agent 时使用）
+    private val astNode: AstPipelineNode? =
+        if (isAstAgent) AstPipelineNode(sessionId, config, eventSink,
+            onSpeechStart = { interruptForVoiceInput() })
+        else null
+
+    private var stsJob: Job? = null
+
+    init {
+        // STS/AST agent：进入聊天界面时自动建立 WebSocket 连接，不启动麦克风
+        // 此 init 块在 stsNode/astNode 声明之后，可安全引用
+        if (isStsAgent && stsNode != null) {
+            stsJob = scope.launch {
+                try {
+                    stsNode.connect()
+                } catch (e: CancellationException) {
+                    // normal
+                } catch (e: Exception) {
+                    Log.e("AgentSession", "STS connect failed: ${e.message}")
+                    transitionTo(State.ERROR)
+                }
+            }
+        }
+        if (isAstAgent && astNode != null) {
+            stsJob = scope.launch {
+                try {
+                    astNode.connect()
+                } catch (e: CancellationException) {
+                    // normal
+                } catch (e: Exception) {
+                    Log.e("AgentSession", "AST connect failed: ${e.message}")
+                    transitionTo(State.ERROR)
+                }
+            }
+        }
+    }
 
     // ─────────────────────────────────────────────────
     // 公开命令
@@ -55,18 +116,52 @@ class AgentSession(
         onUserInput(requestId, text)
     }
 
-    /** 打断当前处理，恢复 IDLE */
+    /** 打断当前处理，恢复 IDLE（立即停止 LLM + TTS） */
     fun interrupt() {
-        cancelActiveJob(reason = "manual_interrupt")
+        if (isStsAgent) {
+            // STS 模式：仅清空 TTS 播放缓冲，WebSocket 保持连接
+            stsNode?.interrupt()
+        } else if (isAstAgent) {
+            // AST 模式：仅清空 TTS 播放缓冲，WebSocket 保持连接
+            astNode?.interrupt()
+        } else {
+            llmNode.cancel()
+            ttsNode.interrupt()
+            cancelActiveJob(reason = "manual_interrupt")
+        }
         transitionTo(State.IDLE)
     }
 
     /** 切换输入模式 */
     fun setInputMode(mode: String) {
+        Log.d("AgentSession", "setInputMode: mode=$mode isStsAgent=$isStsAgent")
         when (mode) {
-            "call" -> startContinuousListening()
+            "call" -> {
+                if (isStsAgent) {
+                    // STS 模式：仅开始发送音频，WebSocket 已在 init 时建立
+                    stsNode?.startAudio()
+                } else if (isAstAgent) {
+                    // AST 模式：仅开始发送音频，WebSocket 已在 init 时建立
+                    astNode?.startAudio()
+                } else {
+                    llmNode.cancel()
+                    ttsNode.interrupt()
+                    cancelActiveJob(reason = "mode_switch_call")
+                    startContinuousListening()
+                }
+            }
             "short_voice" -> { /* 按住说话，由 UI 调用 startListening/stopListening */ }
-            else -> stopListening()
+            else -> {
+                if (isStsAgent) {
+                    // STS 模式：仅停止发送音频，WebSocket 保持连接
+                    stsNode?.stopAudio()
+                } else if (isAstAgent) {
+                    // AST 模式：仅停止发送音频，WebSocket 保持连接
+                    astNode?.stopAudio()
+                } else {
+                    stopListening()
+                }
+            }
         }
     }
 
@@ -86,6 +181,8 @@ class AgentSession(
         vadEngine.release()
         sttNode.release()
         ttsNode.release()
+        stsNode?.release()
+        astNode?.release()
     }
 
     // ─────────────────────────────────────────────────
@@ -159,12 +256,32 @@ class AgentSession(
         }
     }
 
+    /**
+     * 用户开口说话 → 立即打断正在进行的 TTS/LLM，回到 LISTENING 状态
+     * 不需要重启 STT（continuous recognition 仍在运行）
+     */
+    private fun interruptForVoiceInput() {
+        if (_state.value == State.IDLE || _state.value == State.LISTENING) return
+        val prevId = activeRequestId
+        llmNode.cancel()             // 立即取消 HTTP 请求（解除 readUtf8Line 阻塞）
+        ttsNode.interrupt()          // 立即完成 playback deferred（解除 done.await()）
+        cancelActiveJob(reason = "voice_interrupt")
+        if (prevId != null) {
+            scope.launch {
+                runCatching { db.messageDao().updateStatus(prevId, "cancelled", System.currentTimeMillis()) }
+            }
+        }
+        transitionTo(State.LISTENING)
+        Log.d("AgentSession", "voice interrupt: cancelled requestId=$prevId, back to LISTENING")
+    }
+
     private fun cancelActiveJob(reason: String) {
         activeJob?.cancel(CancellationException(reason))
         activeJob = null
     }
 
     private fun startContinuousListening() {
+        Log.d("AgentSession", "startContinuousListening")
         transitionTo(State.LISTENING)
         scope.launch { sttNode.startListening() }
     }

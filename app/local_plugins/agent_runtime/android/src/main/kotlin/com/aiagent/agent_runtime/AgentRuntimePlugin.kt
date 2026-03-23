@@ -67,6 +67,14 @@ class AgentRuntimePlugin : FlutterPlugin, AgentEventSink {
                     )
                     result.success(null)
                 }
+                "startListening" -> {
+                    service?.startListening(call.argument("sessionId")!!)
+                    result.success(null)
+                }
+                "stopListening" -> {
+                    service?.stopListening(call.argument("sessionId")!!)
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

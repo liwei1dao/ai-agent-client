@@ -1,5 +1,6 @@
 package com.aiagent.agent_runtime.pipeline
 
+import android.util.Log
 import com.aiagent.agent_runtime.*
 import com.aiagent.local_db.AppDatabase
 import kotlinx.coroutines.CancellationException
@@ -26,27 +27,63 @@ class LlmPipelineNode(
     private val eventSink: AgentEventSink,
 ) {
     private val client = OkHttpClient()
-    private var activeCall: Call? = null
+    @Volatile private var activeCall: Call? = null
+
+    /** 立即取消当前 HTTP 请求（用于外部打断） */
+    fun cancel() { activeCall?.cancel() }
 
     /**
      * 执行 LLM 推理（挂起直到完成或取消）
      * @return 完整的 LLM 响应文本（用于 TTS）
      */
     suspend fun run(requestId: String, assistantMessageId: String, userText: String): String {
+        Log.d("LlmPipelineNode", "run: llmPluginName=${config.llmPluginName} configJson=${config.llmConfigJson.take(80)}")
         val llmConfig = JSONObject(config.llmConfigJson)
-        val apiKey = llmConfig.getString("apiKey")
-        val baseUrl = llmConfig.getString("baseUrl").trimEnd('/')
-        val model = llmConfig.getString("model")
+        val apiKey = llmConfig.optString("apiKey").also {
+            if (it.isBlank()) Log.e("LlmPipelineNode", "apiKey is blank! configJson=${config.llmConfigJson}")
+        }
+        val baseUrl = llmConfig.optString("baseUrl").trimEnd('/').also {
+            if (it.isBlank()) Log.e("LlmPipelineNode", "baseUrl is blank!")
+        }
+        val model = llmConfig.optString("model").also {
+            if (it.isBlank()) Log.e("LlmPipelineNode", "model is blank!")
+        }
+        if (apiKey.isBlank() || baseUrl.isBlank() || model.isBlank()) {
+            val errMsg = "LLM config incomplete: apiKey=${apiKey.isNotBlank()} baseUrl=${baseUrl.isNotBlank()} model=${model.isNotBlank()}"
+            Log.e("LlmPipelineNode", errMsg)
+            db.messageDao().updateStatus(assistantMessageId, "error", System.currentTimeMillis())
+            pushLlmEvent(requestId, LlmEventData(sessionId, requestId, kind = "error",
+                errorCode = "config_error", errorMessage = errMsg))
+            return ""
+        }
 
-        // 构建历史消息（从 DB 读取，最近 20 条）
-        val history = db.messageDao().getMessages(config.agentId, 20)
-            .reversed()
-            .map { msg ->
-                JSONObject().apply {
-                    put("role", msg.role)
-                    put("content", msg.content)
-                }
+        // 构建历史消息（从 DB 读取，过滤无效消息，保证 user/assistant 交替）
+        val rawMessages = db.messageDao().getMessages(config.agentId, 40).reversed()
+        val validMessages = rawMessages.filter {
+            it.content.isNotBlank() &&
+            it.status !in listOf("error", "cancelled", "pending")
+        }
+        // 去除连续相同 role（只保留最新的那条），避免 API 拒绝
+        val deduplicated = mutableListOf<com.aiagent.local_db.entity.MessageEntity>()
+        for (msg in validMessages) {
+            if (deduplicated.isNotEmpty() && deduplicated.last().role == msg.role) {
+                deduplicated[deduplicated.lastIndex] = msg
+            } else {
+                deduplicated.add(msg)
             }
+        }
+        // 确保末尾是 user 消息（不能以 assistant 结束再让 LLM 续写）
+        while (deduplicated.isNotEmpty() && deduplicated.last().role != "user") {
+            deduplicated.removeAt(deduplicated.lastIndex)
+        }
+        val history = deduplicated.takeLast(20).map { msg ->
+            JSONObject().apply {
+                put("role", msg.role)
+                put("content", msg.content)
+            }
+        }
+
+        Log.d("LlmPipelineNode", "history count=${history.size}, messages=${JSONArray(history).toString().take(500)}")
 
         val body = JSONObject().apply {
             put("model", model)
@@ -54,8 +91,13 @@ class LlmPipelineNode(
             put("messages", JSONArray(history))
         }
 
+        // 兼容 baseUrl 已包含 /chat/completions 的情况
+        val url = if (baseUrl.endsWith("/chat/completions")) baseUrl
+                  else "$baseUrl/chat/completions"
+        Log.d("LlmPipelineNode", "POST $url  model=$model  body=${body.toString().take(400)}")
+
         val request = Request.Builder()
-            .url("$baseUrl/chat/completions")
+            .url(url)
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .header("Authorization", "Bearer $apiKey")
             .build()
@@ -72,10 +114,13 @@ class LlmPipelineNode(
             val response = suspendableEnqueue(request) ?: return ""
 
             if (!response.isSuccessful) {
+                val body = response.body?.string()?.take(300) ?: ""
+                val errMsg = "HTTP ${response.code}: $body"
+                Log.e("LlmPipelineNode", "LLM request failed: $errMsg")
                 pushLlmEvent(requestId,
                     LlmEventData(sessionId, requestId, kind = "error",
                         errorCode = "http_${response.code}",
-                        errorMessage = response.message))
+                        errorMessage = errMsg))
                 db.messageDao().updateStatus(assistantMessageId, "error", System.currentTimeMillis())
                 return ""
             }
@@ -119,6 +164,7 @@ class LlmPipelineNode(
             pushLlmEvent(requestId, LlmEventData(sessionId, requestId, kind = "cancelled"))
             ""
         } catch (e: IOException) {
+            Log.e("LlmPipelineNode", "IO error: ${e.message}")
             db.messageDao().updateStatus(assistantMessageId, "error", System.currentTimeMillis())
             pushLlmEvent(requestId, LlmEventData(sessionId, requestId,
                 kind = "error", errorCode = "io_error", errorMessage = e.message))

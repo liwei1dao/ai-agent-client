@@ -45,6 +45,9 @@ class LocalDbBridge {
 
   // ── Message ────────────────────────────────────────────────────────────
 
+  Future<void> deleteMessages(String agentId) =>
+      _channel.invokeMethod('deleteMessages', {'agentId': agentId});
+
   Future<List<MessageDto>> getMessages(String agentId, {int limit = 50}) async {
     final list = await _channel.invokeMethod<List>('getMessages', {
       'agentId': agentId,

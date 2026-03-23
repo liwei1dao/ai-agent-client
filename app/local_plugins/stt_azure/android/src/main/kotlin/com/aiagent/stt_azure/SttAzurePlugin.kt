@@ -37,8 +37,14 @@ class SttAzurePlugin : FlutterPlugin {
                     val key = call.argument<String>("apiKey")!!
                     val region = call.argument<String>("region")!!
                     val lang = call.argument<String>("language") ?: "zh-CN"
-                    initialize(key, region, lang)
-                    result.success(null)
+                    mainScope.launch(Dispatchers.IO) {
+                        try {
+                            initialize(key, region, lang)
+                            withContext(Dispatchers.Main) { result.success(null) }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) { result.error("STT_INIT", e.message, null) }
+                        }
+                    }
                 }
                 "startListening" -> {
                     startListening()

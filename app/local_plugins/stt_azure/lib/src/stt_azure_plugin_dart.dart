@@ -14,6 +14,8 @@ class SttAzurePluginDart implements SttPlugin {
 
   @override
   Future<void> initialize(SttConfig config) async {
+    _controller ??= StreamController<SttEvent>.broadcast();
+    _nativeSub ??= _evt.receiveBroadcastStream().listen(_onNativeEvent);
     await _cmd.invokeMethod('initialize', {
       'apiKey': config.apiKey,
       'region': config.region,

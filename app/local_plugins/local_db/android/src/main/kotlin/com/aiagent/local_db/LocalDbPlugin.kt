@@ -1,248 +1,163 @@
 package com.aiagent.local_db
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.*
 import com.aiagent.local_db.entity.*
 
-/**
- * LocalDbPlugin — Flutter Plugin 入口
- *
- * Pigeon 生成的 LocalDbApi 接口由本类实现。
- * 所有 DB 操作运行在 IO 协程，结果切回主线程返回给 Pigeon。
- *
- * 注意：Pigeon 生成代码（LocalDbApi.g.kt）在运行 pigeon 后自动生成，
- * 此处手写的 setup() 调用将在生成后补充。
- */
-class LocalDbPlugin : FlutterPlugin {
+class LocalDbPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var db: AppDatabase
+    private lateinit var channel: MethodChannel
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         db = AppDatabase.getInstance(binding.applicationContext)
-        // TODO: LocalDbApi.setUp(binding.binaryMessenger, LocalDbApiImpl(db, scope))
+        channel = MethodChannel(binding.binaryMessenger, "local_db/commands")
+        channel.setMethodCallHandler(this)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        channel.setMethodCallHandler(null)
         scope.cancel()
     }
-}
 
-/**
- * LocalDbApiImpl — 实现 Pigeon 生成的 LocalDbApi 接口。
- * 此类在 Pigeon 代码生成后实现具体接口方法。
- */
-class LocalDbApiImpl(
-    private val db: AppDatabase,
-    private val scope: CoroutineScope,
-) {
-    // ── ServiceConfig ──────────────────────────────────────────────────────
-
-    fun upsertServiceConfig(row: ServiceConfigRow, callback: (Result<Unit>) -> Unit) {
+    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         scope.launch {
             try {
-                db.serviceConfigDao().upsert(
-                    ServiceConfigEntity(
-                        id = row.id,
-                        type = row.type,
-                        vendor = row.vendor,
-                        name = row.name,
-                        configJson = row.configJson,
-                        createdAt = row.createdAt,
-                    )
-                )
-                withContext(Dispatchers.Main) { callback(Result.success(Unit)) }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { callback(Result.failure(e)) }
-            }
-        }
-    }
+                val value = when (call.method) {
+                    // ── ServiceConfig ──────────────────────────────────────
+                    "upsertServiceConfig" -> {
+                        val args = call.arguments as Map<*, *>
+                        db.serviceConfigDao().upsert(
+                            ServiceConfigEntity(
+                                id = args["id"] as String,
+                                type = args["type"] as String,
+                                vendor = args["vendor"] as String,
+                                name = args["name"] as String,
+                                configJson = args["configJson"] as String,
+                                createdAt = (args["createdAt"] as Number).toLong(),
+                            )
+                        )
+                        null
+                    }
+                    "deleteServiceConfig" -> {
+                        val args = call.arguments as Map<*, *>
+                        db.serviceConfigDao().delete(args["id"] as String)
+                        null
+                    }
+                    "getAllServiceConfigs" -> {
+                        db.serviceConfigDao().getAll().map { e ->
+                            mapOf(
+                                "id" to e.id, "type" to e.type, "vendor" to e.vendor,
+                                "name" to e.name, "configJson" to e.configJson,
+                                "createdAt" to e.createdAt,
+                            )
+                        }
+                    }
 
-    fun deleteServiceConfig(id: String, callback: (Result<Unit>) -> Unit) {
-        scope.launch {
-            runCatching { db.serviceConfigDao().delete(id) }
-                .let { withContext(Dispatchers.Main) { callback(it) } }
-        }
-    }
+                    // ── Agent ──────────────────────────────────────────────
+                    "upsertAgent" -> {
+                        val args = call.arguments as Map<*, *>
+                        db.agentDao().upsert(
+                            AgentEntity(
+                                id = args["id"] as String,
+                                name = args["name"] as String,
+                                type = args["type"] as String,
+                                configJson = args["configJson"] as String,
+                                createdAt = (args["createdAt"] as Number).toLong(),
+                                updatedAt = (args["updatedAt"] as Number).toLong(),
+                            )
+                        )
+                        null
+                    }
+                    "deleteAgent" -> {
+                        val args = call.arguments as Map<*, *>
+                        db.agentDao().delete(args["id"] as String)
+                        null
+                    }
+                    "getAllAgents" -> {
+                        db.agentDao().getAll().map { e ->
+                            mapOf(
+                                "id" to e.id, "name" to e.name, "type" to e.type,
+                                "configJson" to e.configJson,
+                                "createdAt" to e.createdAt, "updatedAt" to e.updatedAt,
+                            )
+                        }
+                    }
 
-    fun getAllServiceConfigs(callback: (Result<List<ServiceConfigRow>>) -> Unit) {
-        scope.launch {
-            try {
-                val rows = db.serviceConfigDao().getAll().map { e ->
-                    ServiceConfigRow(
-                        id = e.id,
-                        type = e.type,
-                        vendor = e.vendor,
-                        name = e.name,
-                        configJson = e.configJson,
-                        createdAt = e.createdAt,
-                    )
+                    // ── Message ────────────────────────────────────────────
+                    "getMessages" -> {
+                        val args = call.arguments as Map<*, *>
+                        val agentId = args["agentId"] as String
+                        val limit = (args["limit"] as Number).toInt()
+                        db.messageDao().getMessages(agentId, limit).map { e ->
+                            mapOf(
+                                "id" to e.id, "agentId" to e.agentId, "role" to e.role,
+                                "content" to e.content, "status" to e.status,
+                                "createdAt" to e.createdAt, "updatedAt" to e.updatedAt,
+                            )
+                        }
+                    }
+
+                    "deleteMessages" -> {
+                        val args = call.arguments as Map<*, *>
+                        db.messageDao().deleteByAgent(args["agentId"] as String)
+                        null
+                    }
+
+                    // ── McpServer ──────────────────────────────────────────
+                    "upsertMcpServer" -> {
+                        val args = call.arguments as Map<*, *>
+                        db.mcpServerDao().upsert(
+                            McpServerEntity(
+                                id = args["id"] as String,
+                                agentId = args["agentId"] as String,
+                                name = args["name"] as String,
+                                url = args["url"] as String,
+                                transport = args["transport"] as String,
+                                authHeader = args["authHeader"] as String?,
+                                enabledToolsJson = args["enabledToolsJson"] as String,
+                                isEnabled = args["isEnabled"] as Boolean,
+                                createdAt = (args["createdAt"] as Number).toLong(),
+                            )
+                        )
+                        null
+                    }
+                    "deleteMcpServer" -> {
+                        val args = call.arguments as Map<*, *>
+                        db.mcpServerDao().delete(args["id"] as String)
+                        null
+                    }
+                    "getMcpServersByAgent" -> {
+                        val args = call.arguments as Map<*, *>
+                        db.mcpServerDao().getByAgent(args["agentId"] as String).map { e ->
+                            mapOf(
+                                "id" to e.id, "agentId" to e.agentId, "name" to e.name,
+                                "url" to e.url, "transport" to e.transport,
+                                "authHeader" to e.authHeader,
+                                "enabledToolsJson" to e.enabledToolsJson,
+                                "isEnabled" to e.isEnabled, "createdAt" to e.createdAt,
+                            )
+                        }
+                    }
+
+                    else -> {
+                        withContext(Dispatchers.Main) { result.notImplemented() }
+                        return@launch
+                    }
                 }
-                withContext(Dispatchers.Main) { callback(Result.success(rows)) }
+                withContext(Dispatchers.Main) { result.success(value) }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { callback(Result.failure(e)) }
-            }
-        }
-    }
-
-    // ── Agent ──────────────────────────────────────────────────────────────
-
-    fun upsertAgent(row: AgentRow, callback: (Result<Unit>) -> Unit) {
-        scope.launch {
-            runCatching {
-                db.agentDao().upsert(
-                    AgentEntity(
-                        id = row.id,
-                        name = row.name,
-                        type = row.type,
-                        configJson = row.configJson,
-                        createdAt = row.createdAt,
-                        updatedAt = row.updatedAt,
-                    )
-                )
-            }.let { withContext(Dispatchers.Main) { callback(it) } }
-        }
-    }
-
-    fun deleteAgent(id: String, callback: (Result<Unit>) -> Unit) {
-        scope.launch {
-            runCatching { db.agentDao().delete(id) }
-                .let { withContext(Dispatchers.Main) { callback(it) } }
-        }
-    }
-
-    fun getAllAgents(callback: (Result<List<AgentRow>>) -> Unit) {
-        scope.launch {
-            try {
-                val rows = db.agentDao().getAll().map { e ->
-                    AgentRow(
-                        id = e.id,
-                        name = e.name,
-                        type = e.type,
-                        configJson = e.configJson,
-                        createdAt = e.createdAt,
-                        updatedAt = e.updatedAt,
-                    )
+                withContext(Dispatchers.Main) {
+                    result.error("DB_ERROR", e.message, null)
                 }
-                withContext(Dispatchers.Main) { callback(Result.success(rows)) }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { callback(Result.failure(e)) }
-            }
-        }
-    }
-
-    // ── Message ────────────────────────────────────────────────────────────
-
-    fun insertMessage(row: MessageRow, callback: (Result<Unit>) -> Unit) {
-        scope.launch {
-            val now = System.currentTimeMillis()
-            runCatching {
-                db.messageDao().insert(
-                    MessageEntity(
-                        id = row.id,
-                        agentId = row.agentId,
-                        role = row.role,
-                        content = row.content,
-                        status = row.status,
-                        createdAt = row.createdAt,
-                        updatedAt = row.updatedAt,
-                    )
-                )
-            }.let { withContext(Dispatchers.Main) { callback(it) } }
-        }
-    }
-
-    fun updateMessageStatus(id: String, status: String, callback: (Result<Unit>) -> Unit) {
-        scope.launch {
-            runCatching {
-                db.messageDao().updateStatus(id, status, System.currentTimeMillis())
-            }.let { withContext(Dispatchers.Main) { callback(it) } }
-        }
-    }
-
-    fun appendMessageContent(id: String, delta: String, callback: (Result<Unit>) -> Unit) {
-        scope.launch {
-            runCatching {
-                db.messageDao().appendContent(id, delta, System.currentTimeMillis())
-            }.let { withContext(Dispatchers.Main) { callback(it) } }
-        }
-    }
-
-    fun getMessages(agentId: String, limit: Long, callback: (Result<List<MessageRow>>) -> Unit) {
-        scope.launch {
-            try {
-                val rows = db.messageDao().getMessages(agentId, limit.toInt()).map { e ->
-                    MessageRow(
-                        id = e.id,
-                        agentId = e.agentId,
-                        role = e.role,
-                        content = e.content,
-                        status = e.status,
-                        createdAt = e.createdAt,
-                        updatedAt = e.updatedAt,
-                    )
-                }
-                withContext(Dispatchers.Main) { callback(Result.success(rows)) }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { callback(Result.failure(e)) }
-            }
-        }
-    }
-
-    // ── McpServer ──────────────────────────────────────────────────────────
-
-    fun upsertMcpServer(row: McpServerRow, callback: (Result<Unit>) -> Unit) {
-        scope.launch {
-            runCatching {
-                db.mcpServerDao().upsert(
-                    McpServerEntity(
-                        id = row.id,
-                        agentId = row.agentId,
-                        name = row.name,
-                        url = row.url,
-                        transport = row.transport,
-                        authHeader = row.authHeader,
-                        enabledToolsJson = row.enabledToolsJson,
-                        isEnabled = row.isEnabled,
-                        createdAt = row.createdAt,
-                    )
-                )
-            }.let { withContext(Dispatchers.Main) { callback(it) } }
-        }
-    }
-
-    fun deleteMcpServer(id: String, callback: (Result<Unit>) -> Unit) {
-        scope.launch {
-            runCatching { db.mcpServerDao().delete(id) }
-                .let { withContext(Dispatchers.Main) { callback(it) } }
-        }
-    }
-
-    fun getMcpServersByAgent(agentId: String, callback: (Result<List<McpServerRow>>) -> Unit) {
-        scope.launch {
-            try {
-                val rows = db.mcpServerDao().getByAgent(agentId).map { e ->
-                    McpServerRow(
-                        id = e.id,
-                        agentId = e.agentId,
-                        name = e.name,
-                        url = e.url,
-                        transport = e.transport,
-                        authHeader = e.authHeader,
-                        enabledToolsJson = e.enabledToolsJson,
-                        isEnabled = e.isEnabled,
-                        createdAt = e.createdAt,
-                    )
-                }
-                withContext(Dispatchers.Main) { callback(Result.success(rows)) }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { callback(Result.failure(e)) }
             }
         }
     }
 }
 
-// ── Data classes (mirrors of Pigeon-generated, used before codegen) ────────
+// ── Data classes (kept for reference, not used by MethodChannel handler) ──
 
 data class ServiceConfigRow(
     val id: String, val type: String, val vendor: String,

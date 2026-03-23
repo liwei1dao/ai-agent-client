@@ -43,6 +43,9 @@ interface MessageDao {
            ORDER BY createdAt DESC LIMIT :limit"""
     )
     suspend fun getMessages(agentId: String, limit: Int): List<MessageEntity>
+
+    @Query("DELETE FROM messages WHERE agentId = :agentId")
+    suspend fun deleteByAgent(agentId: String)
 }
 
 @Dao

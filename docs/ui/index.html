@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Agent Client — UI 效果图 v2</title>
+<title>AI Agent Client — UI 效果图 v3</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -101,7 +101,9 @@ body {
   flex: 1; display: flex; flex-direction: column;
   align-items: center; gap: 3px; cursor: pointer; padding-top: 2px;
 }
-.nav-icon { font-size: 22px; }
+.nav-icon { width: 24px; height: 24px; color: var(--text-2); display:flex; align-items:center; justify-content:center; }
+.nav-icon svg { width: 100%; height: 100%; }
+.nav-item.active .nav-icon { color: var(--primary); }
 .nav-label { font-size: 10px; font-weight: 600; color: var(--text-2); }
 .nav-item.active .nav-label { color: var(--primary); }
 .nav-dot { width: 4px; height: 4px; background: var(--primary); border-radius: 50%; margin-top: -2px; }
@@ -461,13 +463,105 @@ body {
   font-size: 12px; color: var(--text-2); line-height: 1.5;
   border-left: 3px solid var(--primary); font-style: italic;
 }
+
+/* ============================================================
+   MULTIMODAL INPUT BAR
+   Three states in one component: short-voice / text / call
+   [⌨️]  [● 按住说话]  [📞]   ← default (short voice)
+   [🎤]  [input box]  [↑]    ← text mode
+   [🟢 通话中 · 00:42]  [✋]  [📞] ← call mode
+   ============================================================ */
+.mm-bar {
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: 8px 12px 16px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.mm-side {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--bg); border: 1.5px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; flex-shrink: 0; cursor: pointer;
+}
+/* Short voice center button */
+.mm-voice-center {
+  flex: 1; height: 42px; border-radius: 21px;
+  background: linear-gradient(135deg, var(--primary), #818CF8);
+  display: flex; align-items: center; justify-content: center;
+  gap: 7px; font-size: 13px; font-weight: 700; color: white;
+  box-shadow: 0 4px 14px rgba(108,99,255,0.35);
+}
+.mm-voice-center.recording {
+  background: linear-gradient(135deg, #F59E0B, #EF4444);
+  box-shadow: 0 4px 14px rgba(245,158,11,0.4);
+}
+/* Text input */
+.mm-text-field {
+  flex: 1; height: 38px; background: var(--bg);
+  border: 1.5px solid var(--border); border-radius: 19px;
+  padding: 0 13px; font-size: 13px; color: var(--text-2);
+  display: flex; align-items: center;
+}
+.mm-send {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--primary); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; flex-shrink: 0;
+}
+/* Call mode bar */
+.call-bar {
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: 8px 14px 16px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.call-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse-dot 1.5s infinite; flex-shrink:0; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.call-info { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.call-label { font-size: 12px; font-weight: 700; color: var(--success); }
+.call-timer { font-size: 10px; color: var(--text-2); }
+.interrupt-btn {
+  height: 32px; padding: 0 11px; border-radius: 16px;
+  background: #FEF3C7; color: #92400E;
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+  display: flex; align-items: center; gap: 3px;
+}
+.hangup-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--danger); color: white;
+  display: flex; align-items: center; justify-content: center; font-size: 18px;
+  box-shadow: 0 4px 12px rgba(239,68,68,0.4); flex-shrink: 0;
+}
+/* TTS playback strip (inside chat area above input bar) */
+.tts-strip {
+  padding: 6px 12px; background: #F0FDF4; flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+}
 </style>
 </head>
 <body>
 
+<!-- SVG icon defs -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4" y="8" width="16" height="11" rx="3"/>
+    <circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/>
+    <path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/>
+  </symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+    <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+    <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+    <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+  </symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/>
+  </symbol>
+</svg>
+
 <div class="page-header">
-  <h1>AI Agent Client — UI 设计效果图 v2</h1>
-  <p>Agent 面板 · 添加 Agent · 对话界面 · 服务管理+演示 · 添加服务 · 全局设置</p>
+  <h1>AI Agent Client — UI 设计效果图 v3</h1>
+  <p>Agent 面板 · 添加 Agent · 三种输入模式（文本/短语音/通话）· 服务管理 · 全局设置</p>
 </div>
 
 <!-- ==================== ROW 1: Agent 面板 + 添加 Agent ==================== -->
@@ -566,12 +660,12 @@ body {
 
           <div class="bottom-nav">
             <div class="nav-item active">
-              <div class="nav-icon">🤖</div>
+              <div class="nav-icon"><svg><use href="#ic-agents"/></svg></div>
               <div class="nav-label" style="color:var(--primary);">Agents</div>
               <div class="nav-dot"></div>
             </div>
-            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
-            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
           </div>
         </div>
       </div>
@@ -589,9 +683,9 @@ body {
           <!-- 背景模糊态 -->
           <div style="flex:1;background:var(--bg);filter:brightness(0.7);"></div>
           <div class="bottom-nav" style="filter:brightness(0.7);">
-            <div class="nav-item active"><div class="nav-icon">🤖</div><div class="nav-label" style="color:var(--primary);">Agents</div></div>
-            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
-            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
           </div>
           <!-- Modal -->
           <div class="modal-overlay">
@@ -660,6 +754,30 @@ body {
                   <div class="form-textarea">你是一位专业的英语教师，帮助用户学习英语。请用中英双语回答，并在每次回答后提供一个相关的英语小知识。</div>
                 </div>
 
+                <!-- MCP 服务器 -->
+                <div>
+                  <div class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
+                    <span>MCP 服务器（可选）</span>
+                    <span style="font-size:10px;color:var(--text-2);">工具扩展</span>
+                  </div>
+                  <!-- 已添加的 MCP -->
+                  <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:6px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+                      <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="width:6px;height:6px;border-radius:50%;background:#16A34A;flex-shrink:0;"></span>
+                        <span style="font-size:12px;color:var(--text);font-weight:600;">GitHub MCP</span>
+                        <span style="font-size:10px;color:var(--text-2);">远程 · 6工具</span>
+                      </div>
+                      <span style="font-size:14px;color:var(--text-2);cursor:pointer;">×</span>
+                    </div>
+                  </div>
+                  <!-- 添加 MCP 入口 -->
+                  <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border:1.5px dashed var(--primary);border-radius:8px;cursor:pointer;background:var(--primary-light);">
+                    <span style="font-size:14px;color:var(--primary);font-weight:700;">＋</span>
+                    <span style="font-size:12px;color:var(--primary);font-weight:600;">添加 MCP 服务器</span>
+                  </div>
+                </div>
+
               </div>
               <div class="modal-footer">
                 <div class="modal-btn cancel">取消</div>
@@ -682,9 +800,9 @@ body {
           </div>
           <div style="flex:1;background:var(--bg);filter:brightness(0.7);"></div>
           <div class="bottom-nav" style="filter:brightness(0.7);">
-            <div class="nav-item active"><div class="nav-icon">🤖</div><div class="nav-label" style="color:var(--primary);">Agents</div></div>
-            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
-            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
           </div>
           <div class="modal-overlay">
             <div class="modal-sheet">
@@ -771,20 +889,186 @@ body {
   </div>
 </div>
 
-<!-- ==================== ROW 2: Agent 使用界面 ==================== -->
+
+    <!-- Phone Frame 5a: 添加 MCP — 远程模式 -->
+    <div class="phone-frame">
+      <div class="phone-label">🔌 添加 MCP · 远程服务器<br>HTTP/SSE · URL + Auth</div>
+      <div class="phone-shell">
+        <div class="phone-screen" style="background:#F8FAFF;">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <!-- 顶栏 -->
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#fff;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+            <span style="font-size:18px;color:#6B7280;cursor:pointer;">‹</span>
+            <div style="font-size:16px;font-weight:700;color:#1A1A2E;flex:1;">添加 MCP 服务器</div>
+          </div>
+          <!-- 本地/远程 Tab -->
+          <div style="display:flex;background:#fff;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+            <div style="flex:1;text-align:center;padding:10px;font-size:13px;color:#6B7280;font-weight:600;">📁 本地</div>
+            <div style="flex:1;text-align:center;padding:10px;font-size:13px;color:#6C63FF;font-weight:700;border-bottom:2px solid #6C63FF;">🌐 远程</div>
+          </div>
+          <!-- 表单 -->
+          <div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;">
+            <div>
+              <div style="font-size:11px;color:#6B7280;font-weight:600;margin-bottom:4px;">服务器名称 *</div>
+              <div style="background:#fff;border:1.5px solid #6C63FF;border-radius:8px;padding:9px 12px;font-size:13px;color:#111;">GitHub MCP</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#6B7280;font-weight:600;margin-bottom:4px;">服务器 URL *</div>
+              <div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:8px;padding:9px 12px;font-size:12px;color:#6B7280;">https://mcp.github.com/sse</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#6B7280;font-weight:600;margin-bottom:4px;">传输协议</div>
+              <div style="display:flex;gap:6px;">
+                <div style="flex:1;background:#6C63FF;color:#fff;border-radius:7px;padding:8px;font-size:12px;text-align:center;font-weight:600;">SSE</div>
+                <div style="flex:1;background:#F3F4F6;color:#6B7280;border-radius:7px;padding:8px;font-size:12px;text-align:center;">HTTP</div>
+                <div style="flex:1;background:#F3F4F6;color:#6B7280;border-radius:7px;padding:8px;font-size:12px;text-align:center;">WS</div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#6B7280;font-weight:600;margin-bottom:4px;">Authorization Header（选填）</div>
+              <div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:8px;padding:9px 12px;font-size:12px;color:#9CA3AF;">Bearer ghp_xxxx...</div>
+            </div>
+            <!-- 连接测试结果 -->
+            <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:12px;">
+              <div style="font-size:12px;color:#166534;font-weight:700;margin-bottom:8px;">✓ 连接成功 · 发现 6 个工具</div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#111;">
+                    <input type="checkbox" checked style="accent-color:#6C63FF;"> <code style="font-size:11px;">list_repos</code>
+                  </label>
+                  <span style="font-size:10px;color:#6B7280;">列出仓库</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#111;">
+                    <input type="checkbox" checked style="accent-color:#6C63FF;"> <code style="font-size:11px;">search_code</code>
+                  </label>
+                  <span style="font-size:10px;color:#6B7280;">搜索代码</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#9CA3AF;">
+                    <input type="checkbox" style="accent-color:#6C63FF;"> <code style="font-size:11px;">create_issue</code>
+                  </label>
+                  <span style="font-size:10px;color:#9CA3AF;">创建 Issue</span>
+                </div>
+                <div style="font-size:10px;color:#6B7280;margin-top:2px;text-align:right;">+ 3 更多工具…</div>
+              </div>
+            </div>
+            <div style="background:#6C63FF;color:#fff;border-radius:10px;padding:12px;text-align:center;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;">保存并启用</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phone Frame 5b: 添加 MCP — 本地模式 -->
+    <div class="phone-frame">
+      <div class="phone-label">📁 添加 MCP · 本地进程<br>Stdio · 命令行启动</div>
+      <div class="phone-shell">
+        <div class="phone-screen" style="background:#F8FAFF;">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <!-- 顶栏 -->
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#fff;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+            <span style="font-size:18px;color:#6B7280;cursor:pointer;">‹</span>
+            <div style="font-size:16px;font-weight:700;color:#1A1A2E;flex:1;">添加 MCP 服务器</div>
+          </div>
+          <!-- 本地/远程 Tab -->
+          <div style="display:flex;background:#fff;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+            <div style="flex:1;text-align:center;padding:10px;font-size:13px;color:#6C63FF;font-weight:700;border-bottom:2px solid #6C63FF;">📁 本地</div>
+            <div style="flex:1;text-align:center;padding:10px;font-size:13px;color:#6B7280;font-weight:600;">🌐 远程</div>
+          </div>
+          <!-- 本地内置工具选择 -->
+          <div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;">
+            <div style="font-size:12px;color:#6B7280;line-height:1.6;background:#EEF0FF;border-radius:8px;padding:10px 12px;">
+              本地工具是 App 内置的原生能力，直接调用设备 API，无需网络连接。选择后 LLM 可按需调用。
+            </div>
+
+            <!-- 位置与时间 -->
+            <div>
+              <div style="font-size:11px;color:#6B7280;font-weight:700;margin-bottom:8px;letter-spacing:0.5px;">📍 位置 &amp; 时间</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:#fff;border-radius:9px;border:1px solid #E5E7EB;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" checked style="accent-color:#6C63FF;width:15px;height:15px;">
+                    <div>
+                      <div style="font-size:12px;font-weight:600;color:#111;">获取当前定位</div>
+                      <div style="font-size:10px;color:#9CA3AF;">返回经纬度 + 城市名</div>
+                    </div>
+                  </div>
+                  <span style="font-size:9px;color:#6C63FF;background:#EEF0FF;padding:2px 6px;border-radius:5px;">已授权</span>
+                </label>
+                <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:#fff;border-radius:9px;border:1px solid #E5E7EB;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" checked style="accent-color:#6C63FF;width:15px;height:15px;">
+                    <div>
+                      <div style="font-size:12px;font-weight:600;color:#111;">获取当前时间</div>
+                      <div style="font-size:10px;color:#9CA3AF;">返回日期/时间/时区</div>
+                    </div>
+                  </div>
+                  <span style="font-size:9px;color:#6C63FF;background:#EEF0FF;padding:2px 6px;border-radius:5px;">已授权</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- 通讯录与系统 -->
+            <div>
+              <div style="font-size:11px;color:#6B7280;font-weight:700;margin-bottom:8px;letter-spacing:0.5px;">👤 通讯录 &amp; 系统</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:#fff;border-radius:9px;border:1px solid #E5E7EB;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" checked style="accent-color:#6C63FF;width:15px;height:15px;">
+                    <div>
+                      <div style="font-size:12px;font-weight:600;color:#111;">搜索通讯录</div>
+                      <div style="font-size:10px;color:#9CA3AF;">按姓名/号码查询联系人</div>
+                    </div>
+                  </div>
+                  <span style="font-size:9px;color:#6C63FF;background:#EEF0FF;padding:2px 6px;border-radius:5px;">已授权</span>
+                </label>
+                <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:#fff;border-radius:9px;border:1px solid #E5E7EB;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" style="accent-color:#6C63FF;width:15px;height:15px;">
+                    <div>
+                      <div style="font-size:12px;font-weight:600;color:#111;">获取剪贴板</div>
+                      <div style="font-size:10px;color:#9CA3AF;">读取当前剪贴板文本</div>
+                    </div>
+                  </div>
+                  <span style="font-size:9px;color:#F59E0B;background:#FEF3C7;padding:2px 6px;border-radius:5px;">需授权</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- 相机与媒体 -->
+            <div>
+              <div style="font-size:11px;color:#6B7280;font-weight:700;margin-bottom:8px;letter-spacing:0.5px;">📷 相机 &amp; 媒体</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:#fff;border-radius:9px;border:1px solid #E5E7EB;opacity:0.6;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" disabled style="width:15px;height:15px;">
+                    <div>
+                      <div style="font-size:12px;font-weight:600;color:#6B7280;">拍照识图</div>
+                      <div style="font-size:10px;color:#9CA3AF;">调用相机后发送给 LLM 分析</div>
+                    </div>
+                  </div>
+                  <span style="font-size:9px;color:#EF4444;background:#FEF2F2;padding:2px 6px;border-radius:5px;">未授权</span>
+                </label>
+              </div>
+            </div>
+
+            <div style="background:#6C63FF;color:#fff;border-radius:10px;padding:12px;text-align:center;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px;">保存</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+<!-- ==================== ROW 2: Agent 使用界面 — 多模态输入栏 ==================== -->
 <div class="row-group">
-  <div class="row-label">Agent 使用界面</div>
+  <div class="row-label">Agent 使用界面 · 多模态输入栏（文本 / 短语音 / 通话）</div>
   <div class="screens-row">
 
-    <!-- 4. 聊天 Agent 界面 -->
+    <!-- 4. 聊天 Agent — 文本模式 -->
     <div class="phone-frame">
-      <div class="phone-label">💬 聊天 Agent 界面<br>语音录入 + 流式输出 + TTS 播放</div>
+      <div class="phone-label">💬 聊天 · 文字输入<br>点 ⌨️ 切换到文字输入框</div>
       <div class="phone-shell">
         <div class="phone-screen">
-          <div class="status-bar">
-            <span class="time">9:41</span>
-            <div class="status-icons">📶 🔋</div>
-          </div>
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
 
           <div class="agent-top-bar">
             <div style="font-size:20px;cursor:pointer;color:var(--text-2);">‹</div>
@@ -798,115 +1082,470 @@ body {
 
           <div class="service-chips">
             <div class="s-chip llm"><div class="dot"></div>GPT-4o</div>
-            <div class="s-chip stt"><div class="dot"></div>Azure STT zh-CN</div>
-            <div class="s-chip tts"><div class="dot"></div>Azure TTS 晓晓</div>
+            <div class="s-chip stt"><div class="dot"></div>Azure STT</div>
+            <div class="s-chip tts"><div class="dot"></div>晓晓</div>
           </div>
 
           <div class="chat-area">
             <div class="msg ai">
               <div class="msg-sender"><div class="msg-avatar">🤖</div> 通用助手</div>
-              <div class="bubble ai">你好！我是通用助手，由 GPT-4o 驱动。你可以用文字或语音和我对话，我会用晓晓的声音回答你 😊</div>
+              <div class="bubble ai">你好！我是通用助手。你可以用文字或语音和我对话 😊</div>
               <div class="msg-time">09:40</div>
             </div>
-
             <div class="msg user">
               <div class="msg-sender">你</div>
               <div class="bubble user">Flutter 适合做什么类型的应用？</div>
               <div class="msg-time">09:41</div>
             </div>
-
-            <div class="stt-indicator">
-              <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
-              <span>正在识别："Flutter 最擅长..."</span>
-            </div>
-
             <div class="msg ai">
               <div class="msg-sender"><div class="msg-avatar">🤖</div> GPT-4o</div>
               <div class="bubble ai streaming">Flutter 非常适合以下类型的应用：
 
 **① 跨平台移动 App** — iOS + Android 一套代码
-**② 企业内部工具** — 快速交付，UI 一致
-**③ 实时数据可视化** — 高帧率绘图能力出色
-
+**② 桌面端工具** — Windows / macOS / Linux
+**③ 实时数据可视化** — 高帧率绘制能力出色
 </div>
               <div class="msg-time">09:41</div>
             </div>
           </div>
 
-          <div class="input-bar">
-            <div class="voice-btn">🎤</div>
-            <div class="text-input">继续提问...</div>
-            <div class="send-btn">↑</div>
+          <!-- 多模态输入栏：文字输入状态 -->
+          <div class="mm-bar">
+            <div class="mm-side">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+              </svg>
+            </div>
+            <div class="mm-text-field" style="display:flex;align-items:center;padding-right:4px;">
+              <span style="flex:1;color:var(--text-2);font-size:13px;">继续提问...</span>
+              <div class="mm-send" style="flex-shrink:0;width:32px;height:32px;font-size:13px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+              </div>
+            </div>
+            <div class="mm-side">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 10.5 19.79 19.79 0 0 1 1.62 1.84 2 2 0 0 1 3.59 0h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.12 6.12l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+            </div>
           </div>
 
           <div class="bottom-nav">
-            <div class="nav-item active"><div class="nav-icon">🤖</div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
-            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
-            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 5. 翻译 Agent 界面 -->
+    <!-- 5. 聊天 Agent — 短语音模式（录音中）-->
     <div class="phone-frame">
-      <div class="phone-label">🌐 翻译 Agent 界面<br>语言对 + 原文 / 译文 + 音色播放</div>
+      <div class="phone-label">🎤 聊天 · 短语音（默认）<br>按住中键录音，松手发送 · 上滑取消</div>
       <div class="phone-shell">
         <div class="phone-screen">
-          <div class="status-bar">
-            <span class="time">9:41</span>
-            <div class="status-icons">📶 🔋</div>
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+
+          <div class="agent-top-bar">
+            <div style="font-size:20px;cursor:pointer;color:var(--text-2);">‹</div>
+            <div class="agent-avatar">🤖</div>
+            <div class="agent-top-info">
+              <div class="agent-top-name">通用助手</div>
+              <div class="agent-top-status">在线</div>
+            </div>
+            <div class="icon-btn">⋯</div>
           </div>
+
+          <div class="service-chips">
+            <div class="s-chip llm"><div class="dot"></div>GPT-4o</div>
+            <div class="s-chip stt"><div class="dot"></div>Azure STT</div>
+            <div class="s-chip tts"><div class="dot"></div>晓晓</div>
+          </div>
+
+          <div class="chat-area">
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar">🤖</div> 通用助手</div>
+              <div class="bubble ai">你好！我是通用助手。你可以用文字或语音和我对话 😊</div>
+              <div class="msg-time">09:40</div>
+            </div>
+            <div class="msg user">
+              <div class="msg-sender">你</div>
+              <div class="bubble user">Flutter 适合做什么类型的应用？</div>
+              <div class="msg-time">09:41</div>
+            </div>
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar">🤖</div> GPT-4o</div>
+              <div class="bubble ai">Flutter 非常适合跨平台移动 App 开发，iOS + Android 一套代码，性能接近原生。</div>
+              <div class="msg-time">09:41</div>
+            </div>
+            <!-- 实时 STT 识别气泡（按住录音中）-->
+            <div style="align-self:flex-end;max-width:85%;">
+              <div style="background:#FFFBEB;border:1.5px solid #F59E0B;border-radius:14px;border-bottom-right-radius:4px;padding:8px 12px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                  <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
+                  <span style="font-size:10px;color:#D97706;font-weight:700;">识别中</span>
+                </div>
+                <div style="font-size:13px;color:var(--text);">还支持桌面端吗？</div>
+              </div>
+              <div class="msg-time" style="text-align:right;padding:2px 3px;">09:41</div>
+            </div>
+          </div>
+
+          <!-- 多模态输入栏：短语音默认状态（按住中）-->
+          <div class="mm-bar">
+            <div class="mm-side">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                <rect x="1" y="1" width="12" height="12" rx="2"/>
+              </svg>
+            </div>
+            <div class="mm-voice-center recording">
+              <div class="wave" style="gap:3px;">
+                <span style="background:white;width:3px;"></span><span style="background:white;width:3px;"></span>
+                <span style="background:white;width:3px;"></span><span style="background:white;width:3px;"></span>
+                <span style="background:white;width:3px;"></span>
+              </div>
+              松开发送 · 2.3s · 上滑取消
+            </div>
+            <div class="mm-side">📞</div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. 聊天 Agent — 通话模式（AI 说话中）-->
+    <div class="phone-frame">
+      <div class="phone-label">📞 聊天 · 通话模式<br>点右侧 📞 进入 · VAD 自动触发 · 可打断</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+
+          <div class="agent-top-bar">
+            <div style="font-size:20px;cursor:pointer;color:var(--text-2);">‹</div>
+            <div class="agent-avatar">🤖</div>
+            <div class="agent-top-info">
+              <div class="agent-top-name">通用助手</div>
+              <div class="agent-top-status">通话中</div>
+            </div>
+            <div class="icon-btn">⋯</div>
+          </div>
+
+          <div class="service-chips">
+            <div class="s-chip llm"><div class="dot"></div>GPT-4o</div>
+            <div class="s-chip stt"><div class="dot"></div>Azure STT</div>
+            <div class="s-chip tts"><div class="dot"></div>晓晓</div>
+          </div>
+
+          <div class="chat-area">
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar">🤖</div> 通用助手</div>
+              <div class="bubble ai">你好！通话模式下我们可以自由对话，无需按任何按钮。</div>
+              <div class="msg-time">09:40</div>
+            </div>
+            <div class="msg user">
+              <div class="msg-sender">你（语音）</div>
+              <div class="bubble user">Flutter 有什么优势？</div>
+              <div class="msg-time">09:41</div>
+            </div>
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar">🤖</div> GPT-4o</div>
+              <div class="bubble ai streaming">Flutter 的核心优势在于跨平台能力强、渲染性能高，以及 Dart 语言的高效开发体验...</div>
+              <div class="msg-time">09:41</div>
+            </div>
+          </div>
+
+          <!-- TTS 朗读指示条（贴近输入栏上方）-->
+          <div class="tts-strip">
+            <div class="wave">
+              <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+              <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+              <span style="background:#16A34A;"></span>
+            </div>
+            <span style="font-size:11px;font-weight:600;color:#16A34A;flex:1;">晓晓正在朗读...</span>
+            <div class="interrupt-btn" style="background:#FFF1F0;color:#CF1322;border:1px solid #FFA39E;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              打断
+            </div>
+          </div>
+
+          <!-- 多模态输入栏：通话模式（整个栏变形为通话状态）-->
+          <div class="call-bar">
+            <div class="call-dot"></div>
+            <div class="call-info">
+              <div class="call-label">通话中</div>
+              <div class="call-timer">01:23</div>
+            </div>
+            <div style="width:40px;height:40px;border-radius:50%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="1" y1="1" x2="23" y2="23"/>
+                <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+                <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23M12 19v4M8 23h8"/>
+              </svg>
+            </div>
+            <div class="hangup-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. 翻译 Agent — 文本输入（与聊天共用输入栏+气泡） -->
+    <div class="phone-frame">
+      <div class="phone-label">🌐 翻译 · 文字输入<br>与聊天 Agent 共用输入栏 + 气泡组件</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
 
           <div class="agent-top-bar">
             <div style="font-size:20px;cursor:pointer;color:var(--text-2);">‹</div>
             <div class="agent-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div>
             <div class="agent-top-info">
               <div class="agent-top-name">中英翻译</div>
-              <div class="agent-top-status">DeepL · 在线</div>
+              <div class="agent-top-status">在线</div>
             </div>
             <div class="icon-btn">⋯</div>
           </div>
 
-          <div class="service-chips">
-            <div class="s-chip" style="background:#EFF6FF;color:#1D4ED8;"><div style="width:5px;height:5px;border-radius:50%;background:#3B82F6;"></div>DeepL</div>
-            <div class="s-chip stt"><div class="dot"></div>Azure STT</div>
-            <div class="s-chip tts"><div class="dot"></div>Azure TTS 晓晓</div>
+          <!-- 语言栏（可交互：点语言弹出选择器，点中间按钮交换） -->
+          <div class="service-chips" style="gap:6px;">
+            <div class="s-chip" style="background:#FFF7ED;color:#9A3412;border:1px solid rgba(249,115,22,0.3);"><div style="width:5px;height:5px;border-radius:50%;background:#9A3412;"></div>GPT-4o</div>
+            <div style="background:#FFF7ED;border-radius:12px;border:1px solid rgba(249,115,22,0.3);padding:3px 10px;font-size:11px;font-weight:700;color:#9A3412;cursor:pointer;">中文 ▾</div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#FFF7ED;border:1px solid rgba(249,115,22,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:#9A3412;">⇄</div>
+            <div style="background:#FFF7ED;border-radius:12px;border:1px solid rgba(249,115,22,0.3);padding:3px 10px;font-size:11px;font-weight:700;color:#9A3412;cursor:pointer;">English ▾</div>
           </div>
 
-          <div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--bg);">
-            <!-- 语言栏 -->
-            <div style="background:var(--surface);border-radius:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
-              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-                <div style="font-size:16px;font-weight:700;color:var(--translate-type);">自动检测</div>
-                <div style="font-size:10px;color:var(--text-2);">已识别: 英语</div>
-              </div>
-              <div style="width:34px;height:34px;border-radius:50%;background:#E0F2FE;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--translate-type);">⇄</div>
-              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-                <div style="font-size:16px;font-weight:700;color:var(--translate-type);">中文</div>
-                <div style="font-size:10px;color:var(--text-2);">目标语言</div>
+          <div class="chat-area">
+            <div class="msg user">
+              <div class="msg-sender">你</div>
+              <div class="bubble user">人工智能正在改变我们工作和生活的方式。</div>
+              <div class="msg-time">09:40</div>
+            </div>
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div> 中英翻译</div>
+              <div class="bubble ai">Artificial intelligence is transforming the way we work and live.</div>
+              <div class="msg-time">09:40</div>
+            </div>
+            <div class="msg user">
+              <div class="msg-sender">你</div>
+              <div class="bubble user">Flutter 非常适合跨平台移动应用开发。</div>
+              <div class="msg-time">09:41</div>
+            </div>
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div> 中英翻译</div>
+              <div class="bubble ai streaming">Flutter is well suited for cross-platform mobile app development.</div>
+              <div class="msg-time">09:41</div>
+            </div>
+          </div>
+
+          <!-- 多模态输入栏：与聊天相同 -->
+          <div class="mm-bar">
+            <div class="mm-side">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+              </svg>
+            </div>
+            <div class="mm-text-field" style="display:flex;align-items:center;padding-right:4px;">
+              <span style="flex:1;color:var(--text-2);font-size:13px;">输入要翻译的内容...</span>
+              <div class="mm-send" style="flex-shrink:0;width:32px;height:32px;font-size:13px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
               </div>
             </div>
-            <!-- 原文 -->
-            <div style="background:var(--surface);border-radius:14px;padding:12px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
-              <div style="font-size:11px;font-weight:700;color:var(--text-2);margin-bottom:8px;display:flex;justify-content:space-between;"><span>原文</span><span style="font-size:10px;background:#EFF6FF;color:#1D4ED8;padding:2px 7px;border-radius:9px;font-weight:600;">DeepL</span></div>
-              <div style="font-size:14px;color:var(--text);line-height:1.6;">Artificial intelligence is transforming how we work and live.</div>
-              <div style="margin-top:10px;display:flex;gap:8px;">
-                <div style="flex:none;height:32px;padding:0 12px;border-radius:16px;border:1.5px solid var(--translate-type);color:var(--translate-type);font-size:12px;font-weight:600;display:flex;align-items:center;gap:4px;">🎤 语音</div>
-                <div style="flex:1;height:32px;border-radius:16px;background:var(--translate-type);color:white;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">翻译 →</div>
-              </div>
-            </div>
-            <!-- 译文 -->
-            <div style="background:var(--surface);border-radius:14px;padding:12px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
-              <div style="font-size:11px;font-weight:700;color:var(--text-2);margin-bottom:8px;display:flex;justify-content:space-between;"><span>译文</span><div style="display:flex;gap:8px;font-size:15px;">🔊 📋</div></div>
-              <div style="font-size:15px;color:var(--translate-type);font-weight:500;line-height:1.6;">人工智能正在改变我们工作和生活的方式。</div>
+            <div class="mm-side">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 10.5 19.79 19.79 0 0 1 1.62 1.84 2 2 0 0 1 3.59 0h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.12 6.12l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
             </div>
           </div>
 
           <div class="bottom-nav">
-            <div class="nav-item active"><div class="nav-icon">🤖</div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
-            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
-            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7b. 翻译 Agent — 短语音（与聊天共用录音交互） -->
+    <div class="phone-frame">
+      <div class="phone-label">🎤 翻译 · 短语音<br>按住录音 → 识别 → 翻译回复（聊天气泡）</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+
+          <div class="agent-top-bar">
+            <div style="font-size:20px;cursor:pointer;color:var(--text-2);">‹</div>
+            <div class="agent-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div>
+            <div class="agent-top-info">
+              <div class="agent-top-name">中英翻译</div>
+              <div class="agent-top-status">识别中</div>
+            </div>
+            <div class="icon-btn">⋯</div>
+          </div>
+
+          <div class="service-chips" style="gap:6px;">
+            <div class="s-chip" style="background:#FFF7ED;color:#9A3412;border:1px solid rgba(249,115,22,0.3);"><div style="width:5px;height:5px;border-radius:50%;background:#9A3412;"></div>GPT-4o</div>
+            <div style="background:#FFF7ED;border-radius:12px;border:1px solid rgba(249,115,22,0.3);padding:3px 10px;font-size:11px;font-weight:700;color:#9A3412;cursor:pointer;">English ▾</div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#FFF7ED;border:1px solid rgba(249,115,22,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:#9A3412;">⇄</div>
+            <div style="background:#FFF7ED;border-radius:12px;border:1px solid rgba(249,115,22,0.3);padding:3px 10px;font-size:11px;font-weight:700;color:#9A3412;cursor:pointer;">中文 ▾</div>
+          </div>
+
+          <div class="chat-area">
+            <div class="msg user">
+              <div class="msg-sender">你</div>
+              <div class="bubble user">Artificial intelligence is transforming how we work.</div>
+              <div class="msg-time">09:40</div>
+            </div>
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div> 中英翻译</div>
+              <div class="bubble ai">人工智能正在改变我们的工作方式。</div>
+              <div class="msg-time">09:40</div>
+            </div>
+            <!-- 实时 STT 识别气泡（按住录音中）-->
+            <div style="align-self:flex-end;max-width:85%;">
+              <div style="background:#FFFBEB;border:1.5px solid #F59E0B;border-radius:14px;border-bottom-right-radius:4px;padding:8px 12px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                  <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
+                  <span style="font-size:10px;color:#D97706;font-weight:700;">识别中</span>
+                </div>
+                <div style="font-size:13px;color:var(--text);">Flutter is the future of cross-platform...</div>
+              </div>
+              <div class="msg-time" style="text-align:right;padding:2px 3px;">09:41</div>
+            </div>
+          </div>
+
+          <!-- 多模态输入栏：短语音录音状态（与聊天相同） -->
+          <div class="mm-bar">
+            <div class="mm-side">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                <rect x="1" y="1" width="12" height="12" rx="2"/>
+              </svg>
+            </div>
+            <div class="mm-voice-center recording">
+              <div class="wave" style="gap:3px;">
+                <span style="background:white;width:3px;"></span><span style="background:white;width:3px;"></span>
+                <span style="background:white;width:3px;"></span><span style="background:white;width:3px;"></span>
+                <span style="background:white;width:3px;"></span>
+              </div>
+              松开发送 · 1.8s · 上滑取消
+            </div>
+            <div class="mm-side">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 10.5 19.79 19.79 0 0 1 1.62 1.84 2 2 0 0 1 3.59 0h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.12 6.12l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. 翻译 Agent — 通话模式（与聊天共用通话栏） -->
+    <div class="phone-frame">
+      <div class="phone-label">📞 翻译 · 通话模式<br>VAD 自动触发 · 逐句翻译 · 与聊天相同交互</div>
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+
+          <div class="agent-top-bar">
+            <div style="font-size:20px;cursor:pointer;color:var(--text-2);">‹</div>
+            <div class="agent-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div>
+            <div class="agent-top-info">
+              <div class="agent-top-name">中英翻译</div>
+              <div class="agent-top-status">通话中</div>
+            </div>
+            <div class="icon-btn">⋯</div>
+          </div>
+
+          <div class="service-chips" style="gap:6px;">
+            <div class="s-chip" style="background:#FFF7ED;color:#9A3412;border:1px solid rgba(249,115,22,0.3);"><div style="width:5px;height:5px;border-radius:50%;background:#9A3412;"></div>GPT-4o</div>
+            <div style="background:#FFF7ED;border-radius:12px;border:1px solid rgba(249,115,22,0.3);padding:3px 10px;font-size:11px;font-weight:700;color:#9A3412;cursor:pointer;">English ▾</div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#FFF7ED;border:1px solid rgba(249,115,22,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:#9A3412;">⇄</div>
+            <div style="background:#FFF7ED;border-radius:12px;border:1px solid rgba(249,115,22,0.3);padding:3px 10px;font-size:11px;font-weight:700;color:#9A3412;cursor:pointer;">中文 ▾</div>
+          </div>
+
+          <div class="chat-area">
+            <div class="msg user">
+              <div class="msg-sender">你（语音）</div>
+              <div class="bubble user">Artificial intelligence is transforming how we work.</div>
+              <div class="msg-time">09:40</div>
+            </div>
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div> 中英翻译</div>
+              <div class="bubble ai">人工智能正在改变我们的工作方式。</div>
+              <div class="msg-time">09:40</div>
+            </div>
+            <div class="msg user">
+              <div class="msg-sender">你（语音）</div>
+              <div class="bubble user">Many companies are adopting AI tools to improve efficiency.</div>
+              <div class="msg-time">09:41</div>
+            </div>
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div> 中英翻译</div>
+              <div class="bubble ai streaming">许多公司正在采用 AI 工具提升效率。</div>
+              <div class="msg-time">09:41</div>
+            </div>
+          </div>
+
+          <!-- TTS 朗读指示条（与聊天相同） -->
+          <div class="tts-strip">
+            <div class="wave">
+              <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+              <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+              <span style="background:#16A34A;"></span>
+            </div>
+            <span style="font-size:11px;font-weight:600;color:#16A34A;flex:1;">正在朗读译文...</span>
+            <div class="interrupt-btn" style="background:#FFF1F0;color:#CF1322;border:1px solid #FFA39E;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              打断
+            </div>
+          </div>
+
+          <!-- 通话状态栏（与聊天相同） -->
+          <div class="call-bar">
+            <div class="call-dot"></div>
+            <div class="call-info">
+              <div class="call-label">通话中</div>
+              <div class="call-timer">03:17</div>
+            </div>
+            <div style="width:40px;height:40px;border-radius:50%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="1" y1="1" x2="23" y2="23"/>
+                <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+                <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23M12 19v4M8 23h8"/>
+              </svg>
+            </div>
+            <div class="hangup-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
           </div>
         </div>
       </div>
@@ -1016,9 +1655,9 @@ body {
           </div>
 
           <div class="bottom-nav">
-            <div class="nav-item"><div class="nav-icon">🤖</div><div class="nav-label">Agents</div></div>
-            <div class="nav-item active"><div class="nav-icon">🧪</div><div class="nav-label" style="color:var(--primary);">服务</div><div class="nav-dot"></div></div>
-            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label">Agents</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label" style="color:var(--primary);">服务</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
           </div>
         </div>
       </div>
@@ -1032,9 +1671,9 @@ body {
           <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
           <div style="flex:1;background:var(--bg);filter:brightness(0.7);"></div>
           <div class="bottom-nav" style="filter:brightness(0.7);">
-            <div class="nav-item"><div class="nav-icon">🤖</div><div class="nav-label">Agents</div></div>
-            <div class="nav-item active"><div class="nav-icon">🧪</div><div class="nav-label" style="color:var(--primary);">服务</div></div>
-            <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">设置</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label">Agents</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label" style="color:var(--primary);">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
           </div>
           <div class="modal-overlay">
             <div class="modal-sheet">
@@ -1044,9 +1683,10 @@ body {
 
                 <div>
                   <div class="form-label">服务类型</div>
-                  <div class="seg-control">
+                  <div class="seg-control" style="flex-wrap:wrap;gap:5px;">
                     <div class="seg-btn">STT</div>
                     <div class="seg-btn">TTS</div>
+                    <div class="seg-btn" style="background:#F0FDF4;color:#166534;border:1.5px solid #86EFAC;">STS</div>
                     <div class="seg-btn active">LLM</div>
                     <div class="seg-btn">翻译</div>
                   </div>
@@ -1098,6 +1738,120 @@ body {
       </div>
     </div>
 
+    <!-- 8b. MCP 服务器管理 -->
+    <div class="phone-frame">
+      <div class="phone-label">🔌 MCP 服务器管理<br>列表 · 启用 / 禁用 · 工具详情</div>
+      <div class="phone-shell">
+        <div class="phone-screen" style="background:#F8FAFF;">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <!-- 顶栏 -->
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 16px 10px;background:#fff;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+            <span style="font-size:18px;color:#6B7280;cursor:pointer;">‹</span>
+            <div style="flex:1;">
+              <div style="font-size:16px;font-weight:700;color:#1A1A2E;">MCP 服务器</div>
+              <div style="font-size:11px;color:#6B7280;">Model Context Protocol</div>
+            </div>
+            <div style="width:30px;height:30px;border-radius:50%;background:#EEF0FF;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;">＋</div>
+          </div>
+
+          <!-- 服务器列表 -->
+          <div style="flex:1;overflow-y:auto;padding:14px 14px 8px;display:flex;flex-direction:column;gap:10px;">
+
+            <!-- Server 1: GitHub MCP — 已启用 -->
+            <div style="background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 2px 10px rgba(0,0,0,0.06);border-left:4px solid #6C63FF;">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;">
+                <div>
+                  <div style="font-size:14px;font-weight:700;color:#1A1A2E;">GitHub MCP</div>
+                  <div style="font-size:10px;color:#6B7280;margin-top:2px;">mcp.github.com/sse</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                  <!-- toggle on -->
+                  <div style="width:36px;height:20px;background:#6C63FF;border-radius:10px;position:relative;cursor:pointer;">
+                    <div style="width:16px;height:16px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px;"></div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;gap:5px;">
+                  <span style="background:#EEF0FF;color:#4A42D9;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;">SSE</span>
+                  <span style="background:#ECFDF5;color:#065F46;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;">● 已连接</span>
+                </div>
+                <div style="font-size:11px;color:#6B7280;cursor:pointer;">6 个工具 ›</div>
+              </div>
+              <!-- 工具列表展开 -->
+              <div style="margin-top:8px;padding:8px;background:#F8FAFF;border-radius:8px;display:flex;flex-direction:column;gap:4px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <span style="font-size:11px;color:#1A1A2E;font-family:monospace;">list_repos</span>
+                  <span style="font-size:9px;color:#6C63FF;background:#EEF0FF;padding:1px 6px;border-radius:5px;">已启用</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <span style="font-size:11px;color:#1A1A2E;font-family:monospace;">search_code</span>
+                  <span style="font-size:9px;color:#6C63FF;background:#EEF0FF;padding:1px 6px;border-radius:5px;">已启用</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <span style="font-size:11px;color:#9CA3AF;font-family:monospace;">create_issue</span>
+                  <span style="font-size:9px;color:#9CA3AF;background:#F3F4F6;padding:1px 6px;border-radius:5px;">禁用</span>
+                </div>
+                <div style="font-size:10px;color:#6B7280;text-align:right;margin-top:2px;">+ 3 更多…</div>
+              </div>
+            </div>
+
+            <!-- Server 2: Filesystem MCP — 已启用 -->
+            <div style="background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 2px 10px rgba(0,0,0,0.06);border-left:4px solid #0EA5E9;">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;">
+                <div>
+                  <div style="font-size:14px;font-weight:700;color:#1A1A2E;">Filesystem MCP</div>
+                  <div style="font-size:10px;color:#6B7280;margin-top:2px;">localhost:3000/sse</div>
+                </div>
+                <div style="width:36px;height:20px;background:#6C63FF;border-radius:10px;position:relative;cursor:pointer;">
+                  <div style="width:16px;height:16px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px;"></div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;gap:5px;">
+                  <span style="background:#EEF0FF;color:#4A42D9;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;">SSE</span>
+                  <span style="background:#ECFDF5;color:#065F46;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;">● 已连接</span>
+                </div>
+                <div style="font-size:11px;color:#6B7280;cursor:pointer;">3 个工具 ›</div>
+              </div>
+            </div>
+
+            <!-- Server 3: Notion MCP — 已禁用 -->
+            <div style="background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 2px 10px rgba(0,0,0,0.06);border-left:4px solid #E5E7EB;opacity:0.75;">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;">
+                <div>
+                  <div style="font-size:14px;font-weight:700;color:#6B7280;">Notion MCP</div>
+                  <div style="font-size:10px;color:#9CA3AF;margin-top:2px;">notion.mcp.example.com</div>
+                </div>
+                <div style="width:36px;height:20px;background:#D1D5DB;border-radius:10px;position:relative;cursor:pointer;">
+                  <div style="width:16px;height:16px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;"></div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;gap:5px;">
+                  <span style="background:#F3F4F6;color:#6B7280;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;">HTTP</span>
+                  <span style="background:#FEF3C7;color:#92400E;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;">○ 未连接</span>
+                </div>
+                <div style="font-size:11px;color:#9CA3AF;">5 个工具 ›</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 底部添加按钮 -->
+          <div style="padding:10px 14px 12px;flex-shrink:0;background:#F8FAFF;border-top:1px solid #E5E7EB;">
+            <div style="background:#6C63FF;color:#fff;border-radius:12px;padding:12px;text-align:center;font-size:13px;font-weight:700;cursor:pointer;">＋ 添加 MCP 服务器</div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label">Agents</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label" style="color:var(--primary);">设置</div><div class="nav-dot"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 8. 全局设置 -->
     <div class="phone-frame">
       <div class="phone-label">⚙️ 全局设置<br>通用参数 · 后台服务 · 关于</div>
@@ -1109,6 +1863,19 @@ body {
           </div>
 
           <div class="settings-body">
+
+            <!-- 外观 -->
+            <div class="settings-section">
+              <div class="settings-section-title">🎨 外观</div>
+              <div class="settings-row">
+                <span class="settings-label">主题</span>
+                <div style="display:flex;gap:4px;">
+                  <div style="background:#6C63FF;color:#fff;border-radius:5px;padding:4px 8px;font-size:11px;">浅色</div>
+                  <div style="background:#F3F4F6;color:#6B7280;border-radius:5px;padding:4px 8px;font-size:11px;">深色</div>
+                  <div style="background:#F3F4F6;color:#6B7280;border-radius:5px;padding:4px 8px;font-size:11px;">跟随系统</div>
+                </div>
+              </div>
+            </div>
 
             <!-- 后台服务 -->
             <div class="settings-section">
@@ -1185,9 +1952,9 @@ body {
           </div>
 
           <div class="bottom-nav">
-            <div class="nav-item"><div class="nav-icon">🤖</div><div class="nav-label">Agents</div></div>
-            <div class="nav-item"><div class="nav-icon">🧪</div><div class="nav-label">服务</div></div>
-            <div class="nav-item active"><div class="nav-icon">⚙️</div><div class="nav-label" style="color:var(--primary);">设置</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label">Agents</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label" style="color:var(--primary);">设置</div><div class="nav-dot"></div></div>
           </div>
         </div>
       </div>
@@ -1197,23 +1964,28 @@ body {
 </div>
 
 <!-- 说明 -->
-<div style="max-width:1100px;width:100%;background:white;border-radius:20px;padding:22px 28px;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
-  <h2 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:14px;">📐 v2 设计变化说明</h2>
+<div style="max-width:1300px;width:100%;background:white;border-radius:20px;padding:22px 28px;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+  <h2 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:14px;">📐 v3 设计说明</h2>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:12px;color:var(--text-2);line-height:1.7;">
     <div><strong style="color:var(--text);">导航结构（3 Tab）</strong><br>
-      🤖 Agents（首页面板）<br>🧪 服务中心（管理+演示）<br>⚙️ 全局设置</div>
+      🤖 Agents（首页面板）<br>🧪 服务中心（管理+快速测试）<br>⚙️ 全局设置</div>
     <div><strong style="color:var(--text);">Agent 面板</strong><br>
-      列表展示所有 Agent 卡片<br>区分聊天(紫色)/翻译(蓝色)类型<br>显示关联服务徽章 + 最近使用时间</div>
-    <div><strong style="color:var(--text);">添加 Agent 流程</strong><br>
-      名称 → 类型 → 选已配置服务 →<br>音色选择（TTS选后展开）→<br>提示词（聊天）/ 语言对（翻译）</div>
-    <div><strong style="color:var(--text);">服务中心</strong><br>
-      统一管理所有已配置服务<br>+ 添加服务按钮一键打开弹窗<br>下方保留各能力快速测试卡片</div>
-    <div><strong style="color:var(--text);">添加服务流程</strong><br>
-      类型(STT/TTS/LLM/翻译) →<br>厂商选择 → API Key 填写 →<br>测试连接 → 保存（一次配置，反复复用）</div>
-    <div><strong style="color:var(--text);">补充配置项</strong><br>
-      提示词：在添加 Agent 时配置<br>TTS 音色：选择 TTS 服务后展开音色列表<br>全局设置：语速/音调/采样率/历史条数</div>
+      卡片展示所有 Agent<br>聊天(紫色左边框) / 翻译(蓝色左边框)<br>服务徽章 + 最近使用时间 + 打开按钮</div>
+    <div><strong style="color:var(--text);">添加 Agent</strong><br>
+      名称 → 类型选择 → 从服务库选服务 →<br>TTS 音色（选 TTS 后展开 Chip）→<br>系统提示词（聊天）/ 语言对（翻译）</div>
+    <div><strong style="color:var(--text);">三种输入模式</strong><br>
+      ⌨️ 文本：键盘输入 + 发送按钮<br>🎤 短语音：按住录音、松开发送（上滑取消）<br>📞 通话/同传：VAD 自动触发、连续对话</div>
+    <div><strong style="color:var(--text);">统一交互</strong><br>
+      聊天与翻译共用同一套输入栏 + 气泡组件<br>翻译 Agent 仅语言栏不同，无独立模式切换<br>通话模式：计时 + 静音 + 挂断 + TTS 朗读条</div>
+    <div><strong style="color:var(--text);">服务库（一次配置全局复用）</strong><br>
+      添加服务：类型→厂商→API Key→命名保存<br>Agent 配置中只需选服务名称引用<br>支持测试连接验证 API Key 可用性</div>
   </div>
 </div>
 
 </body>
 </html>
+
+
+<system-reminder>
+Whenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.
+</system-reminder>

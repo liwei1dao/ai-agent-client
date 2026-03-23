@@ -1,0 +1,61 @@
+PODS:
+  - agent_runtime (0.1.0):
+    - Flutter
+    - local_db
+  - Flutter (1.0.0)
+  - GRDB.swift (6.24.1):
+    - GRDB.swift/standard (= 6.24.1)
+  - GRDB.swift/standard (6.24.1)
+  - local_db (0.1.0):
+    - Flutter
+    - GRDB.swift (~> 6.0)
+  - MicrosoftCognitiveServicesSpeech-iOS (1.48.2)
+  - permission_handler_apple (9.3.0):
+    - Flutter
+  - stt_azure (0.1.0):
+    - Flutter
+    - MicrosoftCognitiveServicesSpeech-iOS (~> 1.43)
+  - tts_azure (0.1.0):
+    - Flutter
+    - MicrosoftCognitiveServicesSpeech-iOS (~> 1.43)
+
+DEPENDENCIES:
+  - agent_runtime (from `.symlinks/plugins/agent_runtime/ios`)
+  - Flutter (from `Flutter`)
+  - local_db (from `.symlinks/plugins/local_db/ios`)
+  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - stt_azure (from `.symlinks/plugins/stt_azure/ios`)
+  - tts_azure (from `.symlinks/plugins/tts_azure/ios`)
+
+SPEC REPOS:
+  trunk:
+    - GRDB.swift
+    - MicrosoftCognitiveServicesSpeech-iOS
+
+EXTERNAL SOURCES:
+  agent_runtime:
+    :path: ".symlinks/plugins/agent_runtime/ios"
+  Flutter:
+    :path: Flutter
+  local_db:
+    :path: ".symlinks/plugins/local_db/ios"
+  permission_handler_apple:
+    :path: ".symlinks/plugins/permission_handler_apple/ios"
+  stt_azure:
+    :path: ".symlinks/plugins/stt_azure/ios"
+  tts_azure:
+    :path: ".symlinks/plugins/tts_azure/ios"
+
+SPEC CHECKSUMS:
+  agent_runtime: 78e12cdbd84cdea166bf1bc269700972ecd35268
+  Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  GRDB.swift: 136dcb5d8dddca50aae3ba7d77475f79e7232cd8
+  local_db: 5b1c17010ee12837e23d0db9f8fc442155cd51f8
+  MicrosoftCognitiveServicesSpeech-iOS: 709f67fe1f81bca5c230112d5c63bc8674b6a998
+  permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
+  stt_azure: 5e1f296812a372219cf8ef4abbf0f0c2e2071291
+  tts_azure: e3416649c33ce954a89e225baca41270b025a79b
+
+PODFILE CHECKSUM: 1857a7cdb7dfafe45f2b0e9a9af44644190f7506
+
+COCOAPODS: 1.16.2

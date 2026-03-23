@@ -9,6 +9,6 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*'
   s.platform         = :ios, '16.0'
   s.dependency 'Flutter'
-  s.dependency 'GRDB.swift', '~> 7.0'
+  s.dependency 'GRDB.swift', '~> 6.0'
   s.swift_version    = '5.9'
 end

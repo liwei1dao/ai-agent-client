@@ -29,7 +29,19 @@ class AgentRuntimeService : Service() {
     override fun onCreate() {
         super.onCreate()
         db = AppDatabase.getInstance(applicationContext)
-        startForeground(NOTIFICATION_ID, buildNotification())
+        // Delay foreground promotion until a session actually needs audio.
+        // Starting with FOREGROUND_SERVICE_MICROPHONE type requires RECORD_AUDIO
+        // to be granted first (Android 14+).
+    }
+
+    /** Call from plugin after runtime permission is granted. */
+    fun promoteToForeground() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, buildNotification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
     }
 
     override fun onBind(intent: Intent): IBinder = binder
@@ -49,7 +61,8 @@ class AgentRuntimeService : Service() {
 
     fun startSession(config: AgentSessionConfig) {
         if (sessions.containsKey(config.sessionId)) return
-        val session = AgentSession(config.sessionId, config, db, eventSink)
+        promoteToForeground()
+        val session = AgentSession(config.sessionId, config, db, eventSink, applicationContext)
         sessions[config.sessionId] = session
     }
 
@@ -68,6 +81,14 @@ class AgentRuntimeService : Service() {
 
     fun setInputMode(sessionId: String, mode: String) {
         sessions[sessionId]?.setInputMode(mode)
+    }
+
+    fun startListening(sessionId: String) {
+        sessions[sessionId]?.startListening()
+    }
+
+    fun stopListening(sessionId: String) {
+        sessions[sessionId]?.stopListening()
     }
 
     // ─────────────────────────────────────────────────

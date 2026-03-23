@@ -38,8 +38,14 @@ class TtsAzurePlugin : FlutterPlugin {
                     val key = call.argument<String>("apiKey")!!
                     val region = call.argument<String>("region")!!
                     val voice = call.argument<String>("voiceName") ?: "zh-CN-XiaoxiaoNeural"
-                    initialize(key, region, voice)
-                    result.success(null)
+                    mainScope.launch(Dispatchers.IO) {
+                        try {
+                            initialize(key, region, voice)
+                            withContext(Dispatchers.Main) { result.success(null) }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) { result.error("TTS_INIT", e.message, null) }
+                        }
+                    }
                 }
                 "speak" -> {
                     val text = call.argument<String>("text")!!

@@ -53,6 +53,12 @@ class AgentRuntimeBridge {
         'mode': mode,
       });
 
+  Future<void> startListening(String sessionId) =>
+      _commandChannel.invokeMethod('startListening', {'sessionId': sessionId});
+
+  Future<void> stopListening(String sessionId) =>
+      _commandChannel.invokeMethod('stopListening', {'sessionId': sessionId});
+
   Future<void> notifyAppForeground(bool isForeground) =>
       _commandChannel.invokeMethod('notifyAppForeground', {
         'isForeground': isForeground,

@@ -12,6 +12,8 @@ class TtsAzurePluginDart implements TtsPlugin {
 
   @override
   Future<void> initialize(TtsConfig config) async {
+    _controller ??= StreamController<TtsEvent>.broadcast();
+    _nativeSub ??= _evt.receiveBroadcastStream().listen(_onNativeEvent);
     await _cmd.invokeMethod('initialize', {
       'apiKey': config.apiKey,
       'region': config.region,

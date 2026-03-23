@@ -38,6 +38,25 @@ class AgentListNotifier extends StateNotifier<List<AgentDto>> {
     await _load();
   }
 
+  Future<void> updateAgent({
+    required String id,
+    required String name,
+    required String type,
+    required Map<String, dynamic> config,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final dto = AgentDto(
+      id: id,
+      name: name,
+      type: type,
+      configJson: jsonEncode(config),
+      createdAt: now,
+      updatedAt: now,
+    );
+    await _db.upsertAgent(dto);
+    await _load();
+  }
+
   Future<void> removeAgent(String id) async {
     await _db.deleteAgent(id);
     await _load();
