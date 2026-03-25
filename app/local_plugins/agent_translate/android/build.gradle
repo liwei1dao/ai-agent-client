@@ -1,0 +1,34 @@
+group 'com.aiagent.agent_translate'
+version '1.0'
+
+buildscript {
+    ext.kotlin_version = '2.1.0'
+    repositories { google(); mavenCentral() }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.3'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'com.aiagent.agent_translate'
+    compileSdkVersion 35
+    defaultConfig { minSdkVersion 24 }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
+    // 原生接口 + Registry
+    implementation project(':ai_plugin_interface')
+    // DB 访问（直接读写消息）
+    implementation project(':local_db')
+}

@@ -1,0 +1,24 @@
+name: agents_server
+description: Agent container and lifecycle manager - manages multiple native agent instances
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ai_plugin_interface:
+    path: ../ai_plugin_interface
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.agents_server
+        pluginClass: AgentsServerPlugin

@@ -9,8 +9,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:ai_plugin_interface/ai_plugin_interface.dart';
 import 'package:stt_azure/stt_azure.dart';
-import 'package:agent_runtime/agent_runtime.dart' hide SttEvent, LlmEvent;
-import 'package:agent_runtime/agent_runtime.dart' as rt show SttEvent, LlmEvent;
+import 'package:agents_server/agents_server.dart' hide SttEvent, LlmEvent;
+import 'package:agents_server/agents_server.dart' as rt show SttEvent, LlmEvent;
 import '../../../shared/themes/app_theme.dart';
 import '../providers/service_library_provider.dart';
 import '../widgets/add_service_modal.dart';
@@ -1335,7 +1335,7 @@ class _StsTestCardState extends State<_StsTestCard> {
   String? _sessionId;
   final _chatMessages = <_TestChatMsg>[];
   StreamSubscription<AgentEvent>? _eventSub;
-  final _bridge = AgentRuntimeBridge();
+  final _bridge = AgentsServerBridge();
 
   static const _accent = Color(0xFF4A42D9);
 
@@ -1348,7 +1348,7 @@ class _StsTestCardState extends State<_StsTestCard> {
   @override
   void dispose() {
     _eventSub?.cancel();
-    if (_sessionId != null) _bridge.stopSession(_sessionId!);
+    if (_sessionId != null) _bridge.stopAgent(_sessionId!);
     super.dispose();
   }
 
@@ -1372,19 +1372,13 @@ class _StsTestCardState extends State<_StsTestCard> {
 
     try {
       final vendor = _selected!.vendor;
-      await _bridge.startSession(AgentSessionConfig(
-        sessionId: sid,
-        agentId: 'sts_test',
+      await _bridge.createAgent(
+        agentId: sid,
+        agentType: 'sts',
         inputMode: 'text',
-        sttPluginName: 'stt_$vendor',
-        ttsPluginName: 'tts_$vendor',
-        llmPluginName: 'llm_$vendor',
-        stsPluginName: 'sts_$vendor',
-        sttConfigJson: '{}',
-        ttsConfigJson: '{}',
-        llmConfigJson: '{}',
+        stsVendor: vendor,
         stsConfigJson: _selected!.configJson,
-      ));
+      );
       await _bridge.setInputMode(sid, 'call');
     } catch (e) {
       if (mounted) {
@@ -1420,30 +1414,38 @@ class _StsTestCardState extends State<_StsTestCard> {
               _statusText = '已连接';
           }
         case rt.SttEvent(:final kind, :final text):
-          if (kind == SttEventKind.finalResult && (text ?? '').isNotEmpty) {
-            _chatMessages.add(_TestChatMsg('user', text!));
-          }
-        case rt.LlmEvent(:final kind, :final textDelta, :final requestId):
-          if (kind == LlmEventKind.firstToken && (textDelta ?? '').isNotEmpty) {
+          if (kind == SttEventKind.partialResult && (text ?? '').isNotEmpty) {
+            // 部分识别 → 覆盖最后一条 pending user 消息
             final idx = _chatMessages.lastIndexWhere(
-                (m) => m.role == 'assistant' && m.text.endsWith('\u200B$requestId'));
+                (m) => m.role == 'user' && m.text.startsWith('\u200B'));
             if (idx == -1) {
-              _chatMessages.add(_TestChatMsg('assistant', '$textDelta\u200B$requestId'));
+              _chatMessages.add(_TestChatMsg('user', '\u200B$text'));
             } else {
-              final raw = _chatMessages[idx].text;
-              final marker = raw.lastIndexOf('\u200B');
-              _chatMessages[idx].text = '${raw.substring(0, marker)}$textDelta\u200B$requestId';
+              _chatMessages[idx].text = '\u200B$text';
             }
-          } else if (kind == LlmEventKind.done) {
-            // Strip requestId marker
+          } else if (kind == SttEventKind.finalResult && (text ?? '').isNotEmpty) {
+            // 定稿 → 替换 pending 或新增
             final idx = _chatMessages.lastIndexWhere(
-                (m) => m.role == 'assistant' && m.text.contains('\u200B'));
+                (m) => m.role == 'user' && m.text.startsWith('\u200B'));
             if (idx != -1) {
-              final raw = _chatMessages[idx].text;
-              final marker = raw.lastIndexOf('\u200B');
-              if (marker != -1) _chatMessages[idx].text = raw.substring(0, marker);
+              _chatMessages[idx].text = text!;
+            } else {
+              _chatMessages.add(_TestChatMsg('user', text!));
             }
           }
+        case rt.LlmEvent(:final kind, :final textDelta):
+          if (kind == LlmEventKind.firstToken && (textDelta ?? '').isNotEmpty) {
+            // 同一 requestId → 累加到已有气泡；不同 requestId → 也累加（同一轮 AI 回复）
+            final lastIdx = _chatMessages.lastIndexWhere((m) => m.role == 'assistant');
+            // 如果最后一条 assistant 和当前之间没有 user 消息 → 累加
+            final lastUserIdx = _chatMessages.lastIndexWhere((m) => m.role == 'user');
+            if (lastIdx != -1 && lastIdx > lastUserIdx) {
+              _chatMessages[lastIdx].text += textDelta!;
+            } else {
+              _chatMessages.add(_TestChatMsg('assistant', textDelta!));
+            }
+          }
+          // done 事件不需要处理（内容已通过 firstToken 累加）
         case AgentErrorEvent(:final message):
           _phase = _StsPhase.error;
           _error = message;
@@ -1455,8 +1457,8 @@ class _StsTestCardState extends State<_StsTestCard> {
 
   String _displayText(_TestChatMsg m) {
     final t = m.text;
-    final marker = t.lastIndexOf('\u200B');
-    return marker == -1 ? t : t.substring(0, marker);
+    if (t.startsWith('\u200B')) return t.substring(1);
+    return t;
   }
 
   Future<void> _hangUp() async {
@@ -1465,7 +1467,7 @@ class _StsTestCardState extends State<_StsTestCard> {
     final sid = _sessionId;
     _sessionId = null;
     if (sid != null) {
-      try { await _bridge.stopSession(sid); } catch (_) {}
+      try { await _bridge.stopAgent(sid); } catch (_) {}
     }
     if (mounted) {
       setState(() {
@@ -1616,7 +1618,7 @@ class _AstTestCardState extends State<_AstTestCard> {
   String? _sessionId;
   final _chatMessages = <_TestChatMsg>[];
   StreamSubscription<AgentEvent>? _eventSub;
-  final _bridge = AgentRuntimeBridge();
+  final _bridge = AgentsServerBridge();
 
   String _srcLang = 'zh';
   String _dstLang = 'en';
@@ -1637,7 +1639,7 @@ class _AstTestCardState extends State<_AstTestCard> {
   @override
   void dispose() {
     _eventSub?.cancel();
-    if (_sessionId != null) _bridge.stopSession(_sessionId!);
+    if (_sessionId != null) _bridge.stopAgent(_sessionId!);
     super.dispose();
   }
 
@@ -1666,19 +1668,14 @@ class _AstTestCardState extends State<_AstTestCard> {
       final mergedCfg = jsonEncode(baseCfg);
 
       final vendor = _selected!.vendor;
-      await _bridge.startSession(AgentSessionConfig(
-        sessionId: sid,
-        agentId: 'ast_test',
+      await _bridge.createAgent(
+        agentId: sid,
+        agentType: 'ast',
         inputMode: 'text',
-        sttPluginName: 'stt_$vendor',
-        ttsPluginName: 'tts_$vendor',
-        llmPluginName: 'llm_$vendor',
-        stsPluginName: 'ast_$vendor',
-        sttConfigJson: '{}',
-        ttsConfigJson: '{}',
-        llmConfigJson: '{}',
-        stsConfigJson: mergedCfg,
-      ));
+        astVendor: vendor,
+        astConfigJson: mergedCfg,
+        extraParams: {'srcLang': _srcLang, 'dstLang': _dstLang},
+      );
       await _bridge.setInputMode(sid, 'call');
     } catch (e) {
       if (mounted) {
@@ -1714,28 +1711,31 @@ class _AstTestCardState extends State<_AstTestCard> {
               _statusText = '已连接';
           }
         case rt.SttEvent(:final kind, :final text):
-          if (kind == SttEventKind.finalResult && (text ?? '').isNotEmpty) {
-            _chatMessages.add(_TestChatMsg('user', text!));
-          }
-        case rt.LlmEvent(:final kind, :final textDelta, :final requestId):
-          if (kind == LlmEventKind.firstToken && (textDelta ?? '').isNotEmpty) {
+          if (kind == SttEventKind.partialResult && (text ?? '').isNotEmpty) {
+            // 部分识别 → 覆盖最后一条 pending user 消息（实时预览）
             final idx = _chatMessages.lastIndexWhere(
-                (m) => m.role == 'assistant' && m.text.endsWith('\u200B$requestId'));
+                (m) => m.role == 'user' && m.text.startsWith('\u200B'));
             if (idx == -1) {
-              _chatMessages.add(_TestChatMsg('assistant', '$textDelta\u200B$requestId'));
+              _chatMessages.add(_TestChatMsg('user', '\u200B$text'));
             } else {
-              final raw = _chatMessages[idx].text;
-              final marker = raw.lastIndexOf('\u200B');
-              _chatMessages[idx].text = '${raw.substring(0, marker)}$textDelta\u200B$requestId';
+              _chatMessages[idx].text = '\u200B$text';
             }
-          } else if (kind == LlmEventKind.done) {
+          } else if (kind == SttEventKind.finalResult && (text ?? '').isNotEmpty) {
+            // 最终识别 → 替换 pending 或新增 user 消息
             final idx = _chatMessages.lastIndexWhere(
-                (m) => m.role == 'assistant' && m.text.contains('\u200B'));
+                (m) => m.role == 'user' && m.text.startsWith('\u200B'));
             if (idx != -1) {
-              final raw = _chatMessages[idx].text;
-              final marker = raw.lastIndexOf('\u200B');
-              if (marker != -1) _chatMessages[idx].text = raw.substring(0, marker);
+              _chatMessages[idx].text = text!; // 移除前缀，标记为最终
+            } else {
+              _chatMessages.add(_TestChatMsg('user', text!));
             }
+          }
+        case rt.LlmEvent(:final kind, :final textDelta, :final fullText):
+          if (kind == LlmEventKind.firstToken && (textDelta ?? '').isNotEmpty) {
+            _chatMessages.add(_TestChatMsg('assistant', textDelta!));
+          } else if (kind == LlmEventKind.done && (fullText ?? '').isNotEmpty) {
+            final idx = _chatMessages.lastIndexWhere((m) => m.role == 'assistant');
+            if (idx != -1) _chatMessages[idx].text = fullText!;
           }
         case AgentErrorEvent(:final message):
           _phase = _StsPhase.error;
@@ -1748,9 +1748,11 @@ class _AstTestCardState extends State<_AstTestCard> {
 
   String _displayText(_TestChatMsg m) {
     final t = m.text;
-    final marker = t.lastIndexOf('\u200B');
-    return marker == -1 ? t : t.substring(0, marker);
+    if (t.startsWith('\u200B')) return t.substring(1);
+    return t;
   }
+
+  bool _isPending(_TestChatMsg m) => m.text.startsWith('\u200B');
 
   Future<void> _hangUp() async {
     _eventSub?.cancel();
@@ -1758,7 +1760,7 @@ class _AstTestCardState extends State<_AstTestCard> {
     final sid = _sessionId;
     _sessionId = null;
     if (sid != null) {
-      try { await _bridge.stopSession(sid); } catch (_) {}
+      try { await _bridge.stopAgent(sid); } catch (_) {}
     }
     if (mounted) {
       setState(() {
@@ -1867,37 +1869,43 @@ class _AstTestCardState extends State<_AstTestCard> {
                   final langLabel = isUser
                       ? (_langMap[_srcLang] ?? _srcLang)
                       : (_langMap[_dstLang] ?? _dstLang);
+                  final pending = _isPending(m);
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isUser ? const Color(0xFFF9FAFB) : const Color(0xFFFFF7ED),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isUser ? const Color(0xFFE5E7EB) : const Color(0xFFFED7AA),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(langLabel,
-                            style: TextStyle(
-                              fontSize: 10, fontWeight: FontWeight.w700,
-                              color: isUser ? AppTheme.text2 : _accent,
-                            )),
-                          const SizedBox(height: 2),
-                          Text(
-                            _displayText(m),
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isUser ? AppTheme.text1 : _accent,
-                              fontWeight: isUser ? FontWeight.w500 : FontWeight.w600,
-                            ),
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Align(
+                      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isUser ? const Color(0xFFE8F0FE) : const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(14),
+                            topRight: const Radius.circular(14),
+                            bottomLeft: Radius.circular(isUser ? 14 : 4),
+                            bottomRight: Radius.circular(isUser ? 4 : 14),
                           ),
-                        ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(langLabel,
+                              style: TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w600,
+                                color: (isUser ? const Color(0xFF1A73E8) : _accent).withValues(alpha: 0.7),
+                              )),
+                            const SizedBox(height: 3),
+                            Text(
+                              _displayText(m),
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isUser ? const Color(0xFF1A73E8) : _accent,
+                                fontWeight: FontWeight.w500,
+                                fontStyle: pending ? FontStyle.italic : FontStyle.normal,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );

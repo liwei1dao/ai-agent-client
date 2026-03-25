@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
-import 'package:agent_runtime/agent_runtime.dart';
+import 'package:agents_server/agents_server.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../../agents/widgets/add_agent_modal.dart';
 import '../../agents/providers/agent_list_provider.dart';

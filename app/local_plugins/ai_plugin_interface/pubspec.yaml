@@ -1,10 +1,11 @@
 name: ai_plugin_interface
-description: Shared abstract interfaces and data classes for AI plugins
+description: Shared abstract interfaces and data classes for AI plugins (Dart + Native)
 publish_to: none
 version: 0.1.0
 
 environment:
   sdk: ^3.8.1
+  flutter: ">=3.3.0"
 
 dependencies:
   flutter:
@@ -13,4 +14,10 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  pigeon: ^22.7.4
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.plugin_interface
+        pluginClass: AiPluginInterfacePlugin

@@ -1,5 +1,7 @@
 package com.aiagent.tts_azure
 
+import android.util.Log
+import com.aiagent.plugin_interface.NativeServiceRegistry
 import com.microsoft.cognitiveservices.speech.*
 import com.microsoft.cognitiveservices.speech.audio.AudioConfig
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -31,6 +33,12 @@ class TtsAzurePlugin : FlutterPlugin {
     private var currentRequestId: String = ""
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        val context = binding.applicationContext
+
+        // ── 注册到 NativeServiceRegistry（供 Agent 类型插件原生调用）──
+        NativeServiceRegistry.registerTts("azure") { TtsAzureService(context) }
+        Log.d("TtsAzurePlugin", "Registered NativeTtsService vendor=azure")
+
         methodChannel = MethodChannel(binding.binaryMessenger, "tts_azure/commands")
         methodChannel.setMethodCallHandler { call, result ->
             when (call.method) {

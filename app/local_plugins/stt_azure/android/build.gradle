@@ -29,4 +29,6 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
     // Azure Speech SDK（在 app/android/build.gradle 的 allprojects 里添加 maven 仓库后有效）
     implementation 'com.microsoft.cognitiveservices.speech:client-sdk:1.43.0'
+    // 原生接口定义 + NativeServiceRegistry
+    implementation project(':ai_plugin_interface')
 }

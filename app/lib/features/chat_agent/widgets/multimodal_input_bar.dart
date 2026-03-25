@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:agent_runtime/agent_runtime.dart';
+import 'package:agents_server/agents_server.dart';
 import '../../../shared/themes/app_theme.dart';
 
 class MultimodalInputBar extends StatefulWidget {

@@ -9,10 +9,38 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "85.0.0"
-  agent_runtime:
+  agent_ast_translate:
     dependency: "direct main"
     description:
-      path: "local_plugins/agent_runtime"
+      path: "local_plugins/agent_ast_translate"
+      relative: true
+    source: path
+    version: "0.1.0"
+  agent_chat:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/agent_chat"
+      relative: true
+    source: path
+    version: "0.1.0"
+  agent_sts_chat:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/agent_sts_chat"
+      relative: true
+    source: path
+    version: "0.1.0"
+  agent_translate:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/agent_translate"
+      relative: true
+    source: path
+    version: "0.1.0"
+  agents_server:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/agents_server"
       relative: true
     source: path
     version: "0.1.0"
@@ -47,6 +75,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.7.0"
+  ast_volcengine:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/ast_volcengine"
+      relative: true
+    source: path
+    version: "0.1.0"
   async:
     dependency: transitive
     description:

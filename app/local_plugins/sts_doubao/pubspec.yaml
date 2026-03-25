@@ -6,6 +6,13 @@ version: 0.1.0
 environment:
   sdk: ^3.8.1
 
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.sts_doubao
+        pluginClass: StsDoubaoPlugin
+
 dependencies:
   flutter:
     sdk: flutter

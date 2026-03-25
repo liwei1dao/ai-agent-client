@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:agent_runtime/agent_runtime.dart';
+import 'package:agents_server/agents_server.dart';
 import 'package:local_db/local_db.dart';
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
   ChatAgentNotifier(this._agentId) : super(const ChatAgentState());
 
   final String _agentId;
-  final _bridge = AgentRuntimeBridge();
+  final _bridge = AgentsServerBridge();
   final _db = LocalDbBridge();
   StreamSubscription<AgentEvent>? _eventSub;
   bool _voiceCancelled = false; // 上滑取消标志
@@ -143,9 +143,9 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
         dstLang: agentCfg['dstLang'] as String? ?? 'en',
       );
 
-      // Listen to Native events
+      // Listen to Native events (agents_server uses agentId as sessionId)
       _eventSub = _bridge.eventStream
-          .where((e) => e.sessionId == sessionId)
+          .where((e) => e.sessionId == _agentId)
           .listen(_handleEvent);
 
       // Load referenced service configs
@@ -183,12 +183,13 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
       final stsId = agentCfg['stsServiceId'] as String?;
       final agentType = agent.type; // 'chat' | 'translate' | 'sts' | 'ast'
 
-      // For ast agents, merge srcLang/dstLang from agent config into stsConfigJson
       final srcLang = agentCfg['srcLang'] as String? ?? 'zh';
       final dstLang = agentCfg['dstLang'] as String? ?? 'en';
+
+      // Build STS/AST config with language params
       String buildStsConfigJson() {
         final base = svcCfg(stsId);
-        if (agentType != 'ast') return base;
+        if (agentType != 'ast' && agentType != 'sts') return base;
         final map = jsonDecode(base) as Map<String, dynamic>;
         map['srcLang'] = srcLang;
         map['dstLang'] = dstLang;
@@ -196,33 +197,35 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
       }
 
       state = state.copyWith(
-        llmServiceName: svcName(stsId ?? llmId), // sts/ast 用 STS 服务名
+        llmServiceName: svcName(stsId ?? llmId),
         sttServiceName: svcName(sttId),
         ttsServiceName: svcName(ttsId),
       );
 
-      // Start native session
+      // Create native agent via agents_server
       try {
-        await _bridge.startSession(AgentSessionConfig(
-          sessionId: sessionId,
+        await _bridge.createAgent(
           agentId: _agentId,
-          inputMode: 'text', // STS/AST agent 也从 text 开始，点电话才切换
-          sttPluginName: 'stt_${svcVendor(sttId)}',
-          ttsPluginName: 'tts_${svcVendor(ttsId)}',
-          llmPluginName: 'llm_${svcVendor(llmId)}',
-          stsPluginName: agentType == 'sts'
-              ? 'sts_${svcVendor(stsId)}'
-              : agentType == 'ast'
-                  ? 'ast_${svcVendor(stsId)}'
-                  : null,
+          agentType: agentType,
+          inputMode: 'text',
+          sttVendor: svcVendor(sttId).isNotEmpty ? svcVendor(sttId) : null,
+          ttsVendor: svcVendor(ttsId).isNotEmpty ? svcVendor(ttsId) : null,
+          llmVendor: svcVendor(llmId).isNotEmpty ? svcVendor(llmId) : null,
+          stsVendor: (agentType == 'sts' && svcVendor(stsId).isNotEmpty)
+              ? svcVendor(stsId) : null,
+          astVendor: (agentType == 'ast' && svcVendor(stsId).isNotEmpty)
+              ? svcVendor(stsId) : null,
+          translationVendor: null, // TODO: add translation service for translate agent
           sttConfigJson: svcCfg(sttId),
           ttsConfigJson: svcCfg(ttsId),
           llmConfigJson: svcCfg(llmId),
-          stsConfigJson: buildStsConfigJson(),
-        ));
-        debugPrint('[Agent] session started: $sessionId  agentType=$agentType  stsId=$stsId  stsVendor=${svcVendor(stsId)}  stsConfig=${svcCfg(stsId)}');
+          stsConfigJson: agentType == 'sts' ? buildStsConfigJson() : null,
+          astConfigJson: agentType == 'ast' ? buildStsConfigJson() : null,
+          extraParams: {'srcLang': srcLang, 'dstLang': dstLang},
+        );
+        debugPrint('[Agent] created: agentType=$agentType id=$_agentId');
       } catch (e) {
-        debugPrint('[Agent] startSession failed: $e');
+        debugPrint('[Agent] createAgent failed: $e');
       }
     } catch (e) {
       debugPrint('[Agent] init failed: $e');
@@ -279,7 +282,7 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
               ..add(ChatMessage(
                   id: requestId, role: 'user', content: pending, status: 'done'));
             state = state.copyWith(messages: sendMsgs);
-            await _bridge.sendText(state.sessionId, requestId, pending);
+            await _bridge.sendText(_agentId, requestId, pending);
           }
           _voiceCancelled = false;
         }
@@ -324,28 +327,28 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
     final msgs = List<ChatMessage>.from(state.messages)
       ..add(ChatMessage(id: requestId, role: 'user', content: text, status: 'done'));
     state = state.copyWith(messages: msgs);
-    await _bridge.sendText(state.sessionId, requestId, text);
+    await _bridge.sendText(_agentId, requestId, text);
   }
 
   Future<void> setInputMode(String mode) async {
     state = state.copyWith(inputMode: mode);
-    await _bridge.setInputMode(state.sessionId, mode);
+    await _bridge.setInputMode(_agentId, mode);
   }
 
   Future<void> startListening() async {
     // 立即打断当前 AI 回复（停止 LLM + TTS）
-    await _bridge.interrupt(state.sessionId);
+    await _bridge.interrupt(_agentId);
     // 添加临时录音气泡
     final recId = 'recording_${DateTime.now().millisecondsSinceEpoch}';
     final msgs = List<ChatMessage>.from(state.messages)
       ..add(ChatMessage(id: recId, role: 'user', content: '', status: 'recording'));
     state = state.copyWith(messages: msgs, recordingMsgId: recId, pendingVoiceText: '', sttPartial: '');
-    await _bridge.startListening(state.sessionId);
+    await _bridge.startListening(_agentId);
   }
 
   Future<void> stopListening() {
     _voiceCancelled = false;
-    return _bridge.stopListening(state.sessionId);
+    return _bridge.stopListening(_agentId);
   }
 
   Future<void> cancelListening() async {
@@ -361,7 +364,7 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
         recordingMsgId: null,
       );
     }
-    await _bridge.stopListening(state.sessionId);
+    await _bridge.stopListening(_agentId);
   }
 
   Future<void> swapLanguages() async {
@@ -407,10 +410,8 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
   @override
   void dispose() {
     _eventSub?.cancel();
-    // STS 模式退出时断开 WebSocket 连接，停止录音和占用资源
-    if (state.agentType == 'sts' || state.agentType == 'ast') {
-      _bridge.stopSession(state.sessionId).ignore();
-    }
+    // 退出时停止 Agent（释放服务资源、断开连接）
+    _bridge.stopAgent(_agentId).ignore();
     super.dispose();
   }
 }

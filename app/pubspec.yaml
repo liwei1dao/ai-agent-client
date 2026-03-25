@@ -39,13 +39,25 @@ dependencies:
   # Persistence
   shared_preferences: ^2.3.4
 
-  # Local plugins
+  # Local plugins — Interface layer
   ai_plugin_interface:
     path: local_plugins/ai_plugin_interface
-  agent_runtime:
-    path: local_plugins/agent_runtime
-  local_db:
-    path: local_plugins/local_db
+
+  # Container / management layer
+  agents_server:
+    path: local_plugins/agents_server
+
+  # Agent type plugins (register to NativeAgentRegistry on attach)
+  agent_chat:
+    path: local_plugins/agent_chat
+  agent_sts_chat:
+    path: local_plugins/agent_sts_chat
+  agent_translate:
+    path: local_plugins/agent_translate
+  agent_ast_translate:
+    path: local_plugins/agent_ast_translate
+
+  # Service plugins (register to NativeServiceRegistry on attach)
   stt_azure:
     path: local_plugins/stt_azure
   tts_azure:
@@ -54,10 +66,16 @@ dependencies:
     path: local_plugins/llm_openai
   sts_doubao:
     path: local_plugins/sts_doubao
+  ast_volcengine:
+    path: local_plugins/ast_volcengine
   translation_deepl:
     path: local_plugins/translation_deepl
   translation_aliyun:
     path: local_plugins/translation_aliyun
+
+  # Data layer
+  local_db:
+    path: local_plugins/local_db
 
 dev_dependencies:
   flutter_test:

@@ -1,5 +1,5 @@
 name: translation_aliyun
-description: Aliyun translation plugin (pure Dart HTTP)
+description: Aliyun translation plugin (Dart + Native)
 publish_to: none
 version: 0.1.0
 
@@ -17,3 +17,10 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.translation_aliyun
+        pluginClass: TranslationAliyunPlugin

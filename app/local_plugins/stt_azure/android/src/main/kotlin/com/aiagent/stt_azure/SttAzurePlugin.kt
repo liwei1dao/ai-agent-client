@@ -1,5 +1,7 @@
 package com.aiagent.stt_azure
 
+import android.util.Log
+import com.aiagent.plugin_interface.NativeServiceRegistry
 import com.microsoft.cognitiveservices.speech.*
 import com.microsoft.cognitiveservices.speech.audio.AudioConfig
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -10,14 +12,9 @@ import kotlinx.coroutines.*
 /**
  * SttAzurePlugin — Azure 语音识别 Flutter 插件
  *
- * 命令通道：stt_azure/commands
- *   - initialize(apiKey, region, language)
- *   - startListening
- *   - stopListening
- *
- * 事件通道：stt_azure/events
- *   推送 7 种 STT 事件 Map：
- *   { kind: String, text: String?, errorCode: String?, errorMessage: String? }
+ * 双重角色：
+ * 1. NativeServiceRegistry 注册：Agent 类型插件通过 NativeSttService 接口直接调用
+ * 2. MethodChannel/EventChannel：保留 Dart 桥接（向后兼容）
  */
 class SttAzurePlugin : FlutterPlugin {
 
@@ -30,6 +27,13 @@ class SttAzurePlugin : FlutterPlugin {
     private var speechConfig: SpeechConfig? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        val context = binding.applicationContext
+
+        // ── 注册到 NativeServiceRegistry（供 Agent 类型插件原生调用）──
+        NativeServiceRegistry.registerStt("azure") { SttAzureService(context) }
+        Log.d("SttAzurePlugin", "Registered NativeSttService vendor=azure")
+
+        // ── 保留 MethodChannel/EventChannel（Dart 桥接，向后兼容）──
         methodChannel = MethodChannel(binding.binaryMessenger, "stt_azure/commands")
         methodChannel.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -74,7 +78,7 @@ class SttAzurePlugin : FlutterPlugin {
     }
 
     // ─────────────────────────────────────────────────
-    // 实现
+    // Dart MethodChannel 实现（向后兼容）
     // ─────────────────────────────────────────────────
 
     private fun initialize(apiKey: String, region: String, language: String) {
@@ -88,33 +92,26 @@ class SttAzurePlugin : FlutterPlugin {
 
         val audioConfig = AudioConfig.fromDefaultMicrophoneInput()
         recognizer = SpeechRecognizer(speechConfig, audioConfig).apply {
-            // 识别中（partial result）
             recognizing.addEventListener { _, e ->
                 pushEvent(mapOf("kind" to "partialResult", "text" to e.result.text))
             }
-            // 识别完成（final result）
             recognized.addEventListener { _, e ->
                 if (e.result.reason == ResultReason.RecognizedSpeech) {
                     pushEvent(mapOf("kind" to "finalResult", "text" to e.result.text))
                 }
             }
-            // 会话开始
             sessionStarted.addEventListener { _, _ ->
                 pushEvent(mapOf("kind" to "listeningStarted"))
             }
-            // 会话结束
             sessionStopped.addEventListener { _, _ ->
                 pushEvent(mapOf("kind" to "listeningStopped"))
             }
-            // 静音检测开始语音
             speechStartDetected.addEventListener { _, _ ->
                 pushEvent(mapOf("kind" to "vadSpeechStart"))
             }
-            // 静音检测结束语音
             speechEndDetected.addEventListener { _, _ ->
                 pushEvent(mapOf("kind" to "vadSpeechEnd"))
             }
-            // 错误
             canceled.addEventListener { _, e ->
                 if (e.reason == CancellationReason.Error) {
                     pushEvent(mapOf(
