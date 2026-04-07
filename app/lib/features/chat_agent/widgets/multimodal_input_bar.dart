@@ -14,13 +14,15 @@ class MultimodalInputBar extends StatefulWidget {
     this.onVoiceCancel,
     this.onCallToggle,
     this.partialText = '',
-    this.lockCallMode = false,
+    this.isEndToEnd = false,
+    this.connectionState = ServiceConnectionState.disconnected,
     this.sessionState = AgentSessionState.idle,
   });
 
   /// 'text' | 'short_voice' | 'call'
   final String inputMode;
-  final bool lockCallMode; // STS agent: 锁定通话模式，隐藏模式切换按钮
+  final bool isEndToEnd; // 端到端模式（STS/AST）
+  final ServiceConnectionState connectionState; // 端到端连接状态
   final AgentSessionState sessionState;
   final ValueChanged<String> onModeChanged;
   final ValueChanged<String> onTextSubmit;
@@ -94,8 +96,7 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
           switch (widget.inputMode) {
             'short_voice' => _buildVoiceBar(),
             'call' => _buildCallBar(),
-            // STS agent 在 text 模式下显示"连接"按钮，普通 agent 显示文本输入
-            _ => widget.lockCallMode ? _buildStsConnectBar() : _buildTextBar(),
+            _ => widget.isEndToEnd ? _buildE2eDisconnectedBar() : _buildTextBar(),
           },
           SizedBox(height: MediaQuery.paddingOf(context).bottom),
         ],
@@ -173,43 +174,45 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
     );
   }
 
-  // ── STS connect mode (lockCallMode + text) ──────────────────────────────────
+  // ── 端到端未连接/连接中提示 ──────────────────────────────────────────────
 
-  Widget _buildStsConnectBar() {
+  Widget _buildE2eDisconnectedBar() {
+    final isConnecting = widget.connectionState == ServiceConnectionState.connecting;
+    final isError = widget.connectionState == ServiceConnectionState.error;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
-      child: GestureDetector(
-        onTap: () => widget.onModeChanged('call'),
-        child: Container(
-          height: 48,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppTheme.primary, Color(0xFF818CF8)],
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: isError ? const Color(0xFFFEE2E2) : const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isConnecting)
+              const SizedBox(
+                width: 16, height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.text2),
+              )
+            else
+              Icon(
+                isError ? Icons.error_outline : Icons.link_off,
+                color: isError ? AppTheme.danger : AppTheme.text2,
+                size: 18,
+              ),
+            const SizedBox(width: 8),
+            Text(
+              isConnecting ? '服务连接中...' : isError ? '连接失败，请在顶部重试' : '服务未连接',
+              style: TextStyle(
+                color: isError ? AppTheme.danger : AppTheme.text2,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primary.withValues(alpha: 0.35),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.phone_outlined, color: Colors.white, size: 18),
-              SizedBox(width: 8),
-              Text(
-                '点击连接语音服务',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -219,6 +222,12 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
 
   Widget _buildVoiceBar() {
     final partial = widget.partialText;
+    final isE2E = widget.isEndToEnd;
+
+    // 端到端模式下的按住提示文案
+    final String holdLabel = isE2E ? '按住说话' : '按住说话';
+    final String releaseLabel = isE2E ? '松开结束 · 上滑取消' : '松开发送 · 上滑取消';
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -244,17 +253,21 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
           child: Row(
             children: [
-              _SideBtn(
-                onTap: () => widget.onModeChanged('text'),
-                child: Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: AppTheme.text2,
-                    borderRadius: BorderRadius.circular(3),
+              // 左侧按钮：端到端不显示切文本按钮，留空占位
+              if (!isE2E)
+                _SideBtn(
+                  onTap: () => widget.onModeChanged('text'),
+                  child: Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: AppTheme.text2,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
                   ),
-                ),
-              ),
+                )
+              else
+                const SizedBox(width: 40),
               const SizedBox(width: 7),
               Expanded(
                 child: GestureDetector(
@@ -313,7 +326,7 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
                                 const Icon(Icons.close, color: Colors.white, size: 16),
                               if (_cancelZone) const SizedBox(width: 6),
                               Text(
-                                _cancelZone ? '松开取消' : '松开发送 · 上滑取消',
+                                _cancelZone ? '松开取消' : releaseLabel,
                                 style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 12,
@@ -321,14 +334,14 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
                               ),
                             ],
                           )
-                        : const Row(
+                        : Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.mic, color: Colors.white, size: 18),
-                              SizedBox(width: 6),
+                              const Icon(Icons.mic, color: Colors.white, size: 18),
+                              const SizedBox(width: 6),
                               Text(
-                                '按住说话',
-                                style: TextStyle(
+                                holdLabel,
+                                style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700),
@@ -339,10 +352,14 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
                 ),
               ),
               const SizedBox(width: 7),
+              // 右侧按钮：切到 call 模式（端到端=恢复通话，三段式=进入通话）
               _SideBtn(
                 onTap: () => widget.onModeChanged('call'),
-                child: const Icon(Icons.phone_outlined,
-                    color: AppTheme.text2, size: 20),
+                child: Icon(
+                  isE2E ? Icons.phone_in_talk : Icons.phone_outlined,
+                  color: isE2E ? AppTheme.success : AppTheme.text2,
+                  size: 20,
+                ),
               ),
             ],
           ),
@@ -407,9 +424,9 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
           // 麦克风指示器（带音量动画）
           _MicIndicator(active: isListening),
           const SizedBox(width: 10),
-          // Hang up
+          // Hang up — 端到端切到 short_voice（暂停音频），三段式切到 text
           GestureDetector(
-              onTap: () => widget.onModeChanged('text'),
+              onTap: () => widget.onModeChanged(widget.isEndToEnd ? 'short_voice' : 'text'),
               child: Container(
                 width: 44,
                 height: 44,

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>翻译 Agent — 文字输入 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/></symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/></symbol>
+</svg>
+<a href="index.html" class="back-link">&#8249; 返回总览</a>
+<div class="page-header"><h1>翻译 Agent — 文字输入</h1><p>语言栏独立一行，不挤在标签栏</p></div>
+<div class="phone-frame"><div class="phone-shell"><div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+
+          <div class="agent-top-bar">
+            <div style="font-size:20px;cursor:pointer;color:var(--text-2);">&#8249;</div>
+            <div class="agent-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div>
+            <div class="agent-top-info">
+              <div class="agent-top-name">中英翻译</div>
+              <div class="agent-top-status">在线</div>
+            </div>
+            <div class="icon-btn">&#8943;</div>
+          </div>
+
+          <!-- 服务标签栏 -->
+          <div class="service-chips">
+            <div class="s-chip" style="background:#FFF7ED;color:#9A3412;border:1px solid rgba(249,115,22,0.3);"><div style="width:5px;height:5px;border-radius:50%;background:#9A3412;"></div>DeepL</div>
+            <div class="s-chip stt"><div class="dot"></div>Azure STT</div>
+            <div class="s-chip tts"><div class="dot"></div>Azure TTS</div>
+          </div>
+
+          <!-- 语言悬浮卡片（仅显示 Agent 配置中支持的语言） -->
+          <div style="padding:6px 14px 6px;flex-shrink:0;">
+            <div style="background:white;border-radius:16px;padding:10px 14px;box-shadow:0 4px 20px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04);display:flex;align-items:center;gap:0;">
+              <div style="flex:1;text-align:center;">
+                <div style="font-size:9px;color:var(--text-2);margin-bottom:2px;">来源语言</div>
+                <div style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer;">中文 ▾</div>
+                <div style="font-size:8px;color:var(--text-2);margin-top:1px;">自动检测 / 中文 / English</div>
+              </div>
+              <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--translate-type),#38BDF8);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:white;box-shadow:0 2px 8px rgba(14,165,233,0.3);flex-shrink:0;">⇄</div>
+              <div style="flex:1;text-align:center;">
+                <div style="font-size:9px;color:var(--text-2);margin-bottom:2px;">目标语言</div>
+                <div style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer;">English ▾</div>
+                <div style="font-size:8px;color:var(--text-2);margin-top:1px;">日本語 / English</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="chat-area">
+            <!-- 中文输入 → 右侧，气泡含原文+译文 -->
+            <div style="align-self:flex-end;max-width:85%;display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+              <div style="font-size:10px;color:var(--text-2);">中文 · 09:40</div>
+              <div style="background:var(--primary);border-radius:16px 16px 4px 16px;padding:10px 13px;display:flex;flex-direction:column;gap:6px;">
+                <div style="font-size:13px;color:white;line-height:1.5;">人工智能正在改变我们工作和生活的方式。</div>
+                <div style="height:1px;background:rgba(255,255,255,0.25);"></div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.85);line-height:1.5;font-style:italic;">Artificial intelligence is transforming the way we work and live.</div>
+              </div>
+            </div>
+
+            <!-- 英文输入 → 左侧，气泡含原文+译文 -->
+            <div style="align-self:flex-start;max-width:85%;display:flex;flex-direction:column;align-items:flex-start;gap:3px;">
+              <div style="font-size:10px;color:var(--text-2);">English · 09:40</div>
+              <div style="background:white;border-radius:16px 16px 16px 4px;padding:10px 13px;box-shadow:0 2px 8px rgba(0,0,0,0.06);display:flex;flex-direction:column;gap:6px;">
+                <div style="font-size:13px;color:var(--text);line-height:1.5;">The weather is really nice today, perfect for a walk.</div>
+                <div style="height:1px;background:var(--border);"></div>
+                <div style="font-size:12px;color:var(--translate-type);line-height:1.5;">今天天气真好，很适合去散步。</div>
+              </div>
+            </div>
+
+            <!-- 中文输入 → 右侧 -->
+            <div style="align-self:flex-end;max-width:85%;display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+              <div style="font-size:10px;color:var(--text-2);">中文 · 09:41</div>
+              <div style="background:var(--primary);border-radius:16px 16px 4px 16px;padding:10px 13px;display:flex;flex-direction:column;gap:6px;">
+                <div style="font-size:13px;color:white;line-height:1.5;">Flutter 非常适合跨平台移动应用开发。</div>
+                <div style="height:1px;background:rgba(255,255,255,0.25);"></div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.85);line-height:1.5;font-style:italic;display:flex;align-items:center;gap:4px;">Flutter is well suited for cross-platform mobile app development.<span style="width:5px;height:12px;background:rgba(255,255,255,0.6);border-radius:1px;animation:blink 1s infinite;flex-shrink:0;"></span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mm-bar">
+            <div class="mm-side">🎤</div>
+            <div class="mm-text-field" style="display:flex;align-items:center;padding-right:4px;">
+              <span style="flex:1;color:var(--text-2);font-size:13px;">输入要翻译的内容...</span>
+              <div class="mm-send" style="flex-shrink:0;width:32px;height:32px;font-size:13px;">↑</div>
+            </div>
+            <div class="mm-side">📞</div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+</div></div></div>
+</body></html>

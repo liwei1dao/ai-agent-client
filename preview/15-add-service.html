@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>添加服务 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/></symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/></symbol>
+</svg>
+<a href="index.html" class="back-link">‹ 返回总览</a>
+<div class="page-header"><h1>添加服务</h1><p>选类型 → 选厂商 → 填 Key → 测试</p></div>
+<div class="phone-frame"><div class="phone-shell"><div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <div style="flex:1;background:var(--bg);filter:brightness(0.7);"></div>
+          <div class="bottom-nav" style="filter:brightness(0.7);">
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label">Agents</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label" style="color:var(--primary);">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+          <div class="modal-overlay">
+            <div class="modal-sheet">
+              <div class="modal-handle"></div>
+              <div class="modal-title">添加服务</div>
+              <div class="modal-body">
+
+                <div>
+                  <div class="form-label">服务类型</div>
+                  <div class="seg-control" style="flex-wrap:wrap;gap:5px;">
+                    <div class="seg-btn">STT</div>
+                    <div class="seg-btn">TTS</div>
+                    <div class="seg-btn" style="background:#F0FDF4;color:#166534;border:1.5px solid #86EFAC;">STS</div>
+                    <div class="seg-btn active">LLM</div>
+                    <div class="seg-btn">翻译</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">选择服务商</div>
+                  <div class="vendor-grid">
+                    <div class="vendor-btn selected">🟢 OpenAI</div>
+                    <div class="vendor-btn">🔵 Anthropic</div>
+                    <div class="vendor-btn">🟡 Google Gemini</div>
+                    <div class="vendor-btn">🔴 通义千问</div>
+                    <div class="vendor-btn">⚫ DeepSeek</div>
+                    <div class="vendor-btn">🟠 豆包</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">服务名称（可自定义）</div>
+                  <div class="form-input active">我的 GPT-4o</div>
+                </div>
+
+                <div class="key-input-group">
+                  <div class="form-label">API 配置</div>
+                  <div class="key-row">
+                    <div class="key-label">API Key *</div>
+                    <div class="key-input filled">sk-proj-••••••••••••••••ABCD</div>
+                  </div>
+                  <div class="key-row">
+                    <div class="key-label">Base URL（可选，用于代理）</div>
+                    <div class="key-input">https://api.openai.com/v1</div>
+                  </div>
+                  <div class="key-row">
+                    <div class="key-label">默认 Model</div>
+                    <div class="key-input filled">gpt-4o</div>
+                  </div>
+                </div>
+
+                <div class="test-conn-btn">🔌 测试连接</div>
+
+              </div>
+              <div class="modal-footer">
+                <div class="modal-btn cancel">取消</div>
+                <div class="modal-btn primary">保存服务</div>
+              </div>
+            </div>
+          </div>
+</div></div></div>
+</body></html>

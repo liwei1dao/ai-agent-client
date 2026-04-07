@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STT 测试 — 实时流模式 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/></symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/></symbol>
+</svg>
+<a href="index.html" class="back-link">&#8249; 返回总览</a>
+<div class="page-header"><h1>STT 测试 — 实时流模式</h1><p>边录边识别 · VAD 自动断句</p></div>
+<div class="phone-frame"><div class="phone-shell"><div class="phone-screen" style="background:#F8FAFF;">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#fff;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+            <span style="font-size:18px;color:#6B7280;cursor:pointer;">&#8249;</span>
+            <div style="flex:1;"><div style="font-size:16px;font-weight:700;color:#1A1A2E;">STT 测试</div><div style="font-size:11px;color:#6B7280;">语音转文字</div></div>
+            <span class="badge stt">STT</span>
+          </div>
+
+          <!-- 模式切换 Tab -->
+          <div style="display:flex;background:#fff;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+            <div style="flex:1;text-align:center;padding:9px;font-size:12px;color:#6B7280;font-weight:600;">🎙 录音模式</div>
+            <div style="flex:1;text-align:center;padding:9px;font-size:12px;color:#D97706;font-weight:700;border-bottom:2px solid #D97706;">📡 实时流模式</div>
+          </div>
+
+          <div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;">
+            <!-- 服务选择 -->
+            <div class="demo-card">
+              <div class="demo-card-title">选择服务</div>
+              <div class="demo-row">
+                <div class="demo-sel" style="flex:2;">Azure STT <span class="caret">▾</span></div>
+                <div class="demo-sel">zh-CN <span class="caret">▾</span></div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:6px;">
+                <div class="demo-btn-sm green" style="flex:1;justify-content:center;">▶ 开始监听</div>
+                <div class="demo-btn-sm red" style="flex:1;justify-content:center;">⏹ 停止</div>
+              </div>
+            </div>
+
+            <!-- VAD 状态 -->
+            <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
+                <span style="font-size:11px;color:#92400E;font-weight:700;">VAD 检测: 语音活动中</span>
+                <span style="margin-left:auto;font-size:10px;color:#D97706;font-weight:600;">5.7s</span>
+              </div>
+              <div style="display:flex;gap:12px;font-size:10px;color:#92400E;">
+                <span>📊 音量: 68%</span>
+                <span>🎯 信噪比: 良好</span>
+                <span>🔄 实时推送中</span>
+              </div>
+            </div>
+
+            <!-- 说明 -->
+            <div style="background:#E0F2FE;border-radius:10px;padding:10px 12px;font-size:11px;color:#0369A1;line-height:1.6;">
+              <strong>实时流模式说明</strong><br>
+              音频边录制边实时推送给 STT 服务，VAD 自动检测语音活动并断句。适合连续对话场景和实时字幕。
+            </div>
+
+            <!-- 实时识别结果流 -->
+            <div class="demo-card" style="padding:0;overflow:hidden;">
+              <div style="padding:8px 14px;background:#FEF3C7;border-bottom:1px solid #FDE68A;">
+                <div style="font-size:11px;font-weight:700;color:#92400E;">实时识别流</div>
+              </div>
+              <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+                <!-- Final #1 -->
+                <div style="padding:6px 10px;background:#F0FDF4;border-radius:8px;border-left:3px solid #10B981;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                    <span style="font-size:9px;color:#065F46;font-weight:600;">✓ Final #1</span>
+                    <span style="font-size:9px;color:var(--text-2);">0.0s - 2.1s</span>
+                  </div>
+                  <div style="font-size:12px;color:var(--text);">你好，请帮我查一下明天上海的天气预报。</div>
+                </div>
+                <!-- Final #2 -->
+                <div style="padding:6px 10px;background:#F0FDF4;border-radius:8px;border-left:3px solid #10B981;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                    <span style="font-size:9px;color:#065F46;font-weight:600;">✓ Final #2</span>
+                    <span style="font-size:9px;color:var(--text-2);">2.3s - 4.0s</span>
+                  </div>
+                  <div style="font-size:12px;color:var(--text);">如果有雨的话，提醒我带伞。</div>
+                </div>
+                <!-- Partial (current) -->
+                <div style="padding:6px 10px;background:#FFFBEB;border-radius:8px;border-left:3px solid #F59E0B;">
+                  <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+                    <span style="font-size:9px;color:#D97706;font-weight:600;">⏳ Partial</span>
+                    <div class="wave" style="gap:1px;"><span style="height:4px;"></span><span style="height:6px;"></span><span style="height:5px;"></span></div>
+                  </div>
+                  <div style="font-size:12px;color:var(--text);">还有就是周末的...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 统计 -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+              <div style="background:#fff;border-radius:10px;padding:8px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+                <div style="font-size:16px;font-weight:700;color:#D97706;">2</div>
+                <div style="font-size:9px;color:var(--text-2);">已完成句</div>
+              </div>
+              <div style="background:#fff;border-radius:10px;padding:8px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+                <div style="font-size:16px;font-weight:700;color:var(--success);">0.95</div>
+                <div style="font-size:9px;color:var(--text-2);">平均置信度</div>
+              </div>
+              <div style="background:#fff;border-radius:10px;padding:8px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+                <div style="font-size:16px;font-weight:700;color:var(--primary);">5.7s</div>
+                <div style="font-size:9px;color:var(--text-2);">监听时长</div>
+              </div>
+            </div>
+          </div>
+</div></div></div>
+</body></html>

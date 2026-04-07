@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>服务管理 + 演示 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/></symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/></symbol>
+</svg>
+<a href="index.html" class="back-link">‹ 返回总览</a>
+<div class="page-header"><h1>服务管理 + 演示</h1><p>已配置服务列表 + 各能力测试</p></div>
+<div class="phone-frame"><div class="phone-shell"><div class="phone-screen">
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <div class="status-icons">📶 🔋</div>
+          </div>
+          <div class="top-bar">
+            <div>
+              <div class="title">服务中心</div>
+              <div class="subtitle">已配置 7 个服务</div>
+            </div>
+          </div>
+
+          <div class="demo-body">
+
+            <!-- 已配置服务 -->
+            <div>
+              <div class="services-section-header">
+                <div class="section-h">已配置服务</div>
+                <div class="add-service-btn">+ 添加服务</div>
+              </div>
+            </div>
+            <div class="services-grid">
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge llm">LLM</span><div class="service-status">已连接</div></div>
+                <div class="service-name">GPT-4o</div>
+                <div class="service-vendor">OpenAI · sk-proj-••••</div>
+              </div>
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge llm">LLM</span><div class="service-status">已连接</div></div>
+                <div class="service-name">Claude Sonnet</div>
+                <div class="service-vendor">Anthropic · sk-ant-••••</div>
+              </div>
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge stt">STT</span><div class="service-status">已连接</div></div>
+                <div class="service-name">Azure STT</div>
+                <div class="service-vendor">eastasia · ••••5f8a</div>
+              </div>
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge tts">TTS</span><div class="service-status">已连接</div></div>
+                <div class="service-name">Azure TTS</div>
+                <div class="service-vendor">晓晓 / 云希 / 晓伊</div>
+              </div>
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge stt">STT</span><div class="service-status">已连接</div></div>
+                <div class="service-name">阿里云 STT</div>
+                <div class="service-vendor">中文优化</div>
+              </div>
+              <div class="service-item">
+                <div class="service-item-top"><span class="badge trans">翻译</span><div class="service-status">已连接</div></div>
+                <div class="service-name">DeepL</div>
+                <div class="service-vendor">免费版 · ••••:fx</div>
+              </div>
+            </div>
+
+            <!-- 演示 -->
+            <div class="demo-section-header">快速测试</div>
+
+            <!-- STT Demo -->
+            <div class="demo-card">
+              <div class="demo-card-title">🎙 STT 识别测试</div>
+              <div class="demo-row">
+                <div class="demo-sel">Azure STT <span class="caret">▾</span></div>
+                <div class="demo-sel">zh-CN <span class="caret">▾</span></div>
+                <div class="demo-btn-sm green">▶ 开始</div>
+              </div>
+              <div class="demo-result recording">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                  <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
+                  <span style="font-size:10px;color:#D97706;font-weight:700;">识别中</span>
+                </div>
+                今天天气怎么样...
+              </div>
+            </div>
+
+            <!-- TTS Demo -->
+            <div class="demo-card">
+              <div class="demo-card-title">🔊 TTS 合成测试</div>
+              <div class="demo-row">
+                <div class="demo-sel">Azure TTS <span class="caret">▾</span></div>
+                <div class="demo-sel">晓晓 <span class="caret">▾</span></div>
+                <div class="demo-btn-sm">▶ 播放</div>
+              </div>
+              <div class="demo-result active">欢迎使用 AI Agent 测试平台！</div>
+              <div style="height:4px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden;">
+                <div style="height:100%;background:var(--primary);border-radius:2px;width:60%;"></div>
+              </div>
+              <div style="font-size:10px;color:var(--text-2);margin-top:4px;text-align:center;">2.2s / 3.6s</div>
+            </div>
+
+            <!-- LLM Demo -->
+            <div class="demo-card">
+              <div class="demo-card-title">🧠 LLM 对话测试</div>
+              <div class="demo-row">
+                <div class="demo-sel">GPT-4o <span class="caret">▾</span></div>
+                <div class="demo-btn-sm">▶ 发送</div>
+              </div>
+              <div class="demo-result" style="margin-bottom:6px;">
+                <span style="font-size:10px;color:var(--text-2);">System: 你是一个有帮助的助手</span>
+              </div>
+              <div class="demo-result active" style="border-left:3px solid var(--primary);">
+                <div style="font-size:10px;color:var(--text-2);margin-bottom:4px;">User: 解释一下量子计算</div>
+              </div>
+              <div class="demo-result" style="margin-top:6px;border-left:3px solid #9333EA;background:#FAF5FF;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                  <span style="font-size:10px;color:#9333EA;font-weight:700;">Assistant · streaming</span>
+                  <span style="width:6px;height:6px;border-radius:50%;background:#9333EA;animation:pulse-dot 1s infinite;"></span>
+                </div>
+                量子计算是一种利用量子力学原理进行计算的技术。与经典计算机使用比特（0或1）不同，量子计算机使用<strong>量子比特</strong>...▋
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--text-2);">
+                <span>⏱ 1.2s 首Token</span>
+                <span>📊 128 tokens</span>
+                <span>⚡ 42 tok/s</span>
+              </div>
+            </div>
+
+            <!-- Translation Demo -->
+            <div class="demo-card">
+              <div class="demo-card-title">🌐 翻译测试</div>
+              <div class="demo-row">
+                <div class="demo-sel">DeepL <span class="caret">▾</span></div>
+                <div class="demo-sel">中→英 <span class="caret">▾</span></div>
+                <div class="demo-btn-sm" style="background:var(--translate-type);">▶ 翻译</div>
+              </div>
+              <div class="demo-result active">
+                <div style="font-size:10px;color:var(--text-2);margin-bottom:3px;">源文本 (中文)</div>
+                人工智能正在改变我们的工作方式和生活习惯。
+              </div>
+              <div class="demo-result" style="margin-top:6px;border-left:3px solid var(--translate-type);background:#E0F2FE;">
+                <div style="font-size:10px;color:#0369A1;font-weight:700;margin-bottom:3px;">译文 (English)</div>
+                Artificial intelligence is transforming the way we work and our living habits.
+              </div>
+              <div style="font-size:10px;color:var(--text-2);margin-top:6px;text-align:center;">⏱ 0.8s · DeepL Free API</div>
+            </div>
+
+            <!-- STS Demo -->
+            <div class="demo-card">
+              <div class="demo-card-title">🔗 STS 语音对话测试</div>
+              <div class="demo-row">
+                <div class="demo-sel">豆包 STS <span class="caret">▾</span></div>
+                <div class="demo-btn-sm green">🔗 连接</div>
+                <div class="demo-btn-sm red">⏹ 断开</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#ECFDF5;border-radius:8px;border:1px solid #86EFAC;margin-bottom:6px;">
+                <span style="width:8px;height:8px;border-radius:50%;background:#10B981;animation:pulse-dot 1.5s infinite;"></span>
+                <span style="font-size:11px;color:#065F46;font-weight:700;">WebSocket 已连接</span>
+                <span style="font-size:10px;color:#6B7280;margin-left:auto;">延迟: 42ms</span>
+              </div>
+              <div class="demo-result recording" style="display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
+                  <span style="font-size:10px;color:#D97706;font-weight:700;">语音输入中</span>
+                </div>
+                <div style="font-size:11px;color:var(--text-2);">📥 PCM 16kHz 16bit mono</div>
+              </div>
+              <div class="demo-result" style="margin-top:6px;border-left:3px solid var(--success);background:#F0FDF4;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+                  <div class="wave">
+                    <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+                    <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+                    <span style="background:#16A34A;"></span>
+                  </div>
+                  <span style="font-size:10px;color:#16A34A;font-weight:700;">AI 回复音频</span>
+                </div>
+                <div style="font-size:12px;color:var(--text);">今天天气不错，气温大约 22 度...</div>
+              </div>
+            </div>
+
+            <!-- AST Demo -->
+            <div class="demo-card">
+              <div class="demo-card-title">🎙 AST 同声传译测试</div>
+              <div class="demo-row">
+                <div class="demo-sel">火山 AST <span class="caret">▾</span></div>
+                <div class="demo-sel">中→英 <span class="caret">▾</span></div>
+                <div class="demo-btn-sm green">🔗 连接</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#ECFDF5;border-radius:8px;border:1px solid #86EFAC;margin-bottom:6px;">
+                <span style="width:8px;height:8px;border-radius:50%;background:#10B981;animation:pulse-dot 1.5s infinite;"></span>
+                <span style="font-size:11px;color:#065F46;font-weight:700;">已连接</span>
+                <span style="font-size:10px;color:#6B7280;margin-left:auto;">Volcengine AST</span>
+              </div>
+              <div class="demo-result" style="border-left:3px solid var(--warning);background:#FFFBEB;">
+                <div style="font-size:10px;color:#92400E;font-weight:700;margin-bottom:3px;">📝 源语言字幕 (中文)</div>
+                <div style="font-size:12px;color:var(--text);">人工智能正在改变我们的工作方式</div>
+              </div>
+              <div class="demo-result" style="margin-top:6px;border-left:3px solid var(--translate-type);background:#E0F2FE;">
+                <div style="font-size:10px;color:#0369A1;font-weight:700;margin-bottom:3px;">🌐 译文字幕 (English)</div>
+                <div style="font-size:12px;color:var(--text);">AI is transforming the way we work</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 10px;background:#F0FDF4;border-radius:8px;">
+                <div class="wave">
+                  <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+                  <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+                  <span style="background:#16A34A;"></span>
+                </div>
+                <span style="font-size:10px;color:#16A34A;font-weight:700;">TTS 播放译文中...</span>
+              </div>
+            </div>
+
+            <!-- MCP Demo -->
+            <div class="demo-card">
+              <div class="demo-card-title">🔌 MCP 工具测试</div>
+              <div class="demo-row">
+                <div class="demo-sel">GitHub MCP <span class="caret">▾</span></div>
+                <div class="demo-sel">list_repos <span class="caret">▾</span></div>
+                <div class="demo-btn-sm">▶ 执行</div>
+              </div>
+              <div class="demo-result" style="margin-bottom:6px;">
+                <div style="font-size:10px;color:var(--text-2);margin-bottom:4px;font-weight:600;">参数 (JSON)</div>
+                <div style="font-family:monospace;font-size:11px;color:var(--text);">{ "username": "test-user" }</div>
+              </div>
+              <div class="demo-result" style="border-left:3px solid var(--success);background:#F0FDF4;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                  <span style="font-size:10px;color:#065F46;font-weight:700;">✓ 执行成功</span>
+                  <span style="font-size:10px;color:var(--text-2);">⏱ 0.3s</span>
+                </div>
+                <div style="font-family:monospace;font-size:11px;line-height:1.6;color:var(--text);">[<br>&nbsp;&nbsp;{ "name": "my-app", "stars": 42 },<br>&nbsp;&nbsp;{ "name": "utils", "stars": 12 }<br>]</div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label">Agents</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label" style="color:var(--primary);">服务</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+</div></div></div>
+</body></html>

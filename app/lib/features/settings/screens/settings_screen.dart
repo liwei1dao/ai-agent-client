@@ -17,9 +17,62 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   int _historyCount = 20;
   int _silenceTimeout = 3;
 
+  // VoiTrans 平台配置
+  late final TextEditingController _vtBaseUrlCtrl;
+  late final TextEditingController _vtAppIdCtrl;
+  late final TextEditingController _vtAppSecretCtrl;
+  bool _vtSyncing = false;
+  bool _vtInitialized = false;
+
+  @override
+  void dispose() {
+    _vtBaseUrlCtrl.dispose();
+    _vtAppIdCtrl.dispose();
+    _vtAppSecretCtrl.dispose();
+    super.dispose();
+  }
+
+  void _initVtControllers(AppSettings settings) {
+    if (_vtInitialized) return;
+    _vtInitialized = true;
+    _vtBaseUrlCtrl = TextEditingController(text: settings.voitransBaseUrl);
+    _vtAppIdCtrl = TextEditingController(text: settings.voitransAppId);
+    _vtAppSecretCtrl = TextEditingController(text: settings.voitransAppSecret);
+  }
+
+  Future<void> _saveVtConfig() async {
+    await ref.read(settingsProvider.notifier).setVoitransConfig(
+          baseUrl: _vtBaseUrlCtrl.text.trim(),
+          appId: _vtAppIdCtrl.text.trim(),
+          appSecret: _vtAppSecretCtrl.text.trim(),
+        );
+  }
+
+  Future<void> _syncAgents() async {
+    await _saveVtConfig();
+    setState(() => _vtSyncing = true);
+    try {
+      final count = await ref.read(settingsProvider.notifier).syncVoitransAgents();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('同步成功，共 $count 个 Agent'), backgroundColor: const Color(0xFF10B981)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('同步失败: $e'), backgroundColor: const Color(0xFFEF4444)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _vtSyncing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    _initVtControllers(settings);
 
     return Scaffold(
       backgroundColor: AppTheme.bgColor,
@@ -124,6 +177,74 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // ── VoiTrans 平台 ──────────────────────────────────────────
+          _SectionLabel('VoiTrans 平台'),
+          _SectionCard(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: TextField(
+                  controller: _vtBaseUrlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '服务器地址',
+                    hintText: 'https://your-server.com',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  style: const TextStyle(fontSize: 14, color: AppTheme.text1),
+                  onChanged: (_) => _saveVtConfig(),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: TextField(
+                  controller: _vtAppIdCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'App ID',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  style: const TextStyle(fontSize: 14, color: AppTheme.text1),
+                  onChanged: (_) => _saveVtConfig(),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: TextField(
+                  controller: _vtAppSecretCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'App Secret',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  style: const TextStyle(fontSize: 14, color: AppTheme.text1),
+                  obscureText: true,
+                  onChanged: (_) => _saveVtConfig(),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 40,
+                  child: ElevatedButton.icon(
+                    onPressed: _vtSyncing ? null : _syncAgents,
+                    icon: _vtSyncing
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.sync, size: 18),
+                    label: Text(_vtSyncing ? '同步中...' : '同步 Agent'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
               ),

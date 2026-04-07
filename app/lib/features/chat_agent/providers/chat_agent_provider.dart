@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agents_server/agents_server.dart';
 import 'package:local_db/local_db.dart';
-
 // ─── State ────────────────────────────────────────────────────────────────────
 
 const _sentinel = Object();
@@ -15,13 +14,20 @@ class ChatMessage {
     required this.role,
     required this.content,
     required this.status,
+    this.translatedContent,
+    this.detectedLang,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
   final String id;
   final String role;
   String content;
   String status; // pending | streaming | done | cancelled | error
+  String? translatedContent; // 翻译文本（AST翻译模式：原文在content，译文在此）
+  String? detectedLang;      // 检测到的源语言代码（用于翻译模式对齐）
   final DateTime createdAt;
+
+  /// 是否为翻译配对消息（同时包含原文和译文）
+  bool get isTranslationPair => translatedContent != null;
 }
 
 class ChatAgentState {
@@ -30,6 +36,7 @@ class ChatAgentState {
     this.agentType = 'chat',
     this.sessionId = '',
     this.sessionState = AgentSessionState.idle,
+    this.connectionState = ServiceConnectionState.disconnected,
     this.inputMode = 'text',
     this.messages = const [],
     this.sttPartial = '',
@@ -40,12 +47,16 @@ class ChatAgentState {
     this.ttsServiceName = '',
     this.srcLang = 'zh',
     this.dstLang = 'en',
+    this.srcLangs = const ['zh', 'en'],
+    this.dstLangs = const ['en'],
+    this.logs = const [],
   });
 
   final String agentName;
   final String agentType; // 'chat' | 'translate' | 'sts' | 'ast'
   final String sessionId;
   final AgentSessionState sessionState;
+  final ServiceConnectionState connectionState; // 端到端连接状态
   final String inputMode;
   final List<ChatMessage> messages;
   final String sttPartial;
@@ -54,14 +65,24 @@ class ChatAgentState {
   final String llmServiceName;
   final String sttServiceName;
   final String ttsServiceName;
-  final String srcLang;  // ast 源语言
-  final String dstLang;  // ast 目标语言
+  final String srcLang;  // 当前激活的源语言
+  final String dstLang;  // 当前激活的目标语言
+  final List<String> srcLangs; // Agent 配置支持的源语言列表
+  final List<String> dstLangs; // Agent 配置支持的目标语言列表
+  final List<String> logs;     // 运行日志（启动、连接、事件、错误）
+
+  /// 是否为端到端模式（STS 聊天 / AST 翻译）
+  bool get isEndToEnd => agentType == 'sts' || agentType == 'ast';
+
+  /// 是否为翻译类 Agent（AST 翻译 / translate）
+  bool get isTranslateMode => agentType == 'ast' || agentType == 'translate';
 
   ChatAgentState copyWith({
     String? agentName,
     String? agentType,
     String? sessionId,
     AgentSessionState? sessionState,
+    ServiceConnectionState? connectionState,
     String? inputMode,
     List<ChatMessage>? messages,
     String? sttPartial,
@@ -72,12 +93,16 @@ class ChatAgentState {
     String? ttsServiceName,
     String? srcLang,
     String? dstLang,
+    List<String>? srcLangs,
+    List<String>? dstLangs,
+    List<String>? logs,
   }) =>
       ChatAgentState(
         agentName: agentName ?? this.agentName,
         agentType: agentType ?? this.agentType,
         sessionId: sessionId ?? this.sessionId,
         sessionState: sessionState ?? this.sessionState,
+        connectionState: connectionState ?? this.connectionState,
         inputMode: inputMode ?? this.inputMode,
         messages: messages ?? this.messages,
         sttPartial: sttPartial ?? this.sttPartial,
@@ -90,6 +115,9 @@ class ChatAgentState {
         ttsServiceName: ttsServiceName ?? this.ttsServiceName,
         srcLang: srcLang ?? this.srcLang,
         dstLang: dstLang ?? this.dstLang,
+        srcLangs: srcLangs ?? this.srcLangs,
+        dstLangs: dstLangs ?? this.dstLangs,
+        logs: logs ?? this.logs,
       );
 }
 
@@ -110,38 +138,73 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
   StreamSubscription<AgentEvent>? _eventSub;
   bool _voiceCancelled = false; // 上滑取消标志
 
+  /// Append a timestamped log entry to state and debugPrint
+  void _log(String level, String msg) {
+    final ts = DateTime.now().toString().substring(11, 23); // HH:mm:ss.mmm
+    final entry = '[$ts] $level: $msg';
+    debugPrint('[Agent] $msg');
+    state = state.copyWith(logs: [...state.logs, entry]);
+  }
+
   Future<void> init() async {
+    final initSw = Stopwatch()..start();
+    _log('INFO', 'init start, agentId=$_agentId');
     try {
       // Load agent info
       final agents = await _db.getAllAgents();
       final agent = agents.firstWhere((a) => a.id == _agentId,
           orElse: () => throw Exception('Agent not found'));
       final agentCfg = jsonDecode(agent.configJson) as Map<String, dynamic>;
+      _log('INFO', 'loaded agent: name=${agent.name}, type=${agent.type}');
 
       // Load history messages
       final rows = await _db.getMessages(_agentId, limit: 50);
-      final messages = rows.reversed
-          .map((r) => ChatMessage(
-                id: r.id,
-                role: r.role,
-                content: r.content,
-                status: r.status,
-                createdAt: DateTime.fromMillisecondsSinceEpoch(r.createdAt),
-              ))
-          .toList();
+      final isTranslate = agent.type == 'ast' || agent.type == 'translate';
+      final rawMessages = rows.reversed.toList();
+      final messages = <ChatMessage>[];
+
+      if (isTranslate) {
+        // 翻译类 Agent：配对连续的 user + assistant 消息为双语气泡
+        int i = 0;
+        while (i < rawMessages.length) {
+          final r = rawMessages[i];
+          if (r.role == 'user' && i + 1 < rawMessages.length && rawMessages[i + 1].role == 'assistant') {
+            final trans = rawMessages[i + 1];
+            messages.add(ChatMessage(
+              id: r.id,
+              role: r.role,
+              content: r.content,
+              status: r.status,
+              translatedContent: trans.content,
+              detectedLang: _detectLang(r.content),
+              createdAt: DateTime.fromMillisecondsSinceEpoch(r.createdAt),
+            ));
+            i += 2; // skip the paired assistant message
+          } else {
+            messages.add(ChatMessage(
+              id: r.id,
+              role: r.role,
+              content: r.content,
+              status: r.status,
+              createdAt: DateTime.fromMillisecondsSinceEpoch(r.createdAt),
+            ));
+            i++;
+          }
+        }
+        _log('INFO', 'loaded ${rawMessages.length} rows → ${messages.length} paired messages');
+      } else {
+        for (final r in rawMessages) {
+          messages.add(ChatMessage(
+            id: r.id,
+            role: r.role,
+            content: r.content,
+            status: r.status,
+            createdAt: DateTime.fromMillisecondsSinceEpoch(r.createdAt),
+          ));
+        }
+      }
 
       final sessionId = 'session_$_agentId';
-
-      state = state.copyWith(
-        sessionId: sessionId,
-        messages: messages,
-        agentName: agent.name,
-        agentType: agent.type,
-        // STS agent 默认未连接（text 模式），用户点电话按钮才连接
-        inputMode: 'text',
-        srcLang: agentCfg['srcLang'] as String? ?? 'zh',
-        dstLang: agentCfg['dstLang'] as String? ?? 'en',
-      );
 
       // Listen to Native events (agents_server uses agentId as sessionId)
       _eventSub = _bridge.eventStream
@@ -181,23 +244,60 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
       final sttId = agentCfg['sttServiceId'] as String?;
       final ttsId = agentCfg['ttsServiceId'] as String?;
       final stsId = agentCfg['stsServiceId'] as String?;
-      final agentType = agent.type; // 'chat' | 'translate' | 'sts' | 'ast'
+      final astId = agentCfg['astServiceId'] as String?;
+      final translationId = agentCfg['translationServiceId'] as String?;
+      // Read supported language lists (new format) with fallback to old single values
+      final srcLangsList = (agentCfg['srcLangs'] as List?)?.cast<String>();
+      final dstLangsList = (agentCfg['dstLangs'] as List?)?.cast<String>();
+      final srcLangs = srcLangsList ?? [agentCfg['srcLang'] as String? ?? 'zh'];
+      final dstLangs = dstLangsList ?? [agentCfg['dstLang'] as String? ?? 'en'];
+      // Active language: last used or first supported
+      var srcLang = agentCfg['srcLang'] as String? ?? srcLangs.first;
+      var dstLang = agentCfg['dstLang'] as String? ?? dstLangs.first;
 
-      final srcLang = agentCfg['srcLang'] as String? ?? 'zh';
-      final dstLang = agentCfg['dstLang'] as String? ?? 'en';
+      // ── 确定实际 Agent 类型 ──
+      // translate 类型如果配了 astServiceId，则走 AST 端到端模式
+      String effectiveType = agent.type;
+      if (agent.type == 'translate' && astId != null) {
+        effectiveType = 'ast';
+        _log('INFO', 'translate→ast: astId=$astId');
+      }
 
-      // Build STS/AST config with language params
-      String buildStsConfigJson() {
-        final base = svcCfg(stsId);
-        if (agentType != 'ast' && agentType != 'sts') return base;
+      final isE2E = effectiveType == 'sts' || effectiveType == 'ast';
+
+      // AST 不支持 auto 语言，降级为第一个真实语言
+      if (effectiveType == 'ast' && srcLang == 'auto') {
+        srcLang = srcLangs.firstWhere((l) => l != 'auto', orElse: () => 'zh');
+        _log('INFO', 'AST: srcLang "auto" not supported, fallback to "$srcLang"');
+      }
+
+      // 各类型对应的端到端服务 ID
+      final e2eServiceId = effectiveType == 'ast' ? astId : stsId;
+
+      // Build E2E config with language params
+      String buildE2eConfigJson(String? serviceId) {
+        final base = svcCfg(serviceId);
         final map = jsonDecode(base) as Map<String, dynamic>;
         map['srcLang'] = srcLang;
         map['dstLang'] = dstLang;
         return jsonEncode(map);
       }
 
+      _log('INFO', 'effectiveType=$effectiveType, isE2E=$isE2E, srcLang=$srcLang, dstLang=$dstLang');
+      _log('INFO', 'services: llm=${svcName(llmId)}, stt=${svcName(sttId)}, tts=${svcName(ttsId)}, sts=${svcName(stsId)}, ast=${svcName(astId)}, translation=${svcName(translationId)}');
+
       state = state.copyWith(
-        llmServiceName: svcName(stsId ?? llmId),
+        sessionId: sessionId,
+        messages: messages,
+        agentName: agent.name,
+        agentType: effectiveType,
+        inputMode: isE2E ? 'call' : 'text',
+        connectionState: ServiceConnectionState.disconnected,
+        srcLang: srcLang,
+        dstLang: dstLang,
+        srcLangs: srcLangs,
+        dstLangs: dstLangs,
+        llmServiceName: svcName(e2eServiceId ?? llmId),
         sttServiceName: svcName(sttId),
         ttsServiceName: svcName(ttsId),
       );
@@ -206,29 +306,61 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
       try {
         await _bridge.createAgent(
           agentId: _agentId,
-          agentType: agentType,
-          inputMode: 'text',
+          agentType: effectiveType,
+          inputMode: isE2E ? 'call' : 'text',
           sttVendor: svcVendor(sttId).isNotEmpty ? svcVendor(sttId) : null,
           ttsVendor: svcVendor(ttsId).isNotEmpty ? svcVendor(ttsId) : null,
           llmVendor: svcVendor(llmId).isNotEmpty ? svcVendor(llmId) : null,
-          stsVendor: (agentType == 'sts' && svcVendor(stsId).isNotEmpty)
+          stsVendor: (effectiveType == 'sts' && svcVendor(stsId).isNotEmpty)
               ? svcVendor(stsId) : null,
-          astVendor: (agentType == 'ast' && svcVendor(stsId).isNotEmpty)
-              ? svcVendor(stsId) : null,
-          translationVendor: null, // TODO: add translation service for translate agent
+          astVendor: (effectiveType == 'ast' && svcVendor(astId).isNotEmpty)
+              ? svcVendor(astId) : null,
+          translationVendor: svcVendor(translationId).isNotEmpty ? svcVendor(translationId) : null,
+          translationConfigJson: svcCfg(translationId),
           sttConfigJson: svcCfg(sttId),
           ttsConfigJson: svcCfg(ttsId),
           llmConfigJson: svcCfg(llmId),
-          stsConfigJson: agentType == 'sts' ? buildStsConfigJson() : null,
-          astConfigJson: agentType == 'ast' ? buildStsConfigJson() : null,
-          extraParams: {'srcLang': srcLang, 'dstLang': dstLang},
+          stsConfigJson: effectiveType == 'sts' ? buildE2eConfigJson(stsId) : null,
+          astConfigJson: effectiveType == 'ast' ? buildE2eConfigJson(astId) : null,
+          extraParams: {
+            'srcLang': srcLang,
+            'dstLang': dstLang,
+            'source_lang': srcLang,
+            'target_lang': dstLang,
+          },
         );
-        debugPrint('[Agent] created: agentType=$agentType id=$_agentId');
+        _log('INFO', 'createAgent OK in ${initSw.elapsedMilliseconds}ms: type=$effectiveType (original=${agent.type}) e2eSvc=$e2eServiceId');
+
+        // 端到端 Agent 不再自动连接，由用户手动点击连接
+        if (isE2E) {
+          _log('INFO', 'E2E agent ready, waiting for manual connect');
+        }
       } catch (e) {
-        debugPrint('[Agent] createAgent failed: $e');
+        _log('ERROR', 'createAgent failed: $e');
+        final errMsg = e.toString().replaceFirst('Exception: ', '');
+        final msgs = List<ChatMessage>.from(state.messages)
+          ..add(ChatMessage(
+            id: 'create_err_${DateTime.now().millisecondsSinceEpoch}',
+            role: 'assistant',
+            content: 'Agent 创建失败: $errMsg',
+            status: 'error',
+          ));
+        state = state.copyWith(
+          messages: msgs,
+          connectionState: isE2E ? ServiceConnectionState.error : state.connectionState,
+        );
       }
     } catch (e) {
-      debugPrint('[Agent] init failed: $e');
+      _log('ERROR', 'init failed: $e');
+      final errMsg = e.toString().replaceFirst('Exception: ', '');
+      final msgs = List<ChatMessage>.from(state.messages)
+        ..add(ChatMessage(
+          id: 'init_err_${DateTime.now().millisecondsSinceEpoch}',
+          role: 'assistant',
+          content: '初始化失败: $errMsg',
+          status: 'error',
+        ));
+      state = state.copyWith(messages: msgs);
     }
   }
 
@@ -236,24 +368,63 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
     switch (event) {
       // 使用 `state: agentState` 把字段重命名，避免遮蔽 StateNotifier.state
       case SessionStateEvent(state: final agentState):
+        _log('EVENT', 'sessionState → $agentState');
         state = state.copyWith(sessionState: agentState);
 
       case SttEvent(:final kind, :final text):
         if (kind == SttEventKind.partialResult) {
-          // 只更新按钮上方的实时预览文字，气泡保持等待动画不变
-          state = state.copyWith(sttPartial: text ?? '');
+          if (state.isEndToEnd && state.inputMode == 'call' && (text ?? '').isNotEmpty) {
+            // 端到端 call 模式：实时更新用户气泡（流式显示识别文字）
+            final msgs = List<ChatMessage>.from(state.messages);
+            final existingIdx = msgs.lastIndexWhere(
+                (m) => m.role == 'user' && m.status == 'streaming');
+            if (existingIdx != -1) {
+              msgs[existingIdx].content = text!;
+            } else {
+              final msgId = state.isTranslateMode
+                  ? 'ast_src_${DateTime.now().millisecondsSinceEpoch}'
+                  : 'sts_user_${DateTime.now().millisecondsSinceEpoch}';
+              msgs.add(ChatMessage(
+                id: msgId,
+                role: 'user',
+                content: text!,
+                status: 'streaming',
+                detectedLang: state.isTranslateMode ? _detectLang(text) : null,
+              ));
+            }
+            state = state.copyWith(messages: msgs, sttPartial: text ?? '');
+          } else {
+            // 非端到端：只更新预览文字
+            state = state.copyWith(sttPartial: text ?? '');
+          }
         } else if (kind == SttEventKind.finalResult) {
-          // STS 模式：直接显示用户识别文字（不等 listeningStopped，因为 STS 不会发）
-          if ((state.agentType == 'sts' || state.agentType == 'ast') &&
+          // 端到端模式：定稿用户识别文字
+          if (state.isEndToEnd &&
               state.inputMode == 'call' &&
               (text ?? '').isNotEmpty) {
-            final msgs = List<ChatMessage>.from(state.messages)
-              ..add(ChatMessage(
-                id: 'sts_user_${DateTime.now().millisecondsSinceEpoch}',
+            final msgs = List<ChatMessage>.from(state.messages);
+            // 找到正在 streaming 的 user 气泡，标记为 done
+            final existingIdx = msgs.lastIndexWhere(
+                (m) => m.role == 'user' && m.status == 'streaming');
+            if (existingIdx != -1) {
+              msgs[existingIdx].content = text!;
+              msgs[existingIdx].status = 'done';
+              if (state.isTranslateMode) {
+                msgs[existingIdx].detectedLang = _detectLang(text);
+              }
+            } else {
+              final msgId = state.isTranslateMode
+                  ? 'ast_src_${DateTime.now().millisecondsSinceEpoch}'
+                  : 'sts_user_${DateTime.now().millisecondsSinceEpoch}';
+              msgs.add(ChatMessage(
+                id: msgId,
                 role: 'user',
                 content: text!,
                 status: 'done',
+                detectedLang: state.isTranslateMode ? _detectLang(text) : null,
               ));
+            }
+            _log('EVENT', 'STT finalResult → user msg: "${text!.substring(0, text.length.clamp(0, 40))}"');
             state = state.copyWith(messages: msgs, sttPartial: '');
           } else {
             // 非 STS 模式：暂存最终识别文本，松开时再发送
@@ -302,14 +473,32 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
         }
 
         if (kind == LlmEventKind.firstToken && textDelta != null) {
-          if (idx == -1) {
+          if (state.isTranslateMode && state.isEndToEnd) {
+            // AST 翻译模式：译文写入最近一条 user 消息的 translatedContent
+            final userIdx = msgs.lastIndexWhere(
+              (m) => m.role == 'user' && m.detectedLang != null);
+            if (userIdx != -1) {
+              msgs[userIdx].translatedContent = textDelta;
+              _log('EVENT', 'LLM firstToken → paired translation: "${textDelta.substring(0, textDelta.length.clamp(0, 30))}"');
+            }
+          } else if (idx == -1) {
             msgs.add(ChatMessage(id: requestId, role: 'assistant', content: textDelta, status: 'streaming'));
+          } else if (state.isEndToEnd) {
+            // STS 端到端模式：服务端发送累积的完整文本，直接覆盖
+            msgs[idx].content = textDelta;
+            msgs[idx].status = 'streaming';
           } else {
+            // 三段式模式：LLM 流式输出 delta，追加
             msgs[idx].content += textDelta;
             msgs[idx].status = 'streaming';
           }
         } else if (kind == LlmEventKind.done) {
-          if (idx != -1) msgs[idx].status = 'done';
+          if (state.isTranslateMode && state.isEndToEnd) {
+            // AST 翻译模式：done 只是标记翻译完成，不需要额外处理
+            _log('EVENT', 'LLM done → translation round complete');
+          } else if (idx != -1) {
+            msgs[idx].status = 'done';
+          }
         } else if (kind == LlmEventKind.cancelled) {
           if (idx != -1) msgs[idx].status = 'cancelled';
         } else if (kind == LlmEventKind.error) {
@@ -317,9 +506,68 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
         }
         state = state.copyWith(messages: msgs);
 
+      case ServiceConnectionStateEvent(:final connectionState, :final errorMessage):
+        _log(connectionState == ServiceConnectionState.error ? 'ERROR' : 'EVENT',
+            'connectionState → $connectionState${errorMessage != null ? ' ($errorMessage)' : ''}');
+        state = state.copyWith(connectionState: connectionState);
+        if (connectionState == ServiceConnectionState.error && errorMessage != null) {
+          final msgs = List<ChatMessage>.from(state.messages)
+            ..add(ChatMessage(
+              id: 'conn_err_${DateTime.now().millisecondsSinceEpoch}',
+              role: 'assistant',
+              content: '连接失败: $errorMessage',
+              status: 'error',
+            ));
+          state = state.copyWith(messages: msgs);
+        }
+
+      case AgentErrorEvent(:final errorCode, :final message):
+        _log('ERROR', 'AgentError: [$errorCode] $message');
+        final msgs = List<ChatMessage>.from(state.messages)
+          ..add(ChatMessage(
+            id: 'err_${DateTime.now().millisecondsSinceEpoch}',
+            role: 'assistant',
+            content: '[$errorCode] $message',
+            status: 'error',
+          ));
+        state = state.copyWith(messages: msgs);
+
       default:
         break;
     }
+  }
+
+  // ─── 端到端连接控制 ──────────────────────────────────────────────────────
+
+  Future<void> connectService() async {
+    if (!state.isEndToEnd) return;
+    state = state.copyWith(connectionState: ServiceConnectionState.connecting);
+    try {
+      await _bridge.connectService(_agentId);
+    } catch (e) {
+      _log('ERROR', 'connectService failed: $e');
+      state = state.copyWith(connectionState: ServiceConnectionState.error);
+    }
+  }
+
+  Future<void> disconnectService() async {
+    if (!state.isEndToEnd) return;
+    await _bridge.disconnectService(_agentId);
+    state = state.copyWith(connectionState: ServiceConnectionState.disconnected);
+  }
+
+  /// 暂停音频传输（端到端挂断时调用），切到 short_voice 模式
+  Future<void> pauseAudio() async {
+    if (!state.isEndToEnd) return;
+    await _bridge.pauseAudio(_agentId);
+    state = state.copyWith(inputMode: 'short_voice');
+  }
+
+  /// 恢复音频传输（端到端恢复通话时调用），切到 call 模式
+  Future<void> resumeAudio() async {
+    if (!state.isEndToEnd) return;
+    await _bridge.resumeAudio(_agentId);
+    state = state.copyWith(inputMode: 'call');
   }
 
   Future<void> sendText(String requestId, String text) async {
@@ -331,6 +579,20 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
   }
 
   Future<void> setInputMode(String mode) async {
+    // 端到端模式禁止切到 text
+    if (state.isEndToEnd && mode == 'text') return;
+
+    // 端到端模式切换：call ↔ short_voice 需要控制音频流
+    if (state.isEndToEnd) {
+      if (state.inputMode == 'call' && mode == 'short_voice') {
+        // 挂断：暂停持续音频流
+        await _bridge.pauseAudio(_agentId);
+      } else if (state.inputMode == 'short_voice' && mode == 'call') {
+        // 恢复通话：恢复持续音频流
+        await _bridge.resumeAudio(_agentId);
+      }
+    }
+
     state = state.copyWith(inputMode: mode);
     await _bridge.setInputMode(_agentId, mode);
   }
@@ -374,6 +636,12 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
     await _persistLanguages(dst, src);
   }
 
+  /// 设置会话语言（STS 聊天模式：同时设置 src 和 dst）
+  Future<void> setConversationLang(String lang) async {
+    state = state.copyWith(srcLang: lang, dstLang: lang);
+    await _persistLanguages(lang, lang);
+  }
+
   Future<void> setSrcLang(String lang) async {
     state = state.copyWith(srcLang: lang);
     await _persistLanguages(lang, state.dstLang);
@@ -382,6 +650,13 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
   Future<void> setDstLang(String lang) async {
     state = state.copyWith(dstLang: lang);
     await _persistLanguages(state.srcLang, lang);
+  }
+
+  /// 通过 CJK 字符占比检测文本语言
+  static String _detectLang(String text) {
+    final cjk = text.runes.where((c) => c >= 0x4e00 && c <= 0x9fff).length;
+    final total = text.runes.where((c) => c > 0x20).length;
+    return (total == 0 || cjk / total > 0.3) ? 'zh' : 'en';
   }
 
   Future<void> _persistLanguages(String src, String dst) async {

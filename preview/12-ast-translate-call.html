@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AST 翻译(端到端) — 通话中 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/></symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/></symbol>
+</svg>
+<a href="index.html" class="back-link">&#8249; 返回总览</a>
+<div class="page-header"><h1>AST 翻译(端到端) — 通话中</h1><p>语言栏独立行 + 顶栏连接状态 + call 模式</p></div>
+<div class="phone-frame"><div class="phone-shell"><div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+
+          <div class="agent-top-bar">
+            <div style="font-size:20px;cursor:pointer;color:var(--text-2);">&#8249;</div>
+            <div class="agent-avatar" style="background:linear-gradient(135deg,var(--translate-type),#38BDF8);">🌐</div>
+            <div class="agent-top-info">
+              <div class="agent-top-name">实时翻译</div>
+              <div class="agent-top-status">通话中</div>
+            </div>
+            <!-- 连接状态（在菜单左边） -->
+            <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:#ECFDF5;border-radius:10px;font-size:10px;font-weight:700;color:#065F46;margin-right:6px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:#10B981;"></span>已连接
+            </div>
+            <div class="icon-btn">&#8943;</div>
+          </div>
+
+          <!-- 服务标签栏 -->
+          <div class="service-chips">
+            <div class="s-chip" style="background:#FFF7ED;color:#9A3412;border:1px solid rgba(249,115,22,0.3);"><div style="width:5px;height:5px;border-radius:50%;background:#9A3412;"></div>火山 AST</div>
+          </div>
+
+          <!-- 语言悬浮卡片（仅显示 Agent 配置中支持的语言） -->
+          <div style="padding:6px 14px 6px;flex-shrink:0;">
+            <div style="background:white;border-radius:16px;padding:10px 14px;box-shadow:0 4px 20px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04);display:flex;align-items:center;gap:0;">
+              <div style="flex:1;text-align:center;">
+                <div style="font-size:9px;color:var(--text-2);margin-bottom:2px;">来源语言</div>
+                <div style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer;">English ▾</div>
+                <div style="font-size:8px;color:var(--text-2);margin-top:1px;">English / 中文</div>
+              </div>
+              <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--translate-type),#38BDF8);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:white;box-shadow:0 2px 8px rgba(14,165,233,0.3);flex-shrink:0;">⇄</div>
+              <div style="flex:1;text-align:center;">
+                <div style="font-size:9px;color:var(--text-2);margin-bottom:2px;">目标语言</div>
+                <div style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer;">中文 ▾</div>
+                <div style="font-size:8px;color:var(--text-2);margin-top:1px;">中文 / English</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="chat-area">
+            <!-- 英文输入 → 左侧 -->
+            <div style="align-self:flex-start;max-width:85%;display:flex;flex-direction:column;align-items:flex-start;gap:3px;">
+              <div style="font-size:10px;color:var(--text-2);">English · 09:40</div>
+              <div style="background:white;border-radius:16px 16px 16px 4px;padding:10px 13px;box-shadow:0 2px 8px rgba(0,0,0,0.06);display:flex;flex-direction:column;gap:6px;">
+                <div style="font-size:13px;color:var(--text);line-height:1.5;">Artificial intelligence is transforming how we work.</div>
+                <div style="height:1px;background:var(--border);"></div>
+                <div style="font-size:12px;color:var(--translate-type);line-height:1.5;">人工智能正在改变我们的工作方式。</div>
+              </div>
+            </div>
+
+            <!-- 中文输入 → 右侧 -->
+            <div style="align-self:flex-end;max-width:85%;display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+              <div style="font-size:10px;color:var(--text-2);">中文 · 09:40</div>
+              <div style="background:var(--primary);border-radius:16px 16px 4px 16px;padding:10px 13px;display:flex;flex-direction:column;gap:6px;">
+                <div style="font-size:13px;color:white;line-height:1.5;">这项技术发展得很快。</div>
+                <div style="height:1px;background:rgba(255,255,255,0.25);"></div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.85);line-height:1.5;font-style:italic;">This technology is developing very fast.</div>
+              </div>
+            </div>
+
+            <!-- 英文输入 → 左侧（streaming） -->
+            <div style="align-self:flex-start;max-width:85%;display:flex;flex-direction:column;align-items:flex-start;gap:3px;">
+              <div style="font-size:10px;color:var(--text-2);">English · 09:41</div>
+              <div style="background:white;border-radius:16px 16px 16px 4px;padding:10px 13px;box-shadow:0 2px 8px rgba(0,0,0,0.06);display:flex;flex-direction:column;gap:6px;">
+                <div style="font-size:13px;color:var(--text);line-height:1.5;">Many companies are adopting AI tools.</div>
+                <div style="height:1px;background:var(--border);"></div>
+                <div style="font-size:12px;color:var(--translate-type);line-height:1.5;display:flex;align-items:center;gap:2px;">许多公司正在采用 AI 工具。<span style="width:5px;height:12px;background:var(--translate-type);border-radius:1px;animation:blink 1s infinite;flex-shrink:0;"></span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tts-strip">
+            <div class="wave">
+              <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+              <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+              <span style="background:#16A34A;"></span>
+            </div>
+            <span style="font-size:11px;font-weight:600;color:#16A34A;flex:1;">正在朗读译文...</span>
+            <div class="interrupt-btn" style="background:#FFF1F0;color:#CF1322;border:1px solid #FFA39E;">&#10005; 打断</div>
+          </div>
+
+          <div class="call-bar">
+            <div class="call-dot"></div>
+            <div class="call-info">
+              <div class="call-label">通话中</div>
+              <div class="call-timer">03:42</div>
+            </div>
+            <div style="width:40px;height:40px;border-radius:50%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;">🎤</div>
+            <div class="hangup-btn">📞</div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+</div></div></div>
+</body></html>

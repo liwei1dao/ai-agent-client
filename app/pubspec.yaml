@@ -68,6 +68,10 @@ dependencies:
     path: local_plugins/sts_doubao
   ast_volcengine:
     path: local_plugins/ast_volcengine
+  sts_voitrans:
+    path: local_plugins/sts_voitrans
+  ast_voitrans:
+    path: local_plugins/ast_voitrans
   translation_deepl:
     path: local_plugins/translation_deepl
   translation_aliyun:
@@ -76,6 +80,7 @@ dependencies:
   # Data layer
   local_db:
     path: local_plugins/local_db
+  file_picker: ^10.3.10
 
 dev_dependencies:
   flutter_test:

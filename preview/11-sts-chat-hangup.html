@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STS 聊天 — 挂断后 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/></symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/></symbol>
+</svg>
+<a href="index.html" class="back-link">&#8249; 返回总览</a>
+<div class="page-header"><h1>STS 聊天 — 挂断后</h1><p>切到短语音 · 按住才传音频 · 连接不断</p></div>
+<div class="phone-frame"><div class="phone-shell"><div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+
+          <div class="agent-top-bar">
+            <div style="font-size:20px;cursor:pointer;color:var(--text-2);">&#8249;</div>
+            <div class="agent-avatar">🤖</div>
+            <div class="agent-top-info">
+              <div class="agent-top-name">语音助手</div>
+              <div class="agent-top-status">在线</div>
+            </div>
+            <!-- 连接状态保持（挂断不断连接） -->
+            <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:#ECFDF5;border-radius:10px;font-size:10px;font-weight:700;color:#065F46;margin-right:6px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:#10B981;"></span>已连接
+            </div>
+            <div class="icon-btn">&#8943;</div>
+          </div>
+
+          <div class="service-chips">
+            <div class="s-chip llm"><div class="dot"></div>豆包 STS</div>
+          </div>
+
+          <div class="chat-area">
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar">🤖</div> 语音助手</div>
+              <div class="bubble ai">你好！我是语音助手。</div>
+              <div class="msg-time">09:40</div>
+            </div>
+            <div class="msg user">
+              <div class="msg-sender">你（语音）</div>
+              <div class="bubble user">今天天气怎么样？</div>
+              <div class="msg-time">09:41</div>
+            </div>
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar">🤖</div> 语音助手</div>
+              <div class="bubble ai">今天天气不错，阳光明媚。</div>
+              <div class="msg-time">09:41</div>
+            </div>
+          </div>
+
+          <!-- 短语音模式：无文本切换，右侧恢复通话 -->
+          <div class="mm-bar">
+            <div style="width:38px;"></div>
+            <div class="mm-voice-center">
+              🎤 按住说话
+            </div>
+            <!-- 右侧：恢复通话按钮(绿色电话图标) -->
+            <div class="mm-side" style="border-color:#10B981;color:#10B981;">📞</div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+</div></div></div>
+</body></html>

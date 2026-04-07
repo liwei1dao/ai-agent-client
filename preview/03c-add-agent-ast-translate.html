@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>添加 Agent — AST-Translate 端到端翻译 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+
+<!-- SVG icon defs -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4" y="8" width="16" height="11" rx="3"/>
+    <circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/>
+    <path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/>
+  </symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+    <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+    <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+    <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+  </symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/>
+  </symbol>
+</svg>
+
+<a href="index.html" class="back-link">&#8249; 返回总览</a>
+
+<div class="page-header">
+  <h1>添加 Agent — AST-Translate</h1>
+  <p>端到端翻译 · 单一 AST 服务 + 语言支持</p>
+</div>
+
+<div class="phone-frame">
+  <div class="phone-shell">
+    <div class="phone-screen">
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <div class="status-icons">📶 🔋</div>
+          </div>
+          <div style="flex:1;background:var(--bg);filter:brightness(0.7);"></div>
+          <div class="bottom-nav" style="filter:brightness(0.7);">
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+          <div class="modal-overlay">
+            <div class="modal-sheet">
+              <div class="modal-handle"></div>
+              <div class="modal-title">添加 Agent</div>
+              <div class="modal-body">
+
+                <div>
+                  <div class="form-label">Agent 名称</div>
+                  <div class="form-input active">实时翻译</div>
+                </div>
+
+                <div>
+                  <div class="form-label">Agent 类型</div>
+                  <div class="type-selector">
+                    <div class="type-btn">💬 Chat<span class="type-hint">三段式 · 聊天</span></div>
+                    <div class="type-btn">🌐 Translate<span class="type-hint">三段式 · 翻译</span></div>
+                    <div class="type-btn">🗣️ STS-Chat<span class="type-hint">端到端 · 聊天</span></div>
+                    <div class="type-btn selected ast-translate">🔄 AST-Translate<span class="type-hint">端到端 · 翻译</span></div>
+                  </div>
+                </div>
+
+                <!-- 端到端提示：只需一个服务 -->
+                <div style="padding:8px 12px;background:#F0FDFA;border-radius:10px;border:1.5px solid #99F6E4;display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:14px;">⚡</span>
+                  <span style="font-size:11px;color:#0F766E;line-height:1.4;">端到端模式：语音识别、翻译、语音合成由单一 AST 服务完成，无需分别配置 STT、翻译、TTS。</span>
+                </div>
+
+                <div>
+                  <div class="form-label">AST 服务 *</div>
+                  <div class="service-select">
+                    <div class="selected-service">
+                      <div class="service-dot configured"></div>
+                      <span>火山 AST</span>
+                    </div>
+                    <span style="color:var(--text-2);font-size:12px;">▾</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">来源语言支持</div>
+                  <div style="padding:10px 12px;background:var(--bg);border-radius:10px;border:1.5px solid var(--border);">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <div style="padding:4px 10px;border-radius:14px;background:#14B8A6;color:white;font-size:11px;font-weight:600;">中文 (ZH)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:#14B8A6;color:white;font-size:11px;font-weight:600;">英语 (EN)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:#14B8A6;color:white;font-size:11px;font-weight:600;">日语 (JA)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">韩语 (KO)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">法语 (FR)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">德语 (DE)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">西班牙语 (ES)</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">目标语言支持</div>
+                  <div style="padding:10px 12px;background:var(--bg);border-radius:10px;border:1.5px solid var(--border);">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <div style="padding:4px 10px;border-radius:14px;background:#14B8A6;color:white;font-size:11px;font-weight:600;">中文 (ZH)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:#14B8A6;color:white;font-size:11px;font-weight:600;">英语 (EN)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:#14B8A6;color:white;font-size:11px;font-weight:600;">日语 (JA)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">韩语 (KO)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">法语 (FR)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">德语 (DE)</div>
+                      <div style="padding:4px 10px;border-radius:14px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">西班牙语 (ES)</div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+              <div class="modal-footer">
+                <div class="modal-btn cancel">取消</div>
+                <div class="modal-btn primary" style="background:#14B8A6;box-shadow:0 4px 14px rgba(20,184,166,0.4);">创建 Agent</div>
+              </div>
+            </div>
+          </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

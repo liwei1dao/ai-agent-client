@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>全局设置 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/></symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/></symbol>
+</svg>
+<a href="index.html" class="back-link">‹ 返回总览</a>
+<div class="page-header"><h1>全局设置</h1><p>通用参数 · 后台服务 · 关于</p></div>
+<div class="phone-frame"><div class="phone-shell"><div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <div class="top-bar">
+            <div><div class="title">设置</div><div class="subtitle">全局参数配置</div></div>
+          </div>
+
+          <div class="settings-body">
+
+            <!-- 外观 -->
+            <div class="settings-section">
+              <div class="settings-section-title">🎨 外观</div>
+              <div class="settings-row">
+                <span class="settings-label">主题</span>
+                <div style="display:flex;gap:4px;">
+                  <div style="background:#6C63FF;color:#fff;border-radius:5px;padding:4px 8px;font-size:11px;">浅色</div>
+                  <div style="background:#F3F4F6;color:#6B7280;border-radius:5px;padding:4px 8px;font-size:11px;">深色</div>
+                  <div style="background:#F3F4F6;color:#6B7280;border-radius:5px;padding:4px 8px;font-size:11px;">跟随系统</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 后台服务 -->
+            <div class="settings-section">
+              <div class="section-title">🔧 后台服务</div>
+              <div class="setting-row">
+                <div class="setting-label">🟢 服务状态</div>
+                <div class="setting-value" style="color:var(--success);font-weight:700;">运行中</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🔋 电池优化排除</div>
+                <div class="toggle"></div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🔄 开机自启</div>
+                <div class="toggle off"></div>
+              </div>
+            </div>
+
+            <!-- 对话通用设置 -->
+            <div class="settings-section">
+              <div class="section-title">💬 对话通用</div>
+              <div class="setting-row">
+                <div class="setting-label">📜 最大历史消息数</div>
+                <div class="setting-value">20 条 ›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🌡 默认 Temperature</div>
+                <div class="setting-value">0.7 ›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🔢 默认 Max Tokens</div>
+                <div class="setting-value">2048 ›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">💬 Markdown 渲染</div>
+                <div class="toggle"></div>
+              </div>
+            </div>
+
+            <!-- 语音通用设置 -->
+            <div class="settings-section">
+              <div class="section-title">🎙 语音通用</div>
+              <div class="setting-row">
+                <div class="setting-label">📡 STT 采样率</div>
+                <div class="setting-value">16000 Hz ›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🔊 TTS 语速</div>
+                <div class="setting-value">1.0x ›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🎚 TTS 音调</div>
+                <div class="setting-value">1.0x ›</div>
+              </div>
+            </div>
+
+            <!-- 关于 -->
+            <div class="settings-section">
+              <div class="section-title">ℹ️ 关于</div>
+              <div class="setting-row">
+                <div class="setting-label">版本</div>
+                <div class="setting-value">v1.0.0</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">📂 查看日志</div>
+                <div class="setting-value">›</div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-label">🗑 清除所有数据</div>
+                <div class="setting-value" style="color:var(--danger);">›</div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label">Agents</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label" style="color:var(--primary);">设置</div><div class="nav-dot"></div></div>
+          </div>
+</div></div></div>
+</body></html>

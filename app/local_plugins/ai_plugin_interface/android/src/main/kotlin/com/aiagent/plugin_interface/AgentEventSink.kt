@@ -12,4 +12,7 @@ interface AgentEventSink {
     fun onTtsEvent(event: TtsEventData)
     fun onStateChanged(sessionId: String, state: String, requestId: String?)
     fun onError(sessionId: String, errorCode: String, message: String, requestId: String?)
+
+    /** 端到端连接状态变化（disconnected / connecting / connected / error） */
+    fun onConnectionStateChanged(sessionId: String, state: String, errorMessage: String? = null)
 }

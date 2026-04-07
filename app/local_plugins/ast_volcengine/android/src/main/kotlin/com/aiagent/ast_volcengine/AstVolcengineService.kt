@@ -90,6 +90,10 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
     @Volatile private var dstLang: String = "en"
     @Volatile private var isBidirectional = false
 
+    // 字幕文本累积器（服务端发送增量片段，需要累积为完整文本）
+    private val srcSubtitleAccum = StringBuilder()
+    private val transSubtitleAccum = StringBuilder()
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pumpJob: Job? = null
     private var wsReady        = CompletableDeferred<Unit>()
@@ -128,6 +132,8 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                 isRunning = true
                 remoteSessionId = UUID.randomUUID().toString()
                 connectId = UUID.randomUUID().toString()
+                srcSubtitleAccum.clear()
+                transSubtitleAccum.clear()
                 isBidirectional = setOf(srcLang, dstLang) == setOf("zh", "en")
 
                 Log.d(TAG, "connect(): appKey=$appKey resourceId=$resourceId srcLang=$srcLang dstLang=$dstLang")
@@ -427,15 +433,17 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
 
             EVT_SRC_SUBTITLE_START -> {
                 Log.d(TAG, "SourceSubtitleStart")
+                srcSubtitleAccum.clear()
                 if (audioData.isNotEmpty()) writeAudio(audioData)
             }
 
             EVT_SRC_SUBTITLE -> {
-                // Final source-language subtitle (user utterance complete)
+                // 源语言字幕（增量片段，需要累积）
                 if (text.isNotBlank()) {
-                    Log.d(TAG, "SourceSubtitle text=\"$text\"")
-                    callback?.onSourceSubtitle(text)
-                    callback?.onSpeechStart()
+                    srcSubtitleAccum.append(text)
+                    val accumulated = srcSubtitleAccum.toString()
+                    Log.d(TAG, "SourceSubtitle text=\"$accumulated\"")
+                    callback?.onSourceSubtitle(accumulated)
                     callback?.onStateChanged("llm")
                 }
                 if (audioData.isNotEmpty()) writeAudio(audioData)
@@ -443,18 +451,23 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
 
             EVT_SRC_SUBTITLE_END -> {
                 Log.d(TAG, "SourceSubtitleEnd")
+                // 源语言字幕完成 → 结束上一轮翻译、发送用户消息、重置翻译状态
+                callback?.onSpeechStart()
             }
 
             EVT_TRANS_SUBTITLE_START -> {
                 Log.d(TAG, "TranslationSubtitleStart")
+                transSubtitleAccum.clear()
                 if (audioData.isNotEmpty()) writeAudio(audioData)
             }
 
             EVT_TRANS_SUBTITLE -> {
-                // Translated subtitle + TTS audio data
+                // 翻译字幕（增量片段，需要累积）+ TTS 音频数据
                 if (text.isNotBlank()) {
-                    Log.d(TAG, "TranslationSubtitle text=\"$text\"")
-                    callback?.onTranslatedSubtitle(text)
+                    transSubtitleAccum.append(text)
+                    val accumulated = transSubtitleAccum.toString()
+                    Log.d(TAG, "TranslationSubtitle text=\"$accumulated\"")
+                    callback?.onTranslatedSubtitle(accumulated)
                     callback?.onStateChanged("playing")
                 }
                 if (audioData.isNotEmpty()) {

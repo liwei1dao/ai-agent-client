@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 面板 (首页) — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+
+<!-- SVG icon defs -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4" y="8" width="16" height="11" rx="3"/>
+    <circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/>
+    <path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/>
+  </symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+    <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+    <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+    <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+  </symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/>
+  </symbol>
+</svg>
+
+<a href="index.html" class="back-link">&#8249; 返回总览</a>
+
+<div class="page-header">
+  <h1>Agent 面板 (首页)</h1>
+  <p>展示所有已配置的 Agent</p>
+</div>
+
+<div class="phone-frame">
+  <div class="phone-shell">
+    <div class="phone-screen">
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <div class="status-icons">📶 🔋</div>
+          </div>
+          <div class="top-bar">
+            <div>
+              <div class="title">我的 Agents</div>
+              <div class="subtitle">3 个 Agent · 后台运行中 🟢</div>
+            </div>
+            <div class="icon-btn">⚙️</div>
+          </div>
+
+          <div class="agents-body">
+            <div class="agents-grid">
+
+              <div class="agent-card chat-type">
+                <div class="agent-card-top">
+                  <div class="agent-info">
+                    <div class="agent-name">🤖 通用助手</div>
+                    <div class="agent-meta">创建于 3 天前</div>
+                  </div>
+                  <span class="badge chat">聊天</span>
+                </div>
+                <div class="agent-services">
+                  <span class="badge llm">GPT-4o</span>
+                  <span class="badge stt">Azure STT</span>
+                  <span class="badge tts">Azure TTS 晓晓</span>
+                </div>
+                <div class="agent-card-bottom">
+                  <span class="last-used">今天 09:41</span>
+                  <div class="open-btn">打开 →</div>
+                </div>
+              </div>
+
+              <!-- 左滑删除效果示例 -->
+              <div style="position:relative;overflow:hidden;border-radius:16px;margin-bottom:0;">
+                <!-- 删除按钮（底层） -->
+                <div style="position:absolute;right:0;top:0;bottom:0;width:80px;background:#EF4444;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;border-radius:0 16px 16px 0;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                  <span style="font-size:11px;font-weight:700;color:white;">删除</span>
+                </div>
+                <!-- 卡片（上层，左移80px） -->
+                <div class="agent-card chat-type" style="margin-bottom:0;transform:translateX(-80px);position:relative;z-index:1;">
+                  <div class="agent-card-top">
+                    <div class="agent-info">
+                      <div class="agent-name">💻 代码助手</div>
+                      <div class="agent-meta">创建于 1 天前</div>
+                    </div>
+                    <span class="badge chat">聊天</span>
+                  </div>
+                  <div class="agent-services">
+                    <span class="badge llm">Claude Sonnet</span>
+                    <span class="badge tts">Azure TTS 云希</span>
+                  </div>
+                  <div class="agent-card-bottom">
+                    <span class="last-used">昨天 16:20</span>
+                    <div class="open-btn">打开 →</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="agent-card translate-type">
+                <div class="agent-card-top">
+                  <div class="agent-info">
+                    <div class="agent-name">🌐 中英翻译</div>
+                    <div class="agent-meta">创建于 2 天前</div>
+                  </div>
+                  <span class="badge translate">翻译</span>
+                </div>
+                <div class="agent-services">
+                  <span class="badge trans">DeepL</span>
+                  <span class="badge stt">Azure STT</span>
+                  <span class="badge tts">Azure TTS</span>
+                </div>
+                <div class="agent-card-bottom">
+                  <span class="last-used">今天 08:15</span>
+                  <div class="open-btn" style="background:var(--translate-type)">打开 →</div>
+                </div>
+              </div>
+
+              <div style="background:var(--surface);border-radius:16px;padding:14px;box-shadow:0 2px 12px rgba(0,0,0,0.06);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:130px;border:2px dashed var(--border);">
+                <div style="font-size:28px;">+</div>
+                <div style="font-size:12px;color:var(--text-2);text-align:center;">添加新 Agent</div>
+              </div>
+
+            </div>
+            <div class="fab">+</div>
+          </div>
+
+          <div class="bottom-nav">
+            <div class="nav-item active">
+              <div class="nav-icon"><svg><use href="#ic-agents"/></svg></div>
+              <div class="nav-label" style="color:var(--primary);">Agents</div>
+              <div class="nav-dot"></div>
+            </div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

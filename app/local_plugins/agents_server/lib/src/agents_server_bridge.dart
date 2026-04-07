@@ -107,6 +107,22 @@ class AgentsServerBridge {
   Future<void> interrupt(String agentId) =>
       _commandChannel.invokeMethod('interrupt', {'agentId': agentId});
 
+  /// 暂停音频传输（端到端模式：挂断/push-to-talk 松开）
+  Future<void> pauseAudio(String agentId) =>
+      _commandChannel.invokeMethod('pauseAudio', {'agentId': agentId});
+
+  /// 恢复音频传输（端到端模式：恢复通话/push-to-talk 按住）
+  Future<void> resumeAudio(String agentId) =>
+      _commandChannel.invokeMethod('resumeAudio', {'agentId': agentId});
+
+  /// 连接端到端服务（STS/AST WebSocket）
+  Future<void> connectService(String agentId) =>
+      _commandChannel.invokeMethod('connectService', {'agentId': agentId});
+
+  /// 断开端到端服务
+  Future<void> disconnectService(String agentId) =>
+      _commandChannel.invokeMethod('disconnectService', {'agentId': agentId});
+
   /// 通知 App 前后台状态
   Future<void> notifyAppForeground(bool isForeground) =>
       _commandChannel.invokeMethod('notifyAppForeground', {

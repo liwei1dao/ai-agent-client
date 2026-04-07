@@ -47,6 +47,10 @@ class AstTranslateAgentSession : NativeAgent {
     /** 暂存最新源语言字幕文本，等 onSpeechStart 时再作为 finalResult 发出 */
     @Volatile private var pendingSourceText: String = ""
 
+    /** 当前翻译轮次的 requestId，同一轮用相同 ID 合并气泡 */
+    @Volatile private var currentTranslationId: String? = null
+    @Volatile private var currentTranslationText: String = ""
+
     // ─────────────────────────────────────────────────
     // NativeAgent 接口实现
     // ─────────────────────────────────────────────────
@@ -130,6 +134,8 @@ class AstTranslateAgentSession : NativeAgent {
     private val astCallback = object : AstCallback {
         override fun onConnected() {
             transitionTo(State.CONNECTED)
+            // 通知 Dart 层连接成功
+            eventSink.onConnectionStateChanged(config.agentId, "connected")
             Log.d(TAG, "WebSocket connected, inputMode=$inputMode")
             // 如果用户已切换到 call 模式但连接还没好，现在自动启动音频
             if (inputMode == "call") {
@@ -145,28 +151,16 @@ class AstTranslateAgentSession : NativeAgent {
         }
 
         override fun onTranslatedSubtitle(text: String) {
-            // 翻译后字幕 → 先发 firstToken 让 UI 创建气泡，再发 done 完成
-            val reqId = UUID.randomUUID().toString()
+            // 翻译后字幕 → 同一轮用相同 requestId 合并到一个气泡
+            val reqId = currentTranslationId ?: UUID.randomUUID().toString().also {
+                currentTranslationId = it
+            }
+
+            // 累积完整翻译文本（服务端可能分多次发送同一句的不同部分）
+            currentTranslationText = text
+
             eventSink.onLlmEvent(LlmEventData(
                 config.agentId, requestId = reqId, kind = "firstToken", textDelta = text))
-            eventSink.onLlmEvent(LlmEventData(
-                config.agentId, requestId = reqId, kind = "done", fullText = text))
-
-            // 写入助手消息到 DB
-            scope.launch {
-                runCatching {
-                    val now = System.currentTimeMillis()
-                    db.messageDao().insert(MessageEntity(
-                        id = reqId,
-                        agentId = config.agentId,
-                        role = "assistant",
-                        content = text,
-                        status = "done",
-                        createdAt = now,
-                        updatedAt = now,
-                    ))
-                }
-            }
         }
 
         override fun onTtsAudioChunk(pcmData: ByteArray) {
@@ -175,15 +169,42 @@ class AstTranslateAgentSession : NativeAgent {
 
         override fun onDisconnected() {
             transitionTo(State.IDLE)
+            eventSink.onConnectionStateChanged(config.agentId, "disconnected")
             Log.d(TAG, "WebSocket disconnected")
         }
 
         override fun onError(code: String, message: String) {
             transitionTo(State.ERROR)
+            eventSink.onConnectionStateChanged(config.agentId, "error", message)
             eventSink.onError(config.agentId, code, message, null)
         }
 
         override fun onSpeechStart() {
+            // 上一轮翻译结束：发 done 完成气泡，写入 DB
+            val transId = currentTranslationId
+            val transText = currentTranslationText
+            if (transId != null && transText.isNotBlank()) {
+                eventSink.onLlmEvent(LlmEventData(
+                    config.agentId, requestId = transId, kind = "done", fullText = transText))
+                scope.launch {
+                    runCatching {
+                        val now = System.currentTimeMillis()
+                        db.messageDao().insert(MessageEntity(
+                            id = transId,
+                            agentId = config.agentId,
+                            role = "assistant",
+                            content = transText,
+                            status = "done",
+                            createdAt = now,
+                            updatedAt = now,
+                        ))
+                    }
+                }
+            }
+            // 重置翻译状态，准备下一轮
+            currentTranslationId = null
+            currentTranslationText = ""
+
             // 用户一句话说完 → 将暂存的源语言文本作为 finalResult 发出
             val text = pendingSourceText
             pendingSourceText = ""

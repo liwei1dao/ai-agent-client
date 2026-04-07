@@ -2,14 +2,266 @@ import 'package:flutter/material.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../providers/chat_agent_provider.dart';
 
+/// 语言代码 → 显示名称
+String _langLabel(String? code) => switch (code) {
+      'zh' => '中文',
+      'en' => 'English',
+      'ja' => '日本語',
+      'ko' => '한국어',
+      'fr' => 'Français',
+      'de' => 'Deutsch',
+      'es' => 'Español',
+      'ru' => 'Русский',
+      'ar' => 'العربية',
+      'pt' => 'Português',
+      _ => code ?? '',
+    };
+
 /// Renders a single chat message bubble.
 ///
-/// Adapts to [ChatMessage] as defined in chat_agent_provider.dart:
-///   - role   : 'user' | 'assistant'
-///   - content: String
-///   - status : 'pending' | 'streaming' | 'done' | 'cancelled' | 'error'
+/// In translate mode (AST), when [message.isTranslationPair] is true,
+/// renders a translation card with source text in bubble and translation below.
 class MessageBubble extends StatelessWidget {
-  const MessageBubble({super.key, required this.message, this.agentName = 'AI'});
+  const MessageBubble({
+    super.key,
+    required this.message,
+    this.agentName = 'AI',
+    this.isTranslateMode = false,
+    this.srcLang = 'zh',
+    this.dstLang = 'en',
+  });
+  final ChatMessage message;
+  final String agentName;
+  final bool isTranslateMode;
+  final String srcLang;
+  final String dstLang;
+
+  @override
+  Widget build(BuildContext context) {
+    // AST 翻译配对模式：原文+译文合为一个翻译卡片
+    if (message.isTranslationPair) {
+      return _TranslationPairCard(
+        message: message,
+        srcLang: srcLang,
+        dstLang: dstLang,
+      );
+    }
+
+    // AST 翻译模式 streaming：翻译正在进行中（原文尚未到达）
+    if (isTranslateMode && message.role == 'assistant' &&
+        (message.status == 'streaming' || message.status == 'pending')) {
+      return _TranslationStreamingCard(
+        message: message,
+        dstLang: dstLang,
+      );
+    }
+
+    // 普通聊天气泡
+    return _ChatBubble(message: message, agentName: agentName);
+  }
+}
+
+// ── 翻译配对卡片：双语气泡（原文 + 译文），按语言左右分布 ─────────────────────
+
+class _TranslationPairCard extends StatelessWidget {
+  const _TranslationPairCard({
+    required this.message,
+    required this.srcLang,
+    required this.dstLang,
+  });
+  final ChatMessage message;
+  final String srcLang;
+  final String dstLang;
+
+  @override
+  Widget build(BuildContext context) {
+    final detected = message.detectedLang ?? srcLang;
+    // 源语言 → 右侧（紫色，类似"我"）；目标语言 → 左侧（白色，类似"对方"）
+    final isRight = detected == srcLang;
+    final langName = _langLabel(detected);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment:
+            isRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          // 语言 + 时间标签
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4, left: 4, right: 4),
+            child: Text(
+              '$langName · ${_formatTime(message.createdAt)}',
+              style: const TextStyle(fontSize: 10, color: AppTheme.text2),
+            ),
+          ),
+
+          // 双语气泡
+          Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.78,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+            decoration: BoxDecoration(
+              color: isRight ? AppTheme.primary : Colors.white,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: Radius.circular(isRight ? 16 : 4),
+                bottomRight: Radius.circular(isRight ? 4 : 16),
+              ),
+              boxShadow: isRight
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 原文
+                Text(
+                  message.content,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isRight ? Colors.white : AppTheme.text1,
+                    height: 1.5,
+                  ),
+                ),
+                // 分隔线 + 译文
+                if (message.translatedContent != null &&
+                    message.translatedContent!.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Container(
+                      height: 1,
+                      color: isRight
+                          ? Colors.white.withValues(alpha: 0.25)
+                          : AppTheme.borderColor,
+                    ),
+                  ),
+                  Text(
+                    message.translatedContent!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isRight
+                          ? Colors.white.withValues(alpha: 0.85)
+                          : const Color(0xFF0EA5E9),
+                      height: 1.5,
+                      fontStyle: isRight ? FontStyle.italic : FontStyle.normal,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 翻译 streaming 卡片（译文正在进行，原文尚未到达）─────────────────────────
+
+class _TranslationStreamingCard extends StatelessWidget {
+  const _TranslationStreamingCard({
+    required this.message,
+    required this.dstLang,
+  });
+  final ChatMessage message;
+  final String dstLang;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(width: 40),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 正在翻译标签
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4, left: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: const Color(0xFFF97316).withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 8,
+                              height: 8,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                color: Color(0xFF9A3412),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '正在翻译 → ${_langLabel(dstLang)}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF9A3412),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 翻译内容（streaming）
+                Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.72,
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(4),
+                      topRight: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                    border: Border.all(color: const Color(0xFFFED7AA)),
+                  ),
+                  child: _StreamingContent(
+                      content: message.content, isUser: false),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 普通聊天气泡 ─────────────────────────────────────────────────────────────
+
+class _ChatBubble extends StatelessWidget {
+  const _ChatBubble({required this.message, required this.agentName});
   final ChatMessage message;
   final String agentName;
 
@@ -116,25 +368,14 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  String _formatTime(DateTime t) {
-    final h = t.hour.toString().padLeft(2, '0');
-    final m = t.minute.toString().padLeft(2, '0');
-    return '$h:$m';
-  }
-
   Widget _buildContent(bool isUser) {
     final textColor = isUser ? Colors.white : AppTheme.text1;
 
     switch (message.status) {
-      // ── Recording (user voice input in progress) ────────────────────────
       case 'recording':
         return _RecordingContent(content: message.content);
-
-      // ── Streaming ──────────────────────────────────────────────────────
       case 'streaming':
         return _StreamingContent(content: message.content, isUser: isUser);
-
-      // ── Cancelled ──────────────────────────────────────────────────────
       case 'cancelled':
         return Opacity(
           opacity: 0.6,
@@ -159,17 +400,13 @@ class MessageBubble extends StatelessWidget {
                     '已打断',
                     style: TextStyle(
                         fontSize: 10,
-                        color: isUser
-                            ? Colors.white70
-                            : AppTheme.text2),
+                        color: isUser ? Colors.white70 : AppTheme.text2),
                   ),
                 ],
               ),
             ],
           ),
         );
-
-      // ── Error ──────────────────────────────────────────────────────────
       case 'error':
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,16 +431,21 @@ class MessageBubble extends StatelessWidget {
             ),
           ],
         );
-
-      // ── Done / pending / default ───────────────────────────────────────
       default:
         return Text(
           message.content,
-          style:
-              TextStyle(fontSize: 14, color: textColor, height: 1.5),
+          style: TextStyle(fontSize: 14, color: textColor, height: 1.5),
         );
     }
   }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+String _formatTime(DateTime t) {
+  final h = t.hour.toString().padLeft(2, '0');
+  final m = t.minute.toString().padLeft(2, '0');
+  return '$h:$m';
 }
 
 // ── Recording widget: mic dots animation + partial text ──────────────────────

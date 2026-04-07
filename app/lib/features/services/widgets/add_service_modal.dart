@@ -2,11 +2,28 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:local_db/local_db.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../providers/service_library_provider.dart';
+
+// ── Type colors (shared with services_screen) ───────────────────────────────
+
+Color _typeBg(String type) => switch (type) {
+  'stt' => const Color(0xFFFEF3C7), 'tts' => const Color(0xFFF0FDF4),
+  'llm' => const Color(0xFFFAF5FF), 'translation' => const Color(0xFFEFF6FF),
+  'sts' => const Color(0xFFEEF0FF), 'ast' => const Color(0xFFFFF7ED),
+  'mcp' => const Color(0xFFE8F5E9), _ => const Color(0xFFF3F4F6),
+};
+
+Color _typeFg(String type) => switch (type) {
+  'stt' => const Color(0xFF92400E), 'tts' => const Color(0xFF14532D),
+  'llm' => const Color(0xFF6B21A8), 'translation' => const Color(0xFF1D4ED8),
+  'sts' => const Color(0xFF4A42D9), 'ast' => const Color(0xFF9A3412),
+  'mcp' => const Color(0xFF1B5E20), _ => AppTheme.text2,
+};
 
 // ── Per-vendor config field definitions ─────────────────────────────────────
 
@@ -174,6 +191,141 @@ const _vendorsByType = <String, List<Map<String, String>>>{
   ],
 };
 
+// ── Vendor doc/help info (registration URL + config hints) ──────────────────
+
+class _VendorDoc {
+  const _VendorDoc({required this.url, required this.urlLabel, required this.hint});
+  final String url;       // Registration / console URL
+  final String urlLabel;  // Button text
+  final String hint;      // Config help text
+}
+
+const _vendorDocs = <String, Map<String, _VendorDoc>>{
+  'azure': {
+    'stt': _VendorDoc(
+      url: 'https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices',
+      urlLabel: 'Azure 语音服务控制台',
+      hint: '创建"语音服务"资源后，在"密钥和终结点"页面获取 API Key 和 Region。',
+    ),
+    'tts': _VendorDoc(
+      url: 'https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices',
+      urlLabel: 'Azure 语音服务控制台',
+      hint: '与 STT 共用同一个语音资源。填写 API Key 和 Region 后测试连接，可选择音色。',
+    ),
+  },
+  'openai': {
+    'llm': _VendorDoc(
+      url: 'https://platform.openai.com/api-keys',
+      urlLabel: 'OpenAI API Keys',
+      hint: '在 API Keys 页面创建密钥。Base URL 默认即可，测试连接后选择模型。',
+    ),
+  },
+  'anthropic': {
+    'llm': _VendorDoc(
+      url: 'https://console.anthropic.com/settings/keys',
+      urlLabel: 'Anthropic Console',
+      hint: '在 Settings → API Keys 创建密钥。推荐模型：claude-sonnet-4-20250514。',
+    ),
+  },
+  'google': {
+    'llm': _VendorDoc(
+      url: 'https://aistudio.google.com/apikey',
+      urlLabel: 'Google AI Studio',
+      hint: '在 AI Studio 获取 API Key。推荐模型：gemini-2.0-flash。',
+    ),
+    'stt': _VendorDoc(
+      url: 'https://console.cloud.google.com/speech',
+      urlLabel: 'Google Cloud Speech',
+      hint: '启用 Speech-to-Text API，在"凭据"页面创建 API Key。',
+    ),
+    'tts': _VendorDoc(
+      url: 'https://console.cloud.google.com/speech',
+      urlLabel: 'Google Cloud TTS',
+      hint: '启用 Text-to-Speech API，在"凭据"页面创建 API Key。',
+    ),
+    'translation': _VendorDoc(
+      url: 'https://console.cloud.google.com/translate',
+      urlLabel: 'Google Cloud Translation',
+      hint: '启用 Translation API，使用同一 API Key。',
+    ),
+  },
+  'aliyun': {
+    'stt': _VendorDoc(
+      url: 'https://nls-portal.console.aliyun.com/overview',
+      urlLabel: '阿里云智能语音控制台',
+      hint: '创建项目后获取 AppKey。在 AccessKey 管理页获取 AccessKey ID 和 Secret。',
+    ),
+    'tts': _VendorDoc(
+      url: 'https://nls-portal.console.aliyun.com/overview',
+      urlLabel: '阿里云智能语音控制台',
+      hint: '与 STT 共用项目。AppKey + AccessKey ID + Secret 三项必填。',
+    ),
+    'translation': _VendorDoc(
+      url: 'https://mt.console.aliyun.com/',
+      urlLabel: '阿里云机器翻译',
+      hint: '开通机器翻译服务，使用 AccessKey 进行认证。',
+    ),
+  },
+  'tongyi': {
+    'llm': _VendorDoc(
+      url: 'https://dashscope.console.aliyun.com/apiKey',
+      urlLabel: '通义千问 DashScope',
+      hint: '在 DashScope 控制台创建 API Key。推荐模型：qwen-max。',
+    ),
+  },
+  'deepseek': {
+    'llm': _VendorDoc(
+      url: 'https://platform.deepseek.com/api_keys',
+      urlLabel: 'DeepSeek Platform',
+      hint: '在 API Keys 页面创建密钥。模型默认 deepseek-chat。',
+    ),
+  },
+  'doubao': {
+    'llm': _VendorDoc(
+      url: 'https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint',
+      urlLabel: '火山方舟控制台',
+      hint: '在"模型推理"创建推理接入点，获取 Endpoint ID（ep-xxx）。在"API Key管理"获取密钥。',
+    ),
+    'sts': _VendorDoc(
+      url: 'https://console.volcengine.com/speech/app',
+      urlLabel: '火山引擎语音控制台',
+      hint: '创建应用获取 App ID 和 App Key。在"语音交互"开通 STS（语音转语音）能力。Access Token 在应用详情中获取。',
+    ),
+    'ast': _VendorDoc(
+      url: 'https://console.volcengine.com/speech/app',
+      urlLabel: '火山引擎语音控制台',
+      hint: '创建应用获取 App Key。在"同传翻译"开通 AST 能力。Access Key 在"密钥管理"获取，Resource ID 默认 volc.bigasr.auc。',
+    ),
+    'stt': _VendorDoc(
+      url: 'https://console.volcengine.com/speech/app',
+      urlLabel: '火山引擎语音控制台',
+      hint: '创建应用获取 App ID 和 Access Token。开通语音识别能力。',
+    ),
+    'tts': _VendorDoc(
+      url: 'https://console.volcengine.com/speech/app',
+      urlLabel: '火山引擎语音控制台',
+      hint: '创建应用获取 App ID 和 Access Token。开通语音合成能力，选择音色 ID。',
+    ),
+  },
+  'deepl': {
+    'translation': _VendorDoc(
+      url: 'https://www.deepl.com/your-account/keys',
+      urlLabel: 'DeepL API Keys',
+      hint: '注册 DeepL API Free 或 Pro 账户，在账户设置中获取 Auth Key。',
+    ),
+  },
+  'remote': {
+    'mcp': _VendorDoc(
+      url: 'https://modelcontextprotocol.io/introduction',
+      urlLabel: 'MCP 协议文档',
+      hint: '填写 MCP 服务器地址（SSE 或 HTTP）。如需认证，填写 Auth Header（如 Bearer xxx）。',
+    ),
+  },
+};
+
+_VendorDoc? _getVendorDoc(String vendor, String type) =>
+    _vendorDocs[vendor]?[type];
+
 /// Whether this (type, vendor) combo fetches a selectable resource list on test-connect.
 /// STT only validates connectivity; TTS fetches voice list; LLM/OpenAI fetches model list.
 bool _supportsFetch(String type, String vendor) {
@@ -203,6 +355,7 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
   String _type = 'llm';
   String _vendor = 'openai';
   bool _saving = false;
+  int _step = 0; // 0=选类型, 1=选服务商, 2=配置详情
 
   // Test-connect state
   bool _testing = false;
@@ -229,19 +382,14 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
 
   List<_ConfigField> get _fields {
     if (_isDoubaoLlm) {
-      return _doubaoSubType == 'bot'
-          ? const [
-              _ConfigField('apiKey', 'API Key *', 'ARK API Key...', obscure: true),
-              _ConfigField('botId', 'Bot ID *', 'bot-xxxxxxxxxx'),
-              _ConfigField('baseUrl', 'Base URL', 'https://ark.cn-beijing.volces.com/api/v3/bots',
-                  readonly: true, defaultValue: 'https://ark.cn-beijing.volces.com/api/v3/bots'),
-            ]
-          : const [
-              _ConfigField('apiKey', 'API Key *', 'ARK API Key...', obscure: true),
-              _ConfigField('model', '模型名称 *', 'doubao-pro-32k 或 ep-xxxxxxxxxx'),
-              _ConfigField('baseUrl', 'Base URL', 'https://ark.cn-beijing.volces.com/api/v3',
-                  readonly: true, defaultValue: 'https://ark.cn-beijing.volces.com/api/v3'),
-            ];
+      return const [
+        _ConfigField('apiKey', 'API Key *', 'ARK API Key...', obscure: true),
+        _ConfigField('model', 'Endpoint ID *', 'ep-20241228xxxxxx'),
+        _ConfigField('baseUrl', 'Base URL *', 'https://ark.cn-beijing.volces.com/api/v3',
+            readonly: true, defaultValue: 'https://ark.cn-beijing.volces.com/api/v3'),
+        _ConfigField('temperature', 'Temperature', '0.7'),
+        _ConfigField('maxTokens', 'Max Tokens', '2048'),
+      ];
     }
     return _fieldsFor(_type, _vendor);
   }
@@ -257,7 +405,7 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
       _type = s.type;
       _vendor = s.vendor;
       _nameCtrl.text = s.name;
-      // Pre-fill config fields from stored JSON
+      _step = 2; // edit mode goes straight to config
       final config = jsonDecode(s.configJson) as Map<String, dynamic>;
       config.forEach((k, v) {
         if (k == 'voiceName') {
@@ -652,6 +800,12 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
 
   // ── Build ─────────────────────────────────────────────────────────────────
 
+  String get _stepTitle => switch (_step) {
+    0 => '选择服务类型',
+    1 => '选择服务商',
+    _ => _isEditing ? '编辑服务' : '配置服务',
+  };
+
   @override
   Widget build(BuildContext context) {
     if (!_vendors.any((v) => v['id'] == _vendor)) {
@@ -675,16 +829,35 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
             child: Container(width: 36, height: 4,
               decoration: BoxDecoration(color: AppTheme.borderColor, borderRadius: BorderRadius.circular(2))),
           ),
+          // Header with back + title + step indicator
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: Row(
               children: [
-                Expanded(
-                  child: Text(
-                    _isEditing ? '编辑服务' : '添加服务',
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.text1),
+                if (_step > 0 && !_isEditing)
+                  GestureDetector(
+                    onTap: () => setState(() { _step--; _resetTestState(); }),
+                    child: const Padding(
+                      padding: EdgeInsets.only(right: 10),
+                      child: Icon(Icons.arrow_back_ios_new, size: 16, color: AppTheme.text2),
+                    ),
                   ),
+                Expanded(
+                  child: Text(_stepTitle,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.text1)),
                 ),
+                if (!_isEditing)
+                  // Step dots
+                  Row(
+                    children: List.generate(3, (i) => Container(
+                      width: i == _step ? 16 : 6, height: 6,
+                      margin: const EdgeInsets.only(left: 4),
+                      decoration: BoxDecoration(
+                        color: i == _step ? AppTheme.primary : AppTheme.borderColor,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    )),
+                  ),
                 if (_isEditing)
                   GestureDetector(
                     onTap: _handleDelete,
@@ -702,169 +875,227 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
           ),
           const Divider(height: 1),
 
-          // ── Scrollable body ──
+          // ── Step content ──
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _sectionLabel('服务类型'),
-                  const SizedBox(height: 8),
-                  _buildTypePills(),
-                  const SizedBox(height: 18),
-                  _sectionLabel('选择服务商'),
-                  const SizedBox(height: 8),
-                  _buildVendorPills(),
-                  // 火山引擎 LLM 子类型选择
-                  if (_isDoubaoLlm) ...[
-                    const SizedBox(height: 18),
-                    _sectionLabel('接入方式'),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        _SubTypeBtn(
-                          label: '🔮 模型推理',
-                          desc: 'API Key + 模型名',
-                          active: _doubaoSubType == 'model',
+              child: switch (_step) {
+                // ═══ Step 0: 选择服务类型 ═══
+                0 => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('选择你需要添加的服务类型',
+                        style: TextStyle(fontSize: 13, color: AppTheme.text2)),
+                    const SizedBox(height: 16),
+                    ...(_types.map((t) {
+                      final active = _type == t;
+                      final emoji = switch (t) {
+                        'stt' => '🎙', 'tts' => '🔊', 'llm' => '🧠',
+                        'translation' => '🌐', 'sts' => '📞', 'ast' => '🔄', 'mcp' => '🔌', _ => '⚙️',
+                      };
+                      final desc = switch (t) {
+                        'stt' => '语音识别 · 语音转文字',
+                        'tts' => '语音合成 · 文字转语音',
+                        'llm' => '大语言模型 · AI 对话',
+                        'translation' => '文本翻译服务',
+                        'sts' => '端到端语音对话（Speech-to-Speech）',
+                        'ast' => '端到端同声传译（Audio-Speech-Translation）',
+                        'mcp' => 'MCP 工具服务器',
+                        _ => '',
+                      };
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: GestureDetector(
                           onTap: () => setState(() {
-                            _doubaoSubType = 'model';
-                            _resetTestState();
-                            _prefillDefaults();
+                            _switchType(t);
+                            _step = 1;
                           }),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: active ? AppTheme.primaryLight : Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: active ? AppTheme.primary : AppTheme.borderColor,
+                                width: active ? 1.5 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Text(emoji, style: const TextStyle(fontSize: 22)),
+                                const SizedBox(width: 12),
+                                Expanded(child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(_typeLabels[t] ?? t, style: TextStyle(
+                                      fontSize: 14, fontWeight: FontWeight.w700,
+                                      color: active ? AppTheme.primary : AppTheme.text1,
+                                    )),
+                                    const SizedBox(height: 2),
+                                    Text(desc, style: const TextStyle(fontSize: 11, color: AppTheme.text2)),
+                                  ],
+                                )),
+                                Icon(Icons.chevron_right, size: 18,
+                                    color: active ? AppTheme.primary : AppTheme.text2),
+                              ],
+                            ),
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                        _SubTypeBtn(
-                          label: '🤖 应用接入',
-                          desc: 'API Key + Bot ID',
-                          active: _doubaoSubType == 'bot',
-                          onTap: () => setState(() {
-                            _doubaoSubType = 'bot';
-                            _resetTestState();
-                            _prefillDefaults();
-                          }),
-                        ),
-                      ],
-                    ),
+                      );
+                    })),
                   ],
-                  const SizedBox(height: 18),
-                  _sectionLabel('服务名称（可自定义）'),
-                  const SizedBox(height: 6),
-                  _buildTextField(_nameCtrl, '我的 $vendorLabel'),
-                  const SizedBox(height: 18),
+                ),
 
-                  // ── API 配置 ──
-                  _sectionLabel('API 配置'),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: AppTheme.bgColor, borderRadius: BorderRadius.circular(12)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (int i = 0; i < fields.length; i++) ...[
-                          if (i > 0) const SizedBox(height: 10),
-                          _keyLabel(fields[i].label),
-                          if (fields[i].readonly && !_unlockedReadonly.contains(fields[i].key))
-                            _readonlyField(fields[i])
-                          else
-                            _keyField(_ctrlFor(fields[i].key), fields[i].hint, obscure: fields[i].obscure),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // ── 测试连接（MCP 跳过）──
-                  if (!_skipTest(_type)) _buildTestButton(hasFetch),
-
-                  // ── Error message ──
-                  if (_testError != null) ...[
-                    const SizedBox(height: 8),
+                // ═══ Step 1: 选择服务商 ═══
+                1 => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 当前类型提示
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: AppTheme.danger.withValues(alpha: 0.08),
+                        color: _typeBg(_type),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline, size: 16, color: AppTheme.danger),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(_testError!, style: const TextStyle(fontSize: 12, color: AppTheme.danger)),
+                      child: Text('${_typeLabels[_type]} 服务',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _typeFg(_type))),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('选择服务商', style: TextStyle(fontSize: 13, color: AppTheme.text2)),
+                    const SizedBox(height: 12),
+                    ..._vendors.map((v) {
+                      final active = _vendor == v['id'];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: GestureDetector(
+                          onTap: () => setState(() {
+                            _switchVendor(v['id']!);
+                            _step = 2;
+                            if (_nameCtrl.text.isEmpty) {
+                              _nameCtrl.text = '${v['label']} ${_typeLabels[_type]}';
+                            }
+                          }),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: active ? AppTheme.primaryLight : Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: active ? AppTheme.primary : AppTheme.borderColor,
+                                width: active ? 1.5 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(child: Text(v['label']!, style: TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.w600,
+                                  color: active ? AppTheme.primary : AppTheme.text1,
+                                ))),
+                                Icon(Icons.chevron_right, size: 18,
+                                    color: active ? AppTheme.primary : AppTheme.text2),
+                              ],
+                            ),
                           ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+
+                // ═══ Step 2: 配置详情 ═══
+                _ => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 类型 + 服务商标签
+                    Row(children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: _typeBg(_type), borderRadius: BorderRadius.circular(8)),
+                        child: Text(_typeLabels[_type] ?? '', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _typeFg(_type))),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(vendorLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.text1)),
+                    ]),
+
+                    // 配置说明文档入口
+                    if (_getVendorDoc(_vendor, _type) != null) ...[
+                      const SizedBox(height: 10),
+                      _buildDocCard(_getVendorDoc(_vendor, _type)!),
+                    ],
+
+                    const SizedBox(height: 14),
+                    _sectionLabel('服务名称'),
+                    const SizedBox(height: 6),
+                    _buildTextField(_nameCtrl, '我的 $vendorLabel'),
+                    const SizedBox(height: 14),
+
+                    // API 配置
+                    _sectionLabel('API 配置'),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: AppTheme.bgColor, borderRadius: BorderRadius.circular(12)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (int i = 0; i < fields.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 10),
+                            _keyLabel(fields[i].label),
+                            if (fields[i].readonly && !_unlockedReadonly.contains(fields[i].key))
+                              _readonlyField(fields[i])
+                            else
+                              _keyField(_ctrlFor(fields[i].key), fields[i].hint, obscure: fields[i].obscure),
+                          ],
                         ],
                       ),
                     ),
-                  ],
+                    const SizedBox(height: 14),
 
-                  // ── Voice picker (Azure TTS only) ──
-                  if (_testOk && _type == 'tts' && _voices.isNotEmpty) ...[
-                    const SizedBox(height: 18),
-                    _buildVoicePicker(),
-                  ],
+                    // 测试连接
+                    if (!_skipTest(_type)) _buildTestButton(hasFetch),
 
-                  // ── Model picker (OpenAI LLM) ──
-                  if (_testOk && _models.isNotEmpty) ...[
-                    const SizedBox(height: 18),
-                    _buildModelPicker(),
+                    // Error
+                    if (_testError != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.danger.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline, size: 16, color: AppTheme.danger),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(_testError!, style: const TextStyle(fontSize: 12, color: AppTheme.danger))),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    // Voice picker
+                    if (_testOk && _type == 'tts' && _voices.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      _buildVoicePicker(),
+                    ],
+
+                    // Model picker
+                    if (_testOk && _models.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      _buildModelPicker(),
+                    ],
                   ],
-                ],
-              ),
+                ),
+              },
             ),
           ),
 
-          // ── Footer ──
-          _buildFooter(context),
+          // ── Footer (only on step 2 / edit) ──
+          if (_step == 2 || _isEditing) _buildFooter(context),
         ],
       ),
     );
   }
-
-  // ── Type pills ──
-
-  Widget _buildTypePills() => Wrap(
-    spacing: 6, runSpacing: 6,
-    children: _types.map((t) {
-      final active = _type == t;
-      return GestureDetector(
-        onTap: () => _switchType(t),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: active ? AppTheme.primaryLight : AppTheme.bgColor,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: active ? AppTheme.primary : AppTheme.borderColor, width: active ? 1.5 : 1),
-          ),
-          child: Text(_typeLabels[t] ?? t.toUpperCase(),
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: active ? AppTheme.primary : AppTheme.text1)),
-        ),
-      );
-    }).toList(),
-  );
-
-  // ── Vendor pills ──
-
-  Widget _buildVendorPills() => Wrap(
-    spacing: 8, runSpacing: 8,
-    children: _vendors.map((v) {
-      final active = _vendor == v['id'];
-      return GestureDetector(
-        onTap: () => _switchVendor(v['id']!),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: active ? AppTheme.primaryLight : Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: active ? AppTheme.primary : AppTheme.borderColor, width: active ? 1.5 : 1),
-          ),
-          child: Text(v['label']!,
-            style: TextStyle(fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w500, color: active ? AppTheme.primary : AppTheme.text1)),
-        ),
-      );
-    }).toList(),
-  );
 
   // ── Test button ──
 
@@ -1086,6 +1317,57 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
 
   // ── Helpers ──
 
+  Widget _buildDocCard(_VendorDoc doc) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF0F7FF),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: const Color(0xFFBFDBFE)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.info_outline, size: 14, color: Color(0xFF1D4ED8)),
+            const SizedBox(width: 6),
+            const Text('配置说明', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8))),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => _copyUrl(doc.url),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D4ED8),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.open_in_new, size: 10, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text(doc.urlLabel, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(doc.hint, style: const TextStyle(fontSize: 11, color: Color(0xFF1E40AF), height: 1.5)),
+      ],
+    ),
+  );
+
+  void _copyUrl(String url) {
+    Clipboard.setData(ClipboardData(text: url));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('链接已复制，请在浏览器中打开'), behavior: SnackBarBehavior.floating, duration: Duration(seconds: 2)),
+      );
+    }
+  }
+
   Widget _sectionLabel(String text) => Text(text,
     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.text2));
 
@@ -1221,55 +1503,6 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-  }
-}
-
-// ── Sub-type button widget (火山引擎 model vs bot selector) ─────────────────
-
-class _SubTypeBtn extends StatelessWidget {
-  const _SubTypeBtn({
-    required this.label,
-    required this.desc,
-    required this.active,
-    required this.onTap,
-  });
-  final String label;
-  final String desc;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: active ? AppTheme.primaryLight : AppTheme.bgColor,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: active ? AppTheme.primary : AppTheme.borderColor,
-              width: active ? 1.5 : 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: active ? AppTheme.primary : AppTheme.text1,
-                )),
-              const SizedBox(height: 2),
-              Text(desc,
-                style: const TextStyle(fontSize: 11, color: AppTheme.text2)),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

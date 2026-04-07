@@ -136,6 +136,24 @@ final class AgentErrorEvent extends AgentEvent {
   });
 }
 
+enum ServiceConnectionState {
+  disconnected,
+  connecting,
+  connected,
+  error,
+}
+
+final class ServiceConnectionStateEvent extends AgentEvent {
+  final ServiceConnectionState connectionState;
+  final String? errorMessage;
+
+  const ServiceConnectionStateEvent({
+    required super.sessionId,
+    required this.connectionState,
+    this.errorMessage,
+  });
+}
+
 // ─────────────────────────────────────────────────
 // 解析工厂
 // ─────────────────────────────────────────────────
@@ -192,6 +210,12 @@ AgentEvent? parseAgentEvent(Map<Object?, Object?> raw) {
         message: raw['message'] as String? ?? '',
         requestId: raw['requestId'] as String?,
       );
+    case 'connectionState':
+      return ServiceConnectionStateEvent(
+        sessionId: sessionId,
+        connectionState: _parseServiceConnectionState(raw['state'] as String?),
+        errorMessage: raw['errorMessage'] as String?,
+      );
     default:
       return null;
   }
@@ -226,6 +250,13 @@ TtsEventKind _parseTtsKind(String? s) => switch (s) {
       'playbackDone' => TtsEventKind.playbackDone,
       'playbackInterrupted' => TtsEventKind.playbackInterrupted,
       _ => TtsEventKind.error,
+    };
+
+ServiceConnectionState _parseServiceConnectionState(String? s) => switch (s) {
+      'connecting' => ServiceConnectionState.connecting,
+      'connected' => ServiceConnectionState.connected,
+      'error' => ServiceConnectionState.error,
+      _ => ServiceConnectionState.disconnected,
     };
 
 AgentSessionState _parseState(String? s) => switch (s) {

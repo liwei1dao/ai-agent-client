@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>添加 Agent — STS-Chat 端到端聊天 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+
+<!-- SVG icon defs -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4" y="8" width="16" height="11" rx="3"/>
+    <circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/>
+    <path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/>
+  </symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+    <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+    <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+    <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+  </symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/>
+  </symbol>
+</svg>
+
+<a href="index.html" class="back-link">&#8249; 返回总览</a>
+
+<div class="page-header">
+  <h1>添加 Agent — STS-Chat</h1>
+  <p>端到端聊天 · 单一 STS 服务 + 提示词</p>
+</div>
+
+<div class="phone-frame">
+  <div class="phone-shell">
+    <div class="phone-screen">
+          <div class="status-bar">
+            <span class="time">9:41</span>
+            <div class="status-icons">📶 🔋</div>
+          </div>
+          <div style="flex:1;background:var(--bg);filter:brightness(0.7);"></div>
+          <div class="bottom-nav" style="filter:brightness(0.7);">
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+          <div class="modal-overlay">
+            <div class="modal-sheet">
+              <div class="modal-handle"></div>
+              <div class="modal-title">添加 Agent</div>
+              <div class="modal-body">
+
+                <div>
+                  <div class="form-label">Agent 名称</div>
+                  <div class="form-input active">语音助手</div>
+                </div>
+
+                <div>
+                  <div class="form-label">Agent 类型</div>
+                  <div class="type-selector">
+                    <div class="type-btn">💬 Chat<span class="type-hint">三段式 · 聊天</span></div>
+                    <div class="type-btn">🌐 Translate<span class="type-hint">三段式 · 翻译</span></div>
+                    <div class="type-btn selected sts-chat">🗣️ STS-Chat<span class="type-hint">端到端 · 聊天</span></div>
+                    <div class="type-btn">🔄 AST-Translate<span class="type-hint">端到端 · 翻译</span></div>
+                  </div>
+                </div>
+
+                <!-- 端到端提示：只需一个服务 -->
+                <div style="padding:8px 12px;background:#FFFBEB;border-radius:10px;border:1.5px solid #FDE68A;display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:14px;">⚡</span>
+                  <span style="font-size:11px;color:#92400E;line-height:1.4;">端到端模式：语音输入/输出和 LLM 由单一 STS 服务完成，无需分别配置 STT、LLM、TTS。</span>
+                </div>
+
+                <div>
+                  <div class="form-label">STS 服务 *</div>
+                  <div class="service-select">
+                    <div class="selected-service">
+                      <div class="service-dot configured"></div>
+                      <span>豆包 STS</span>
+                    </div>
+                    <span style="color:var(--text-2);font-size:12px;">▾</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="form-label">系统提示词</div>
+                  <div class="form-textarea">你是一位智能语音助手。请用简洁、口语化的方式回答用户的问题，回答控制在 2-3 句话以内。</div>
+                </div>
+
+                <div>
+                  <div class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
+                    <span>MCP 服务器（可选）</span>
+                    <span style="font-size:10px;color:var(--text-2);">工具扩展</span>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border:1.5px dashed #F59E0B;border-radius:8px;cursor:pointer;background:#FFFBEB;">
+                    <span style="font-size:14px;color:#B45309;font-weight:700;">＋</span>
+                    <span style="font-size:12px;color:#B45309;font-weight:600;">添加 MCP 服务器</span>
+                  </div>
+                </div>
+
+              </div>
+              <div class="modal-footer">
+                <div class="modal-btn cancel">取消</div>
+                <div class="modal-btn primary" style="background:#F59E0B;box-shadow:0 4px 14px rgba(245,158,11,0.4);">创建 Agent</div>
+              </div>
+            </div>
+          </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

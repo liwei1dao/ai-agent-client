@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STS 连接测试 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/></symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/></symbol>
+</svg>
+<a href="index.html" class="back-link">&#8249; 返回总览</a>
+<div class="page-header"><h1>STS 连接测试</h1><p>WebSocket · 实时音频 · 端到端</p></div>
+<div class="phone-frame"><div class="phone-shell"><div class="phone-screen" style="background:#F8FAFF;">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#fff;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+            <span style="font-size:18px;color:#6B7280;cursor:pointer;">&#8249;</span>
+            <div style="flex:1;"><div style="font-size:16px;font-weight:700;color:#1A1A2E;">STS 测试</div><div style="font-size:11px;color:#6B7280;">语音到语音 · 端到端</div></div>
+            <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:#ECFDF5;border-radius:10px;font-size:10px;font-weight:700;color:#065F46;">
+              <span style="width:6px;height:6px;border-radius:50%;background:#10B981;"></span>已连接
+            </div>
+          </div>
+
+          <div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;">
+            <!-- 服务选择 -->
+            <div class="demo-card">
+              <div class="demo-card-title">选择服务</div>
+              <div class="demo-row">
+                <div class="demo-sel" style="flex:2;">豆包 STS · Doubao <span class="caret">▾</span></div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:6px;">
+                <div class="demo-btn-sm green" style="flex:1;justify-content:center;">🔗 连接</div>
+                <div class="demo-btn-sm red" style="flex:1;justify-content:center;">⏹ 断开</div>
+              </div>
+            </div>
+
+            <!-- 连接信息 -->
+            <div style="background:#ECFDF5;border:1px solid #86EFAC;border-radius:12px;padding:12px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                <span style="width:10px;height:10px;border-radius:50%;background:#10B981;animation:pulse-dot 1.5s infinite;"></span>
+                <span style="font-size:12px;color:#065F46;font-weight:700;">WebSocket 已连接</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;">
+                <div style="background:rgba(255,255,255,0.7);border-radius:6px;padding:6px 8px;">
+                  <div style="color:#6B7280;">延迟</div>
+                  <div style="color:#065F46;font-weight:700;font-size:14px;">42ms</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.7);border-radius:6px;padding:6px 8px;">
+                  <div style="color:#6B7280;">连接时长</div>
+                  <div style="color:#065F46;font-weight:700;font-size:14px;">02:15</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.7);border-radius:6px;padding:6px 8px;">
+                  <div style="color:#6B7280;">音频格式</div>
+                  <div style="color:#065F46;font-weight:700;">PCM 16kHz</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.7);border-radius:6px;padding:6px 8px;">
+                  <div style="color:#6B7280;">音色</div>
+                  <div style="color:#065F46;font-weight:700;">天美女声</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 音频流可视化 -->
+            <div class="demo-card">
+              <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;">音频流</div>
+              <!-- 用户输入 -->
+              <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                  <span style="font-size:10px;color:#92400E;font-weight:700;">📥 用户语音输入</span>
+                  <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
+                </div>
+                <div style="height:24px;background:rgba(245,158,11,0.1);border-radius:4px;display:flex;align-items:center;padding:0 6px;gap:1px;">
+                  <div style="width:2px;height:8px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:14px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:10px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:18px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:12px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:6px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:16px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:8px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:20px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:10px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:14px;background:#D97706;border-radius:1px;"></div>
+                  <div style="width:2px;height:6px;background:#D97706;border-radius:1px;"></div>
+                </div>
+              </div>
+              <!-- AI 输出 -->
+              <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:8px 10px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                  <span style="font-size:10px;color:#065F46;font-weight:700;">📤 AI 语音回复</span>
+                  <div class="wave">
+                    <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+                    <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+                    <span style="background:#16A34A;"></span>
+                  </div>
+                </div>
+                <div style="height:24px;background:rgba(22,163,106,0.1);border-radius:4px;display:flex;align-items:center;padding:0 6px;gap:1px;">
+                  <div style="width:2px;height:10px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:16px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:8px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:20px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:12px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:18px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:6px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:14px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:22px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:10px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:16px;background:#16A34A;border-radius:1px;"></div>
+                  <div style="width:2px;height:8px;background:#16A34A;border-radius:1px;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 对话记录 -->
+            <div class="demo-card">
+              <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;">对话记录（文字转写）</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="font-size:11px;"><span style="color:#D97706;font-weight:600;">你:</span> <span style="color:var(--text);">今天天气怎么样？</span></div>
+                <div style="font-size:11px;"><span style="color:#16A34A;font-weight:600;">AI:</span> <span style="color:var(--text);">今天天气不错，气温大约 22 度，适合外出。</span></div>
+                <div style="font-size:11px;"><span style="color:#D97706;font-weight:600;">你:</span> <span style="color:var(--text);">有什么推荐的活动吗？</span></div>
+                <div style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="color:#16A34A;font-weight:600;">AI:</span> <span style="color:var(--text);">可以去公园散步...</span><span style="width:5px;height:12px;background:#16A34A;border-radius:1px;animation:blink 1s infinite;"></span></div>
+              </div>
+            </div>
+          </div>
+</div></div></div>
+</body></html>

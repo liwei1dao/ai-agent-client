@@ -25,17 +25,36 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
   String? _ttsId;
   String? _voiceName;
   String? _translationId;
-  String? _stsId; // 端到端语音服务 (sts / ast)
+  String? _stsId;
+  String? _astId;
   late final List<String> _mcpIds;
 
-  // Chat config
+  // Chat / STS-Chat config
   late final TextEditingController _promptCtrl;
 
-  // Translate config
-  late String _srcLang;
-  late String _dstLang;
+  // Translate / AST language support (multi-select)
+  late Set<String> _srcLangs;
+  late Set<String> _dstLangs;
 
   bool get _isEditing => widget.agent != null;
+
+  // Language codes & display names
+  static const _langCodes = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru', 'ar', 'pt'];
+  static const _langNames = {
+    'auto': '自动检测',
+    'zh': '中文 (ZH)', 'en': 'English (EN)', 'ja': '日语 (JA)', 'ko': '韩语 (KO)',
+    'fr': '法语 (FR)', 'de': '德语 (DE)', 'es': '西班牙语 (ES)',
+    'ru': '俄语 (RU)', 'ar': '阿拉伯语 (AR)', 'pt': '葡萄牙语 (PT)',
+  };
+  // Type-specific accent colors
+  static const _typeColors = {
+    'chat':      (Color(0xFF6C63FF), Color(0xFFEEF0FF), Color(0xFF4A42D9)),
+    'translate': (Color(0xFF0EA5E9), Color(0xFFE0F2FE), Color(0xFF0369A1)),
+    'sts':       (Color(0xFFF59E0B), Color(0xFFFFFBEB), Color(0xFFB45309)),
+    'ast':       (Color(0xFF14B8A6), Color(0xFFF0FDFA), Color(0xFF0F766E)),
+  };
+
+  Color get _accentColor => _typeColors[_type]!.$1;
 
   @override
   void initState() {
@@ -51,23 +70,35 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
       _voiceName = cfg['voiceName'] as String?;
       _translationId = cfg['translationServiceId'] as String?;
       _stsId = cfg['stsServiceId'] as String?;
+      _astId = cfg['astServiceId'] as String?;
       _mcpIds = List<String>.from(cfg['mcpServiceIds'] as List? ?? []);
       _promptCtrl = TextEditingController(
           text: cfg['systemPrompt'] as String? ??
               '你是一位专业的 AI 助手，请简洁准确地回答用户问题。');
-      _srcLang = cfg['srcLang'] as String? ?? '中文';
-      _dstLang = cfg['dstLang'] as String? ?? 'English';
+      // Backward compat: migrate single srcLang/dstLang → sets
+      final srcList = cfg['srcLangs'] as List?;
+      final dstList = cfg['dstLangs'] as List?;
+      if (srcList != null) {
+        _srcLangs = Set<String>.from(srcList);
+      } else {
+        final old = cfg['srcLang'] as String?;
+        _srcLangs = old != null ? {old} : {'zh', 'en'};
+      }
+      if (dstList != null) {
+        _dstLangs = Set<String>.from(dstList);
+      } else {
+        final old = cfg['dstLang'] as String?;
+        _dstLangs = old != null ? {old} : {'en'};
+      }
     } else {
       _nameCtrl = TextEditingController();
       _type = 'chat';
       _mcpIds = [];
       _promptCtrl = TextEditingController(text: '你是一位专业的 AI 助手，请简洁准确地回答用户问题。');
-      _srcLang = '中文';
-      _dstLang = 'English';
+      _srcLangs = {'auto', 'zh', 'en'};
+      _dstLangs = {'en'};
     }
   }
-
-  static const _langs = ['中文', 'English', '日本語', '한국어', 'Français', 'Deutsch', 'Español', 'Русский', 'العربية'];
 
   @override
   void dispose() {
@@ -76,8 +107,8 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
     super.dispose();
   }
 
-  /// Shows a bottom-sheet picker for services of [type].
-  /// Returns selected service id, '__clear__' for "不使用", or null if dismissed.
+  // ── Service picking ─────────────────────────────────────────────────────────
+
   Future<void> _pickService(String type, String? currentId, {bool nullable = true}) async {
     final services = ref.read(serviceLibraryProvider).where((s) => s.type == type).toList();
     if (services.isEmpty) {
@@ -99,14 +130,16 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
         nullable: nullable,
       ),
     );
-    if (result == null) return; // dismissed
+    if (result == null) return;
 
     if (type == 'llm') {
       setState(() => _llmId = result == '__clear__' ? null : result);
     } else if (type == 'translation') {
       setState(() => _translationId = result == '__clear__' ? null : result);
-    } else if (type == 'sts' || type == 'ast') {
+    } else if (type == 'sts') {
       setState(() => _stsId = result == '__clear__' ? null : result);
+    } else if (type == 'ast') {
+      setState(() => _astId = result == '__clear__' ? null : result);
     } else if (type == 'stt') {
       setState(() => _sttId = result == '__clear__' ? null : result);
     } else if (type == 'tts') {
@@ -151,59 +184,16 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
     }
   }
 
-  Future<void> _pickLang(bool isSrc) async {
-    final current = isSrc ? _srcLang : _dstLang;
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 4),
-              width: 36, height: 4,
-              decoration: BoxDecoration(color: AppTheme.borderColor, borderRadius: BorderRadius.circular(2)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Text(isSrc ? '源语言' : '目标语言',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.text1)),
-            ),
-            const Divider(height: 1),
-            ..._langs.map((l) => ListTile(
-              title: Text(l, style: TextStyle(
-                fontSize: 14,
-                fontWeight: l == current ? FontWeight.w700 : FontWeight.w400,
-                color: l == current ? AppTheme.translateAccent : AppTheme.text1,
-              )),
-              trailing: l == current ? const Icon(Icons.check, color: AppTheme.translateAccent, size: 18) : null,
-              onTap: () => Navigator.pop(ctx, l),
-            )),
-            SizedBox(height: MediaQuery.paddingOf(ctx).bottom + 8),
-          ],
-        ),
-      ),
-    );
-    if (result != null) {
-      setState(() {
-        if (isSrc) { _srcLang = result; } else { _dstLang = result; }
-      });
-    }
-  }
-
   String _serviceName(String? id, List<ServiceConfigDto> allServices) {
     if (id == null) return '不使用';
     try { return allServices.firstWhere((s) => s.id == id).name; } catch (_) { return '已删除'; }
   }
 
+  // ── Build ───────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final services = ref.watch(serviceLibraryProvider);
-
     String nameOf(String? id) => _serviceName(id, services);
 
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
@@ -244,6 +234,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Agent name ──
                   _label('Agent 名称'),
                   TextField(
                     controller: _nameCtrl,
@@ -251,24 +242,27 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                   ),
                   const SizedBox(height: 16),
 
+                  // ── Type selector (2×2 grid) ──
                   _label('Agent 类型'),
                   Column(children: [
                     Row(children: [
-                      _typeBtn('💬 聊天', 'chat'),
+                      _typeBtn('💬 Chat', '三段式 · 聊天', 'chat'),
                       const SizedBox(width: 8),
-                      _typeBtn('🌐 翻译', 'translate'),
+                      _typeBtn('🌐 Translate', '三段式 · 翻译', 'translate'),
                     ]),
                     const SizedBox(height: 8),
                     Row(children: [
-                      _typeBtn('🎙 端到端对话', 'sts'),
+                      _typeBtn('🗣️ STS-Chat', '端到端 · 聊天', 'sts'),
                       const SizedBox(width: 8),
-                      _typeBtn('🔄 端到端翻译', 'ast'),
+                      _typeBtn('🔄 AST-Translate', '端到端 · 翻译', 'ast'),
                     ]),
                   ]),
                   const SizedBox(height: 16),
 
-                  // ── LLM 服务（chat / translate 需要）──
-                  if (_type == 'chat' || _type == 'translate') ...[
+                  // ══════════════════════════════════════════════════════════
+                  //  CHAT: LLM* + STT* + TTS* + MCP + 系统提示词
+                  // ══════════════════════════════════════════════════════════
+                  if (_type == 'chat') ...[
                     _label('LLM 服务 *'),
                     _serviceRow(
                       label: _llmId != null ? nameOf(_llmId) : '请选择 LLM 服务',
@@ -277,17 +271,74 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                       onTap: () => _pickService('llm', _llmId, nullable: false),
                     ),
                     const SizedBox(height: 14),
+                    _label('STT 服务 *（语音输入）'),
+                    _serviceRow(
+                      label: _sttId != null ? nameOf(_sttId) : '请选择 STT 服务',
+                      hasValue: _sttId != null,
+                      isEmpty: services.where((s) => s.type == 'stt').isEmpty,
+                      onTap: () => _pickService('stt', _sttId, nullable: false),
+                    ),
+                    const SizedBox(height: 14),
+                    _label('TTS 服务 *（语音输出）'),
+                    _serviceRow(
+                      label: _ttsId != null ? nameOf(_ttsId) : '请选择 TTS 服务',
+                      hasValue: _ttsId != null,
+                      isEmpty: services.where((s) => s.type == 'tts').isEmpty,
+                      onTap: () => _pickService('tts', _ttsId, nullable: false),
+                    ),
+                    if (_ttsId != null && _voiceName != null) ...[
+                      const SizedBox(height: 6),
+                      Row(children: [
+                        const Icon(Icons.record_voice_over, size: 13, color: AppTheme.text2),
+                        const SizedBox(width: 5),
+                        Text('音色：$_voiceName',
+                            style: const TextStyle(fontSize: 11, color: AppTheme.text2)),
+                      ]),
+                    ],
+                    const SizedBox(height: 14),
+                    _label('系统提示词'),
+                    TextField(
+                      controller: _promptCtrl,
+                      maxLines: 3,
+                      decoration: const InputDecoration(hintText: '描述 AI 的角色和行为…'),
+                    ),
+                    const SizedBox(height: 14),
+                    _label('MCP 服务器（可选）'),
+                    ..._mcpIds.map((id) => _McpItem(
+                      name: nameOf(id),
+                      onRemove: () => setState(() => _mcpIds.remove(id)),
+                    )),
+                    const SizedBox(height: 6),
+                    _addMcpButton(AppTheme.primary, AppTheme.primaryLight),
+                  ],
+
+                  // ══════════════════════════════════════════════════════════
+                  //  TRANSLATE: 翻译服务* + 语言支持 + STT(可选) + TTS(可选)
+                  // ══════════════════════════════════════════════════════════
+                  if (_type == 'translate') ...[
+                    _label('翻译服务 *'),
+                    _serviceRow(
+                      label: _translationId != null ? nameOf(_translationId) : '请选择翻译服务',
+                      hasValue: _translationId != null,
+                      isEmpty: services.where((s) => s.type == 'translation').isEmpty,
+                      onTap: () => _pickService('translation', _translationId, nullable: false),
+                    ),
+                    const SizedBox(height: 14),
+                    _langMultiSelect('来源语言支持', _srcLangs, includingAuto: true, accent: AppTheme.translateAccent),
+                    const SizedBox(height: 14),
+                    _langMultiSelect('目标语言支持', _dstLangs, includingAuto: false, accent: AppTheme.translateAccent),
+                    const SizedBox(height: 14),
                     _label('STT 服务（语音输入，可选）'),
                     _serviceRow(
-                      label: _sttId != null ? nameOf(_sttId) : '不使用',
+                      label: _sttId != null ? nameOf(_sttId) : '不启用语音输入',
                       hasValue: _sttId != null,
                       isEmpty: services.where((s) => s.type == 'stt').isEmpty,
                       onTap: () => _pickService('stt', _sttId),
                     ),
                     const SizedBox(height: 14),
-                    _label('TTS 服务（语音输出，可选）'),
+                    _label('TTS 服务（朗读译文，可选）'),
                     _serviceRow(
-                      label: _ttsId != null ? nameOf(_ttsId) : '不使用',
+                      label: _ttsId != null ? nameOf(_ttsId) : '不启用语音朗读',
                       hasValue: _ttsId != null,
                       isEmpty: services.where((s) => s.type == 'tts').isEmpty,
                       onTap: () => _pickService('tts', _ttsId),
@@ -301,12 +352,20 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                             style: const TextStyle(fontSize: 11, color: AppTheme.text2)),
                       ]),
                     ],
-                    const SizedBox(height: 14),
                   ],
 
-                  // ── STS 服务（sts 需要）──
+                  // ══════════════════════════════════════════════════════════
+                  //  STS-CHAT: STS服务* + 系统提示词 + MCP
+                  // ══════════════════════════════════════════════════════════
                   if (_type == 'sts') ...[
-                    _label('STS 服务 *（端到端语音对话）'),
+                    _e2eBanner(
+                      bg: const Color(0xFFFFFBEB),
+                      border: const Color(0xFFFDE68A),
+                      fg: const Color(0xFF92400E),
+                      text: '端到端模式：语音输入/输出和 LLM 由单一 STS 服务完成，无需分别配置 STT、LLM、TTS。',
+                    ),
+                    const SizedBox(height: 14),
+                    _label('STS 服务 *'),
                     _serviceRow(
                       label: _stsId != null ? nameOf(_stsId) : '请选择 STS 服务',
                       hasValue: _stsId != null,
@@ -314,77 +373,53 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                       onTap: () => _pickService('sts', _stsId, nullable: false),
                     ),
                     const SizedBox(height: 14),
-                  ],
-
-                  // ── AST 服务（ast 需要）──
-                  if (_type == 'ast') ...[
-                    _label('AST 服务 *（端到端同声传译）'),
-                    _serviceRow(
-                      label: _stsId != null ? nameOf(_stsId) : '请选择 AST 服务',
-                      hasValue: _stsId != null,
-                      isEmpty: services.where((s) => s.type == 'ast').isEmpty,
-                      onTap: () => _pickService('ast', _stsId, nullable: false),
-                    ),
-                    const SizedBox(height: 14),
-                  ],
-
-                  // ── Chat-specific: MCP + system prompt ──
-                  if (_type == 'chat') ...[
-                    _label('MCP 服务（可选）'),
-                    ..._mcpIds.map((id) => _McpItem(
-                      name: nameOf(id),
-                      onRemove: () => setState(() => _mcpIds.remove(id)),
-                    )),
-                    const SizedBox(height: 6),
-                    _addMcpButton(),
-                    const SizedBox(height: 16),
                     _label('系统提示词'),
                     TextField(
                       controller: _promptCtrl,
                       maxLines: 3,
                       decoration: const InputDecoration(hintText: '描述 AI 的角色和行为…'),
                     ),
+                    const SizedBox(height: 14),
+                    _label('MCP 服务器（可选）'),
+                    ..._mcpIds.map((id) => _McpItem(
+                      name: nameOf(id),
+                      onRemove: () => setState(() => _mcpIds.remove(id)),
+                    )),
+                    const SizedBox(height: 6),
+                    _addMcpButton(const Color(0xFFB45309), const Color(0xFFFFFBEB)),
                   ],
 
-                  // ── Translate-specific: translation service + language pair ──
-                  if (_type == 'translate') ...[
-                    _label('翻译服务（可选，不选则用 LLM 翻译）'),
-                    _serviceRow(
-                      label: _translationId != null ? nameOf(_translationId) : '不使用',
-                      hasValue: _translationId != null,
-                      isEmpty: services.where((s) => s.type == 'translation').isEmpty,
-                      onTap: () => _pickService('translation', _translationId),
-                    ),
-                    const SizedBox(height: 16),
-                    _label('翻译语言对'),
-                    Row(children: [
-                      Expanded(child: _langBtn(_srcLang, () => _pickLang(true))),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Icon(Icons.swap_horiz, color: AppTheme.translateAccent),
-                      ),
-                      Expanded(child: _langBtn(_dstLang, () => _pickLang(false))),
-                    ]),
-                  ],
-
-                  // ── ast-specific: language pair ──
+                  // ══════════════════════════════════════════════════════════
+                  //  AST-TRANSLATE: AST服务* + 语言支持
+                  // ══════════════════════════════════════════════════════════
                   if (_type == 'ast') ...[
-                    _label('翻译语言对'),
-                    Row(children: [
-                      Expanded(child: _langBtn(_srcLang, () => _pickLang(true))),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Icon(Icons.swap_horiz, color: AppTheme.translateAccent),
-                      ),
-                      Expanded(child: _langBtn(_dstLang, () => _pickLang(false))),
-                    ]),
+                    _e2eBanner(
+                      bg: const Color(0xFFF0FDFA),
+                      border: const Color(0xFF99F6E4),
+                      fg: const Color(0xFF0F766E),
+                      text: '端到端模式：语音识别、翻译、语音合成由单一 AST 服务完成，无需分别配置 STT、翻译、TTS。',
+                    ),
+                    const SizedBox(height: 14),
+                    _label('AST 服务 *'),
+                    _serviceRow(
+                      label: _astId != null ? nameOf(_astId) : '请选择 AST 服务',
+                      hasValue: _astId != null,
+                      isEmpty: services.where((s) => s.type == 'ast').isEmpty,
+                      onTap: () => _pickService('ast', _astId, nullable: false),
+                    ),
+                    const SizedBox(height: 14),
+                    _langMultiSelect('来源语言支持', _srcLangs, includingAuto: false, accent: const Color(0xFF14B8A6)),
+                    const SizedBox(height: 14),
+                    _langMultiSelect('目标语言支持', _dstLangs, includingAuto: false, accent: const Color(0xFF14B8A6)),
                   ],
+
                   const SizedBox(height: 8),
                 ],
               ),
             ),
           ),
 
+          // ── Footer ──
           const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
@@ -408,7 +443,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                   child: FilledButton(
                     onPressed: _isEditing ? _save : _create,
                     style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
+                      backgroundColor: _accentColor,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                     ),
@@ -424,37 +459,44 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
     );
   }
 
+  // ── UI components ───────────────────────────────────────────────────────────
+
   Widget _label(String text) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
     child: Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.text2)),
   );
 
-  Widget _typeBtn(String label, String value) {
+  Widget _typeBtn(String label, String hint, String value) {
     final sel = _type == value;
-    final (Color bg, Color border, Color fg) = switch (value) {
-      'chat'      => (AppTheme.primaryLight,         AppTheme.primary,              AppTheme.primaryDark),
-      'translate' => (const Color(0xFFE0F2FE),        AppTheme.translateAccent,      const Color(0xFF0369A1)),
-      'sts'       => (const Color(0xFFFFF7ED),        const Color(0xFFF97316),       const Color(0xFF9A3412)),
-      _           => (const Color(0xFFECFDF5),        const Color(0xFF10B981),       const Color(0xFF065F46)),
-    };
+    final colors = _typeColors[value]!;
+    final (Color accent, Color bg, Color fg) = colors;
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _type = value),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
             color: sel ? bg : AppTheme.bgColor,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: sel ? border : AppTheme.borderColor,
+              color: sel ? accent : AppTheme.borderColor,
               width: 1.5,
             ),
           ),
-          alignment: Alignment.center,
-          child: Text(label, style: TextStyle(
-            fontSize: 12, fontWeight: FontWeight.w700,
-            color: sel ? fg : AppTheme.text2,
-          )),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w700,
+                color: sel ? fg : AppTheme.text2,
+              )),
+              const SizedBox(height: 2),
+              Text(hint, style: TextStyle(
+                fontSize: 9,
+                color: (sel ? fg : AppTheme.text2).withValues(alpha: sel ? 0.7 : 0.6),
+              )),
+            ],
+          ),
         ),
       ),
     );
@@ -504,40 +546,111 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
     );
   }
 
-  Widget _addMcpButton() => GestureDetector(
+  /// End-to-end info banner
+  Widget _e2eBanner({
+    required Color bg,
+    required Color border,
+    required Color fg,
+    required String text,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: border, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          const Text('⚡', style: TextStyle(fontSize: 14)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: TextStyle(fontSize: 11, color: fg, height: 1.4)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Multi-select language chips
+  Widget _langMultiSelect(String title, Set<String> selected, {
+    required bool includingAuto,
+    required Color accent,
+  }) {
+    final codes = [if (includingAuto) 'auto', ..._langCodes];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(title),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppTheme.bgColor,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.borderColor),
+          ),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: codes.map((code) {
+              final sel = selected.contains(code);
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (sel) {
+                      selected.remove(code);
+                    } else {
+                      selected.add(code);
+                    }
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: sel ? accent : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: sel ? null : Border.all(color: AppTheme.borderColor, width: 1.5),
+                  ),
+                  child: Text(
+                    _langNames[code] ?? code,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
+                      color: sel ? Colors.white : AppTheme.text2,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _addMcpButton(Color accent, Color bg) => GestureDetector(
     onTap: _pickMcp,
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 9),
       decoration: BoxDecoration(
-        color: AppTheme.primaryLight,
+        color: bg,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.primary),
+        border: Border.all(color: accent),
       ),
       alignment: Alignment.center,
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.add, color: AppTheme.primary, size: 16),
-          SizedBox(width: 4),
-          Text('添加 MCP 服务', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary)),
+          Icon(Icons.add, color: accent, size: 16),
+          const SizedBox(width: 4),
+          Text('添加 MCP 服务器', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: accent)),
         ],
       ),
     ),
   );
 
-  Widget _langBtn(String lang, VoidCallback onTap) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppTheme.translateAccent, width: 1.5),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      alignment: Alignment.center,
-      child: Text(lang, style: const TextStyle(
-          fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.translateAccent)),
-    ),
-  );
+  // ── Config & validation ─────────────────────────────────────────────────────
 
   Map<String, dynamic> _buildConfig() => {
     if (_llmId != null) 'llmServiceId': _llmId,
@@ -545,23 +658,38 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
     if (_ttsId != null) 'ttsServiceId': _ttsId,
     if (_voiceName != null) 'voiceName': _voiceName,
     if (_stsId != null) 'stsServiceId': _stsId,
-    if (_type == 'chat' && _mcpIds.isNotEmpty) 'mcpServiceIds': _mcpIds,
-    if (_type == 'chat') 'systemPrompt': _promptCtrl.text.trim(),
+    if (_astId != null) 'astServiceId': _astId,
+    if ((_type == 'chat' || _type == 'sts') && _mcpIds.isNotEmpty) 'mcpServiceIds': _mcpIds,
+    if (_type == 'chat' || _type == 'sts') 'systemPrompt': _promptCtrl.text.trim(),
     if (_type == 'translate') ...{
       if (_translationId != null) 'translationServiceId': _translationId,
-      'srcLang': _srcLang,
-      'dstLang': _dstLang,
+      'srcLangs': _srcLangs.toList(),
+      'dstLangs': _dstLangs.toList(),
     },
     if (_type == 'ast') ...{
-      'srcLang': _srcLang,
-      'dstLang': _dstLang,
+      'srcLangs': _srcLangs.toList(),
+      'dstLangs': _dstLangs.toList(),
     },
   };
 
   String? _validate() {
     if (_nameCtrl.text.trim().isEmpty) return '请输入 Agent 名称';
-    if ((_type == 'chat' || _type == 'translate') && _llmId == null) return '请选择 LLM 服务';
-    if ((_type == 'sts' || _type == 'ast') && _stsId == null) return '请选择 STS 服务';
+    if (_type == 'chat') {
+      if (_llmId == null) return '请选择 LLM 服务';
+      if (_sttId == null) return '请选择 STT 服务';
+      if (_ttsId == null) return '请选择 TTS 服务';
+    }
+    if (_type == 'translate') {
+      if (_translationId == null) return '请选择翻译服务';
+      if (_srcLangs.isEmpty) return '请至少选择一个来源语言';
+      if (_dstLangs.isEmpty) return '请至少选择一个目标语言';
+    }
+    if (_type == 'sts' && _stsId == null) return '请选择 STS 服务';
+    if (_type == 'ast') {
+      if (_astId == null) return '请选择 AST 服务';
+      if (_srcLangs.isEmpty) return '请至少选择一个来源语言';
+      if (_dstLangs.isEmpty) return '请至少选择一个目标语言';
+    }
     return null;
   }
 
@@ -629,7 +757,7 @@ class _McpItem extends StatelessWidget {
         children: [
           Container(
             width: 6, height: 6,
-            decoration: const BoxDecoration(color: Color(0xFF1B5E20), shape: BoxShape.circle),
+            decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
           Expanded(child: Text(name,

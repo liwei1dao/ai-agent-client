@@ -132,6 +132,7 @@ class StsChatAgentSession : NativeAgent {
     private val stsCallback = object : StsCallback {
         override fun onConnected() {
             transitionTo(State.CONNECTED)
+            eventSink.onConnectionStateChanged(config.agentId, "connected")
             Log.d(TAG, "WebSocket connected, inputMode=$inputMode")
             // 如果用户已切换到 call 模式但连接还没好，现在自动启动音频
             if (inputMode == "call") {
@@ -207,11 +208,13 @@ class StsChatAgentSession : NativeAgent {
 
         override fun onDisconnected() {
             transitionTo(State.IDLE)
+            eventSink.onConnectionStateChanged(config.agentId, "disconnected")
             Log.d(TAG, "WebSocket disconnected")
         }
 
         override fun onError(code: String, message: String) {
             transitionTo(State.ERROR)
+            eventSink.onConnectionStateChanged(config.agentId, "error", message)
             eventSink.onError(config.agentId, code, message, null)
         }
 

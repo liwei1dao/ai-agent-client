@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TTS 合成测试 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/></symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/></symbol>
+</svg>
+<a href="index.html" class="back-link">&#8249; 返回总览</a>
+<div class="page-header"><h1>TTS 合成测试</h1><p>音色试听 · 语速/音调 · 播放控制</p></div>
+<div class="phone-frame"><div class="phone-shell"><div class="phone-screen" style="background:#F8FAFF;">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#fff;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+            <span style="font-size:18px;color:#6B7280;cursor:pointer;">&#8249;</span>
+            <div style="flex:1;"><div style="font-size:16px;font-weight:700;color:#1A1A2E;">TTS 测试</div><div style="font-size:11px;color:#6B7280;">文字转语音</div></div>
+            <span class="badge tts">TTS</span>
+          </div>
+
+          <div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;">
+            <!-- 服务选择 -->
+            <div class="demo-card">
+              <div class="demo-card-title">选择服务</div>
+              <div class="demo-row">
+                <div class="demo-sel" style="flex:2;">Azure TTS <span class="caret">▾</span></div>
+              </div>
+            </div>
+
+            <!-- 音色选择 -->
+            <div class="demo-card">
+              <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;">音色选择</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                <div style="padding:6px 12px;border-radius:16px;background:var(--primary);color:white;font-size:11px;font-weight:600;">晓晓 · 女声</div>
+                <div style="padding:6px 12px;border-radius:16px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">云希 · 男声</div>
+                <div style="padding:6px 12px;border-radius:16px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">晓伊 · 活泼</div>
+                <div style="padding:6px 12px;border-radius:16px;background:var(--surface);border:1.5px solid var(--border);color:var(--text-2);font-size:11px;">云扬 · 新闻</div>
+              </div>
+            </div>
+
+            <!-- 参数调整 -->
+            <div class="demo-card">
+              <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;">参数调整</div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-2);margin-bottom:4px;">
+                    <span>语速</span><span style="color:var(--primary);font-weight:700;">1.0x</span>
+                  </div>
+                  <div style="height:4px;background:var(--border);border-radius:2px;position:relative;">
+                    <div style="height:100%;background:var(--primary);border-radius:2px;width:50%;"></div>
+                    <div style="width:14px;height:14px;border-radius:50%;background:var(--primary);border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.2);position:absolute;top:-5px;left:calc(50% - 7px);"></div>
+                  </div>
+                </div>
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-2);margin-bottom:4px;">
+                    <span>音调</span><span style="color:var(--primary);font-weight:700;">1.0x</span>
+                  </div>
+                  <div style="height:4px;background:var(--border);border-radius:2px;position:relative;">
+                    <div style="height:100%;background:var(--primary);border-radius:2px;width:50%;"></div>
+                    <div style="width:14px;height:14px;border-radius:50%;background:var(--primary);border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.2);position:absolute;top:-5px;left:calc(50% - 7px);"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 文本输入 -->
+            <div class="demo-card">
+              <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">合成文本</div>
+              <div style="background:var(--bg);border:1.5px solid var(--primary);border-radius:8px;padding:10px;font-size:12px;color:var(--text);line-height:1.6;min-height:60px;">
+                欢迎使用 AI Agent 语音合成测试。这是一段示例文本，用于测试不同音色和参数的效果。
+              </div>
+              <div class="demo-btn-sm" style="margin-top:8px;justify-content:center;width:100%;">▶ 开始合成</div>
+            </div>
+
+            <!-- 播放状态 -->
+            <div class="demo-card" style="background:#F0FDF4;border:1px solid #86EFAC;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <div class="wave">
+                  <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+                  <span style="background:#16A34A;"></span><span style="background:#16A34A;"></span>
+                  <span style="background:#16A34A;"></span>
+                </div>
+                <span style="font-size:12px;color:#065F46;font-weight:700;flex:1;">晓晓 朗读中...</span>
+                <div style="display:flex;gap:6px;">
+                  <span style="width:28px;height:28px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.1);">⏸</span>
+                  <span style="width:28px;height:28px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.1);">⏹</span>
+                </div>
+              </div>
+              <div style="height:4px;background:rgba(22,163,106,0.2);border-radius:2px;overflow:hidden;">
+                <div style="height:100%;background:#16A34A;border-radius:2px;width:60%;"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:#065F46;">
+                <span>2.2s / 3.6s</span>
+                <span>audio-16khz-128kbitrate-mono-mp3</span>
+              </div>
+            </div>
+          </div>
+</div></div></div>
+</body></html>

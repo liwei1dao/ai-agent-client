@@ -20,6 +20,8 @@ class AgentListNotifier extends StateNotifier<List<AgentDto>> {
     state = await _db.getAllAgents();
   }
 
+  Future<void> reload() => _load();
+
   Future<void> addAgent({
     required String name,
     required String type,

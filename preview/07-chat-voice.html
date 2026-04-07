@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>聊天 Agent — 短语音模式 — AI Agent UI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="single-page">
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v3M9 8V6a3 3 0 0 1 6 0v2M8 19v2M16 19v2"/>
+  </symbol>
+  <symbol id="ic-services" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+  </symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m13.44-13.44 2.12 2.12"/>
+  </symbol>
+</svg>
+
+<a href="index.html" class="back-link">&#8249; 返回总览</a>
+<div class="page-header">
+  <h1>聊天 Agent — 短语音模式</h1>
+  <p>按住中键录音，松手发送 · 上滑取消</p>
+</div>
+
+<div class="phone-frame">
+  <div class="phone-shell">
+    <div class="phone-screen">
+          <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+          <div class="agent-top-bar">
+            <div style="font-size:20px;cursor:pointer;color:var(--text-2);">&#8249;</div>
+            <div class="agent-avatar">🤖</div>
+            <div class="agent-top-info">
+              <div class="agent-top-name">通用助手</div>
+              <div class="agent-top-status">在线</div>
+            </div>
+            <div class="icon-btn">⋯</div>
+          </div>
+          <div class="service-chips">
+            <div class="s-chip llm"><div class="dot"></div>GPT-4o</div>
+            <div class="s-chip stt"><div class="dot"></div>Azure STT</div>
+            <div class="s-chip tts"><div class="dot"></div>晓晓</div>
+          </div>
+          <div class="chat-area">
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar">🤖</div> 通用助手</div>
+              <div class="bubble ai">你好！我是通用助手。你可以用文字或语音和我对话 😊</div>
+              <div class="msg-time">09:40</div>
+            </div>
+            <div class="msg user">
+              <div class="msg-sender">你</div>
+              <div class="bubble user">Flutter 适合做什么类型的应用？</div>
+              <div class="msg-time">09:41</div>
+            </div>
+            <div class="msg ai">
+              <div class="msg-sender"><div class="msg-avatar">🤖</div> GPT-4o</div>
+              <div class="bubble ai">Flutter 非常适合跨平台移动 App 开发，iOS + Android 一套代码，性能接近原生。</div>
+              <div class="msg-time">09:41</div>
+            </div>
+            <div style="align-self:flex-end;max-width:85%;">
+              <div style="background:#FFFBEB;border:1.5px solid #F59E0B;border-radius:14px;border-bottom-right-radius:4px;padding:8px 12px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                  <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
+                  <span style="font-size:10px;color:#D97706;font-weight:700;">识别中</span>
+                </div>
+                <div style="font-size:13px;color:var(--text);">还支持桌面端吗？</div>
+              </div>
+              <div class="msg-time" style="text-align:right;padding:2px 3px;">09:41</div>
+            </div>
+          </div>
+          <div class="mm-bar">
+            <div class="mm-side">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                <rect x="1" y="1" width="12" height="12" rx="2"/>
+              </svg>
+            </div>
+            <div class="mm-voice-center recording">
+              <div class="wave" style="gap:3px;">
+                <span style="background:white;width:3px;"></span><span style="background:white;width:3px;"></span>
+                <span style="background:white;width:3px;"></span><span style="background:white;width:3px;"></span>
+                <span style="background:white;width:3px;"></span>
+              </div>
+              松开发送 · 2.3s · 上滑取消
+            </div>
+            <div class="mm-side">📞</div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item active"><div class="nav-icon"><svg><use href="#ic-agents"/></svg></div><div class="nav-label" style="color:var(--primary);">Agents</div><div class="nav-dot"></div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-services"/></svg></div><div class="nav-label">服务</div></div>
+            <div class="nav-item"><div class="nav-icon"><svg><use href="#ic-settings"/></svg></div><div class="nav-label">设置</div></div>
+          </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
