@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +11,6 @@ import 'package:ai_plugin_interface/ai_plugin_interface.dart';
 import 'package:stt_azure/stt_azure.dart';
 import 'package:agents_server/agents_server.dart' hide SttEvent, LlmEvent;
 import 'package:agents_server/agents_server.dart' as rt show SttEvent, LlmEvent;
-import 'package:file_picker/file_picker.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../providers/service_library_provider.dart';
 import '../widgets/add_service_modal.dart';
@@ -112,12 +110,6 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
           ],
         ),
         actions: [
-          if (!_editing)
-            IconButton(
-              onPressed: () => _importServicesFromFile(context),
-              icon: const Icon(Icons.file_download_outlined, size: 22, color: AppTheme.text2),
-              tooltip: '导入服务',
-            ),
           if (services.isNotEmpty)
             TextButton(
               onPressed: () => setState(() => _editing = !_editing),
@@ -174,71 +166,6 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     if (confirm == true && mounted) {
       await ref.read(serviceLibraryProvider.notifier).removeService(service.id);
     }
-  }
-
-  Future<void> _importServicesFromFile(BuildContext context) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['json'],
-    );
-    if (result == null || result.files.single.path == null) return;
-    final file = File(result.files.single.path!);
-    final jsonStr = await file.readAsString();
-
-    // Parse
-    final ImportParseResult parsed;
-    try {
-      parsed = ref.read(serviceLibraryProvider.notifier).parseImportJson(jsonStr);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('JSON 格式错误，请检查文件内容')),
-      );
-      return;
-    }
-
-    if (parsed.totalCount == 0) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('文件中没有可导入的服务')),
-      );
-      return;
-    }
-
-    // No conflicts → import directly
-    if (!parsed.hasConflicts) {
-      final count = await ref.read(serviceLibraryProvider.notifier).executeImport(
-        newItems: parsed.newItems,
-        conflicts: [],
-        overwriteIds: {},
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('成功导入 $count 个服务')),
-      );
-      return;
-    }
-
-    // Has conflicts → show resolution dialog
-    if (!mounted) return;
-    final overwriteIds = await showDialog<Set<String>>(
-      context: context,
-      builder: (ctx) => _ImportConflictDialog(
-        conflicts: parsed.conflicts,
-        newCount: parsed.newItems.length,
-      ),
-    );
-    if (overwriteIds == null) return; // user cancelled
-
-    final count = await ref.read(serviceLibraryProvider.notifier).executeImport(
-      newItems: parsed.newItems,
-      conflicts: parsed.conflicts,
-      overwriteIds: overwriteIds,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('成功导入 $count 个服务')),
-    );
   }
 
   Widget _buildEmpty(BuildContext context) {
@@ -336,128 +263,6 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
 
 // ── Import conflict resolution dialog ────────────────────────────────────────
 
-class _ImportConflictDialog extends StatefulWidget {
-  const _ImportConflictDialog({required this.conflicts, required this.newCount});
-  final List<ImportItem> conflicts;
-  final int newCount;
-
-  @override
-  State<_ImportConflictDialog> createState() => _ImportConflictDialogState();
-}
-
-class _ImportConflictDialogState extends State<_ImportConflictDialog> {
-  late final Map<String, bool> _overwriteMap; // existingId → overwrite?
-
-  @override
-  void initState() {
-    super.initState();
-    _overwriteMap = {
-      for (final c in widget.conflicts)
-        if (c.existingId != null) c.existingId!: false,
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('导入冲突', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (widget.newCount > 0)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  '${widget.newCount} 个新服务将直接导入',
-                  style: const TextStyle(fontSize: 13, color: AppTheme.text2),
-                ),
-              ),
-            Text(
-              '以下 ${widget.conflicts.length} 个服务与本地已有服务冲突，请选择处理方式：',
-              style: const TextStyle(fontSize: 13, color: AppTheme.text1),
-            ),
-            const SizedBox(height: 12),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: widget.conflicts.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (_, i) {
-                  final item = widget.conflicts[i];
-                  final id = item.existingId!;
-                  final overwrite = _overwriteMap[id] ?? false;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(item.name,
-                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${_typeLabel(item.type)} · ${item.vendor}',
-                                style: const TextStyle(fontSize: 11, color: AppTheme.text2),
-                              ),
-                            ],
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () => setState(() => _overwriteMap[id] = !overwrite),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: overwrite ? AppTheme.primary.withValues(alpha: 0.1) : const Color(0xFFF3F4F6),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: overwrite ? AppTheme.primary : AppTheme.borderColor,
-                              ),
-                            ),
-                            child: Text(
-                              overwrite ? '覆盖' : '跳过',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: overwrite ? AppTheme.primary : AppTheme.text2,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, null),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final overwriteIds = _overwriteMap.entries
-                .where((e) => e.value)
-                .map((e) => e.key)
-                .toSet();
-            Navigator.pop(context, overwriteIds);
-          },
-          style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
-          child: const Text('确认导入'),
-        ),
-      ],
-    );
-  }
-}
-
 // ── Service test screen (full page, per service) ────────────────────────────
 // 上部分：可编辑服务配置 + 保存  下部分：按类型显示的测试板块
 
@@ -488,6 +293,7 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
     'tongyi':    [('apiKey', 'API Key *', true), ('baseUrl', 'Base URL', false), ('model', 'Model', false)],
     'deepl':     [('authKey', 'Auth Key *', true)],
     'remote':    [('url', 'Server URL *', false), ('transport', 'Transport (sse/http)', false), ('authHeader', 'Auth Header', false)],
+    'polychat':  [('baseUrl', '服务器地址 *', false), ('appId', 'App ID *', true), ('appSecret', 'App Secret *', true)],
   };
 
   @override
@@ -2455,12 +2261,51 @@ class _StsTestCardState extends State<_StsTestCard> {
   Duration _connectionDuration = Duration.zero;
   Timer? _connTimer;
 
+  // PolyChat: Agent picker (agentId is per-Agent, not per-Service)
+  List<AgentDto> _polychatAgents = const [];
+  AgentDto? _selectedAgent;
+  final _db = LocalDbBridge();
+
   static const _accent = Color(0xFF4A42D9);
 
   @override
   void initState() {
     super.initState();
     if (widget.services.isNotEmpty) _selected = widget.services.first;
+    if (_selected?.vendor == 'polychat') {
+      _loadPolychatAgents();
+    }
+  }
+
+  Future<void> _loadPolychatAgents() async {
+    final all = await _db.getAllAgents();
+    final agents = all.where((a) {
+      if (a.type != 'sts-chat') return false;
+      try {
+        final cfg = jsonDecode(a.configJson) as Map<String, dynamic>;
+        final tags = (cfg['tags'] as List?)?.cast<String>() ?? const [];
+        final agentId = cfg['agentId'] as String?;
+        return tags.contains('polychat') && agentId != null && agentId.isNotEmpty;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+    if (!mounted) return;
+    setState(() {
+      _polychatAgents = agents;
+      _selectedAgent = agents.isNotEmpty ? agents.first : null;
+    });
+  }
+
+  void _onServiceChanged(ServiceConfigDto svc) {
+    setState(() {
+      _selected = svc;
+      _selectedAgent = null;
+      _polychatAgents = const [];
+    });
+    if (svc.vendor == 'polychat') {
+      _loadPolychatAgents();
+    }
   }
 
   @override
@@ -2473,6 +2318,17 @@ class _StsTestCardState extends State<_StsTestCard> {
 
   Future<void> _connect() async {
     if (_selected == null) return;
+    final vendor = _selected!.vendor;
+
+    // PolyChat 需要额外的 agentId（来自选中的 Agent）
+    if (vendor == 'polychat' && _selectedAgent == null) {
+      setState(() {
+        _phase = _StsPhase.error;
+        _error = '请先选择一个 PolyChat Agent（到「设置 → PolyChat 平台」同步）';
+      });
+      return;
+    }
+
     final sid = 'sts_test_${DateTime.now().millisecondsSinceEpoch}';
     _connTimer?.cancel();
     _connectionDuration = Duration.zero;
@@ -2492,13 +2348,21 @@ class _StsTestCardState extends State<_StsTestCard> {
     });
 
     try {
-      final vendor = _selected!.vendor;
+      // 构建 STS 配置 — polychat 需要注入选中 Agent 的 agentId
+      String stsConfigJson = _selected!.configJson;
+      if (vendor == 'polychat') {
+        final base = jsonDecode(_selected!.configJson) as Map<String, dynamic>;
+        final agentCfg = jsonDecode(_selectedAgent!.configJson) as Map<String, dynamic>;
+        base['agentId'] = agentCfg['agentId'];
+        stsConfigJson = jsonEncode(base);
+      }
+
       await _bridge.createAgent(
         agentId: sid,
-        agentType: 'sts',
+        agentType: 'sts-chat',
         inputMode: 'text',
         stsVendor: vendor,
-        stsConfigJson: _selected!.configJson,
+        stsConfigJson: stsConfigJson,
       );
       await _bridge.setInputMode(sid, 'call');
     } catch (e) {
@@ -2523,6 +2387,27 @@ class _StsTestCardState extends State<_StsTestCard> {
     if (!mounted) return;
     setState(() {
       switch (event) {
+        case ServiceConnectionStateEvent(:final connectionState, :final errorMessage):
+          switch (connectionState) {
+            case ServiceConnectionState.connected:
+              if (_phase != _StsPhase.connected) _startConnTimer();
+              _phase = _StsPhase.connected;
+              _statusText = '已连接';
+            case ServiceConnectionState.connecting:
+              _phase = _StsPhase.connecting;
+              _statusText = '连接中...';
+            case ServiceConnectionState.error:
+              _connTimer?.cancel();
+              _phase = _StsPhase.error;
+              _error = errorMessage ?? '连接失败';
+              _statusText = '错误';
+            case ServiceConnectionState.disconnected:
+              _connTimer?.cancel();
+              if (_phase != _StsPhase.error) {
+                _phase = _StsPhase.idle;
+                _statusText = '';
+              }
+          }
         case SessionStateEvent(:final state):
           switch (state) {
             case AgentSessionState.listening:
@@ -2642,8 +2527,10 @@ class _StsTestCardState extends State<_StsTestCard> {
               child: _ServiceDropdown(
                 value: _selected!.name,
                 items: widget.services.map((s) => s.name).toList(),
-                onChanged: isActive ? (_) {} : (v) => setState(() =>
-                    _selected = widget.services.firstWhere((s) => s.name == v)),
+                onChanged: isActive
+                    ? (_) {}
+                    : (v) => _onServiceChanged(
+                        widget.services.firstWhere((s) => s.name == v)),
               ),
             ),
             const SizedBox(width: 8),
@@ -2656,6 +2543,48 @@ class _StsTestCardState extends State<_StsTestCard> {
                 onTap: isConnecting ? null : _hangUp,
               ),
           ]),
+          // PolyChat: Agent picker (agentId is per-Agent)
+          if (_selected!.vendor == 'polychat') ...[
+            const SizedBox(height: 8),
+            if (_polychatAgents.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFED7AA)),
+                ),
+                child: const Row(children: [
+                  Icon(Icons.info_outline, size: 14, color: Color(0xFF9A3412)),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '尚未同步 PolyChat Agent。请到「设置 → PolyChat 平台」填写凭证并同步。',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF9A3412)),
+                    ),
+                  ),
+                ]),
+              )
+            else
+              Row(children: [
+                const Text('Agent',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.text2)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _ServiceDropdown(
+                    value: _selectedAgent?.name ?? _polychatAgents.first.name,
+                    items: _polychatAgents.map((a) => a.name).toList(),
+                    onChanged: isActive
+                        ? (_) {}
+                        : (v) => setState(() => _selectedAgent =
+                            _polychatAgents.firstWhere((a) => a.name == v)),
+                  ),
+                ),
+              ]),
+          ],
           if (isActive) ...[
             const SizedBox(height: 10),
             _ResultBox(
@@ -2829,6 +2758,11 @@ class _AstTestCardState extends State<_AstTestCard> {
   Duration _connectionDuration = Duration.zero;
   Timer? _connTimer;
 
+  // PolyChat: Agent picker (agentId is per-Agent, not per-Service)
+  List<AgentDto> _polychatAgents = const [];
+  AgentDto? _selectedAgent;
+  final _db = LocalDbBridge();
+
   static const _accent = Color(0xFF9A3412);
   static const _langMap = {
     'zh': '中文', 'en': 'English', 'ja': '日本語', 'ko': '한국어',
@@ -2840,6 +2774,40 @@ class _AstTestCardState extends State<_AstTestCard> {
   void initState() {
     super.initState();
     if (widget.services.isNotEmpty) _selected = widget.services.first;
+    if (_selected?.vendor == 'polychat') {
+      _loadPolychatAgents();
+    }
+  }
+
+  Future<void> _loadPolychatAgents() async {
+    final all = await _db.getAllAgents();
+    final agents = all.where((a) {
+      if (a.type != 'ast-translate') return false;
+      try {
+        final cfg = jsonDecode(a.configJson) as Map<String, dynamic>;
+        final tags = (cfg['tags'] as List?)?.cast<String>() ?? const [];
+        final agentId = cfg['agentId'] as String?;
+        return tags.contains('polychat') && agentId != null && agentId.isNotEmpty;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+    if (!mounted) return;
+    setState(() {
+      _polychatAgents = agents;
+      _selectedAgent = agents.isNotEmpty ? agents.first : null;
+    });
+  }
+
+  void _onServiceChanged(ServiceConfigDto svc) {
+    setState(() {
+      _selected = svc;
+      _selectedAgent = null;
+      _polychatAgents = const [];
+    });
+    if (svc.vendor == 'polychat') {
+      _loadPolychatAgents();
+    }
   }
 
   @override
@@ -2859,6 +2827,17 @@ class _AstTestCardState extends State<_AstTestCard> {
 
   Future<void> _connect() async {
     if (_selected == null) return;
+    final vendor = _selected!.vendor;
+
+    // PolyChat 需要额外的 agentId（来自选中的 Agent）
+    if (vendor == 'polychat' && _selectedAgent == null) {
+      setState(() {
+        _phase = _StsPhase.error;
+        _error = '请先选择一个 PolyChat Agent（到「设置 → PolyChat 平台」同步）';
+      });
+      return;
+    }
+
     final sid = 'ast_test_${DateTime.now().millisecondsSinceEpoch}';
     _connTimer?.cancel();
     _connectionDuration = Duration.zero;
@@ -2882,12 +2861,16 @@ class _AstTestCardState extends State<_AstTestCard> {
       final baseCfg = jsonDecode(_selected!.configJson) as Map<String, dynamic>;
       baseCfg['srcLang'] = _srcLang;
       baseCfg['dstLang'] = _dstLang;
+      // PolyChat 注入选中 Agent 的 agentId
+      if (vendor == 'polychat') {
+        final agentCfg = jsonDecode(_selectedAgent!.configJson) as Map<String, dynamic>;
+        baseCfg['agentId'] = agentCfg['agentId'];
+      }
       final mergedCfg = jsonEncode(baseCfg);
 
-      final vendor = _selected!.vendor;
       await _bridge.createAgent(
         agentId: sid,
-        agentType: 'ast',
+        agentType: 'ast-translate',
         inputMode: 'text',
         astVendor: vendor,
         astConfigJson: mergedCfg,
@@ -2909,6 +2892,27 @@ class _AstTestCardState extends State<_AstTestCard> {
     if (!mounted) return;
     setState(() {
       switch (event) {
+        case ServiceConnectionStateEvent(:final connectionState, :final errorMessage):
+          switch (connectionState) {
+            case ServiceConnectionState.connected:
+              if (_phase != _StsPhase.connected) _startConnTimer();
+              _phase = _StsPhase.connected;
+              _statusText = '已连接';
+            case ServiceConnectionState.connecting:
+              _phase = _StsPhase.connecting;
+              _statusText = '连接中...';
+            case ServiceConnectionState.error:
+              _connTimer?.cancel();
+              _phase = _StsPhase.error;
+              _error = errorMessage ?? '连接失败';
+              _statusText = '错误';
+            case ServiceConnectionState.disconnected:
+              _connTimer?.cancel();
+              if (_phase != _StsPhase.error) {
+                _phase = _StsPhase.idle;
+                _statusText = '';
+              }
+          }
         case SessionStateEvent(:final state):
           switch (state) {
             case AgentSessionState.listening:
@@ -3085,8 +3089,10 @@ class _AstTestCardState extends State<_AstTestCard> {
               child: _ServiceDropdown(
                 value: _selected!.name,
                 items: widget.services.map((s) => s.name).toList(),
-                onChanged: isActive ? (_) {} : (v) => setState(() =>
-                    _selected = widget.services.firstWhere((s) => s.name == v)),
+                onChanged: isActive
+                    ? (_) {}
+                    : (v) => _onServiceChanged(
+                        widget.services.firstWhere((s) => s.name == v)),
               ),
             ),
             const SizedBox(width: 8),
@@ -3099,6 +3105,48 @@ class _AstTestCardState extends State<_AstTestCard> {
                 onTap: isConnecting ? null : _hangUp,
               ),
           ]),
+          // PolyChat: Agent picker (agentId is per-Agent)
+          if (_selected!.vendor == 'polychat') ...[
+            const SizedBox(height: 8),
+            if (_polychatAgents.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFED7AA)),
+                ),
+                child: const Row(children: [
+                  Icon(Icons.info_outline, size: 14, color: Color(0xFF9A3412)),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '尚未同步 PolyChat Agent。请到「设置 → PolyChat 平台」填写凭证并同步。',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF9A3412)),
+                    ),
+                  ),
+                ]),
+              )
+            else
+              Row(children: [
+                const Text('Agent',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.text2)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _ServiceDropdown(
+                    value: _selectedAgent?.name ?? _polychatAgents.first.name,
+                    items: _polychatAgents.map((a) => a.name).toList(),
+                    onChanged: isActive
+                        ? (_) {}
+                        : (v) => setState(() => _selectedAgent =
+                            _polychatAgents.firstWhere((a) => a.name == v)),
+                  ),
+                ),
+              ]),
+          ],
           if (isActive) ...[
             const SizedBox(height: 10),
             _ResultBox(

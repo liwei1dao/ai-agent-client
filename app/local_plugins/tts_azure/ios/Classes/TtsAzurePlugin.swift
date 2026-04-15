@@ -1,4 +1,5 @@
 import Flutter
+import AVFoundation
 import MicrosoftCognitiveServicesSpeech
 
 /**
@@ -9,6 +10,15 @@ import MicrosoftCognitiveServicesSpeech
  *   playbackProgress / playbackDone / playbackInterrupted / error
  */
 public class TtsAzurePlugin: NSObject, FlutterPlugin {
+
+    /// 音频输出模式（全局共享）
+    enum AudioOutputMode: String {
+        case earpiece
+        case speaker
+        case auto
+    }
+
+    static var audioOutputMode: AudioOutputMode = .auto
 
     private var methodChannel: FlutterMethodChannel?
     private var eventChannel: FlutterEventChannel?
@@ -45,13 +55,56 @@ public class TtsAzurePlugin: NSObject, FlutterPlugin {
         case "speak":
             let text = args["text"] as! String
             let reqId = args["requestId"] as? String ?? ""
+            applyAudioOutputRoute()
             speak(text: text, requestId: reqId)
             result(nil)
         case "stop":
             stop()
             result(nil)
+        case "setAudioOutputMode":
+            let mode = args["mode"] as? String ?? "auto"
+            TtsAzurePlugin.audioOutputMode = AudioOutputMode(rawValue: mode) ?? .auto
+            applyAudioOutputRoute()
+            result(nil)
         default:
             result(FlutterMethodNotImplemented)
+        }
+    }
+
+    /// 根据当前模式配置 AVAudioSession 输出路由
+    private func applyAudioOutputRoute() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playAndRecord, options: [.allowBluetooth, .allowBluetoothA2DP])
+
+            switch TtsAzurePlugin.audioOutputMode {
+            case .earpiece:
+                try session.overrideOutputAudioPort(.none)
+            case .speaker:
+                try session.overrideOutputAudioPort(.speaker)
+            case .auto:
+                // 有耳机走系统路由，无耳机走扬声器
+                if isHeadsetConnected() {
+                    try session.overrideOutputAudioPort(.none)
+                } else {
+                    try session.overrideOutputAudioPort(.speaker)
+                }
+            }
+            try session.setActive(true)
+        } catch {
+            NSLog("TtsAzurePlugin: Failed to configure audio session: \(error)")
+        }
+    }
+
+    /// 检测是否有耳机连接（有线或蓝牙）
+    private func isHeadsetConnected() -> Bool {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        return outputs.contains { port in
+            port.portType == .headphones ||
+            port.portType == .bluetoothA2DP ||
+            port.portType == .bluetoothHFP ||
+            port.portType == .bluetoothLE ||
+            port.portType == .usbAudio
         }
     }
 
@@ -67,18 +120,19 @@ public class TtsAzurePlugin: NSObject, FlutterPlugin {
         }
         config.speechSynthesisVoiceName = voiceName
 
-        guard let synth = try? SPXSpeechSynthesizer(speechConfiguration: config) else {
+        let audioConfig = SPXAudioConfiguration()
+        guard let synth = try? SPXSpeechSynthesizer(speechConfiguration: config, audioConfiguration: audioConfig) else {
             pushEvent(["kind": "error", "errorCode": "synth_init_failed"])
             return
         }
 
         // 合成开始
-        synth.addSynthesisStartedEventHandler { [weak self] _, _ in
+        synth.addSynthesisStartedEventHandler { [weak self] (_: SPXSpeechSynthesizer, _: SPXSpeechSynthesisEventArgs) in
             guard let self = self else { return }
             self.pushEvent(["kind": "synthesisStart", "requestId": self.currentRequestId])
         }
         // 合成中（数据块）
-        synth.addSynthesizingEventHandler { [weak self] _, e in
+        synth.addSynthesizingEventHandler { [weak self] (_: SPXSpeechSynthesizer, e: SPXSpeechSynthesisEventArgs) in
             guard let self = self else { return }
             let durationMs = Int(e.result.audioDuration / 10_000)
             self.pushEvent([
@@ -88,13 +142,13 @@ public class TtsAzurePlugin: NSObject, FlutterPlugin {
             ])
         }
         // 合成完成 → 触发播放 start + done
-        synth.addSynthesisCompletedEventHandler { [weak self] _, _ in
+        synth.addSynthesisCompletedEventHandler { [weak self] (_: SPXSpeechSynthesizer, _: SPXSpeechSynthesisEventArgs) in
             guard let self = self else { return }
             self.pushEvent(["kind": "playbackStart", "requestId": self.currentRequestId])
             self.pushEvent(["kind": "playbackDone", "requestId": self.currentRequestId])
         }
         // 取消/错误
-        synth.addSynthesisCanceledEventHandler { [weak self] _, e in
+        synth.addSynthesisCanceledEventHandler { [weak self] (_: SPXSpeechSynthesizer, e: SPXSpeechSynthesisEventArgs) in
             guard let self = self else { return }
             if let detail = try? SPXSpeechSynthesisCancellationDetails(fromCanceledSynthesisResult: e.result),
                detail.reason == SPXCancellationReason.error {
@@ -121,7 +175,7 @@ public class TtsAzurePlugin: NSObject, FlutterPlugin {
     }
 
     private func stop() {
-        synthesizer?.stopSpeaking()
+        try? synthesizer?.stopSpeaking()
         pushEvent(["kind": "playbackInterrupted", "requestId": currentRequestId])
     }
 

@@ -122,6 +122,13 @@ List<_ConfigField> _fieldsFor(String type, String vendor) {
         ];
     }
   }
+  if (vendor == 'polychat' && (type == 'sts' || type == 'ast')) {
+    return const [
+      _ConfigField('baseUrl', '服务器地址 *', 'https://your-polychat-server.com'),
+      _ConfigField('appId', 'App ID *', 'app_xxxxxxxxxxxxxxxx'),
+      _ConfigField('appSecret', 'App Secret *', 'xxxxxxxx', obscure: true),
+    ];
+  }
   if (vendor == 'deepl') {
     return const [
       _ConfigField('apiKey', 'Auth Key *', 'xxxxxxxx-xxxx-...', obscure: true),
@@ -179,8 +186,14 @@ const _vendorsByType = <String, List<Map<String, String>>>{
     {'id': 'deepseek', 'label': 'DeepSeek'},
     {'id': 'doubao', 'label': '火山引擎'},
   ],
-  'sts': [{'id': 'doubao', 'label': '豆包'}],
-  'ast': [{'id': 'doubao', 'label': '火山引擎'}],
+  'sts': [
+    {'id': 'doubao', 'label': '豆包'},
+    {'id': 'polychat', 'label': 'PolyChat'},
+  ],
+  'ast': [
+    {'id': 'doubao', 'label': '火山引擎'},
+    {'id': 'polychat', 'label': 'PolyChat'},
+  ],
   'translation': [
     {'id': 'deepl', 'label': 'DeepL'},
     {'id': 'aliyun', 'label': '阿里云'},
@@ -321,6 +334,18 @@ const _vendorDocs = <String, Map<String, _VendorDoc>>{
       hint: '填写 MCP 服务器地址（SSE 或 HTTP）。如需认证，填写 Auth Header（如 Bearer xxx）。',
     ),
   },
+  'polychat': {
+    'sts': _VendorDoc(
+      url: '',
+      urlLabel: 'PolyChat 控制台',
+      hint: '填写 PolyChat 服务器地址、App ID 和 App Secret。每个 Agent 在平台同步时自动绑定。',
+    ),
+    'ast': _VendorDoc(
+      url: '',
+      urlLabel: 'PolyChat 控制台',
+      hint: '填写 PolyChat 服务器地址、App ID 和 App Secret。每个 Agent 在平台同步时自动绑定。',
+    ),
+  },
 };
 
 _VendorDoc? _getVendorDoc(String vendor, String type) =>
@@ -334,8 +359,11 @@ bool _supportsFetch(String type, String vendor) {
   return false;
 }
 
-/// MCP services don't need test — just save directly.
-bool _skipTest(String type) => type == 'mcp';
+/// Services that don't need test — just save directly.
+/// - MCP: no credentials to validate
+/// - PolyChat STS/AST: platform credentials validated per-agent (agentId bound at Agent sync)
+bool _skipTest(String type, [String vendor = '']) =>
+    type == 'mcp' || vendor == 'polychat';
 
 // ── Modal widget ────────────────────────────────────────────────────────────
 
@@ -1052,7 +1080,7 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
                     const SizedBox(height: 14),
 
                     // 测试连接
-                    if (!_skipTest(_type)) _buildTestButton(hasFetch),
+                    if (!_skipTest(_type, _vendor)) _buildTestButton(hasFetch),
 
                     // Error
                     if (_testError != null) ...[
@@ -1483,7 +1511,7 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
       if (_selectedVoice != null) config['voiceName'] = _selectedVoice;
       if (_selectedModel != null) config['model'] = _selectedModel;
       if (_isDoubaoLlm) config['_subType'] = _doubaoSubType;
-      if (_testOk || _skipTest(_type)) config['_tested'] = true;
+      if (_testOk || _skipTest(_type, _vendor)) config['_tested'] = true;
 
       final notifier = ref.read(serviceLibraryProvider.notifier);
       if (_isEditing) {

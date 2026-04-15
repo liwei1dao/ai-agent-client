@@ -8,7 +8,7 @@ import android.content.Context
  * 每种 Agent 类型（chat, sts, translate, ast）实现此接口。
  * 由 agents_server 通过 NativeAgentRegistry 创建和管理。
  *
- * 生命周期：create → initialize → [sendText / startListening / ...] → release
+ * 生命周期：create → initialize → [connectService → sendText / startListening / ... → disconnectService] → release
  */
 interface NativeAgent {
 
@@ -23,6 +23,12 @@ interface NativeAgent {
      * @param context  Android Context（用于音频、DB 等）
      */
     fun initialize(config: NativeAgentConfig, eventSink: AgentEventSink, context: Context)
+
+    /** 连接服务（E2E Agent：建立 WebSocket；三段式：默认空实现） */
+    fun connectService() {}
+
+    /** 断开服务（E2E Agent：关闭 WebSocket；三段式：默认空实现） */
+    fun disconnectService() {}
 
     /** 文本输入 */
     fun sendText(requestId: String, text: String)

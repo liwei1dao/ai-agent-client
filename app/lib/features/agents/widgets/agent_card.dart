@@ -10,13 +10,11 @@ class AgentCard extends StatefulWidget {
     required this.onTap,
     this.onDelete,
     this.services = const [],
-    this.isRemote = false,
   });
   final AgentDto agent;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
   final List<ServiceConfigDto> services;
-  final bool isRemote;
 
   @override
   State<AgentCard> createState() => _AgentCardState();
@@ -84,10 +82,30 @@ class _AgentCardState extends State<AgentCard> with SingleTickerProviderStateMix
     }
   }
 
+  Map<String, dynamic> get _agentCfg =>
+      jsonDecode(widget.agent.configJson) as Map<String, dynamic>;
+
+  List<String> get _tags =>
+      (_agentCfg['tags'] as List?)?.cast<String>() ?? [];
+
+  bool get _isPolychat => _tags.contains('polychat');
+
   /// Build service chips from agent config
   List<_ChipData> _buildServiceChips() {
-    final cfg = jsonDecode(widget.agent.configJson) as Map<String, dynamic>;
+    final cfg = _agentCfg;
     final chips = <_ChipData>[];
+
+    if (_isPolychat) {
+      // polychat agents: show "PolyChat" as the E2E service chip
+      final color = widget.agent.type == 'ast-translate'
+          ? const Color(0xFF065F46)
+          : const Color(0xFF9A3412);
+      final bg = widget.agent.type == 'ast-translate'
+          ? const Color(0xFFECFDF5)
+          : const Color(0xFFFFF7ED);
+      chips.add(_ChipData('PolyChat', color, bg));
+      return chips;
+    }
 
     // LLM / Translation / STS / AST — main service
     final llmName = _svcName(cfg['llmServiceId'] as String?);
@@ -139,15 +157,17 @@ class _AgentCardState extends State<AgentCard> with SingleTickerProviderStateMix
     final agent = widget.agent;
     final (Color typeBorderColor, Color typeBadgeBg, Color typeBadgeColor, String typeBadgeLabel, String typeEmoji) =
         switch (agent.type) {
-      'chat'      => (AppTheme.primary,              AppTheme.primaryLight,      AppTheme.primaryDark,       '聊天',  '💬'),
-      'translate' => (AppTheme.translateAccent,      const Color(0xFFE0F2FE),    const Color(0xFF0369A1),    '翻译',  '🌐'),
-      'sts'       => (const Color(0xFFF97316),       const Color(0xFFFFF7ED),    const Color(0xFF9A3412),    'STS 聊天', '🗣️'),
-      _           => (const Color(0xFF10B981),       const Color(0xFFECFDF5),    const Color(0xFF065F46),    'AST 翻译', '🔄'),
+      'chat'          => (AppTheme.primary,              AppTheme.primaryLight,      AppTheme.primaryDark,       '聊天',      '💬'),
+      'translate'     => (AppTheme.translateAccent,      const Color(0xFFE0F2FE),    const Color(0xFF0369A1),    '翻译',      '🌐'),
+      'sts-chat'      => (const Color(0xFFF97316),       const Color(0xFFFFF7ED),    const Color(0xFF9A3412),    'STS 聊天',  '🗣️'),
+      'ast-translate' => (const Color(0xFF10B981),       const Color(0xFFECFDF5),    const Color(0xFF065F46),    'AST 翻译',  '🔄'),
+      _               => (AppTheme.primary,              AppTheme.primaryLight,      AppTheme.primaryDark,       '未知',      '❓'),
     };
 
-    // 远程 Agent 使用云端色调
-    final Color borderColor = widget.isRemote ? const Color(0xFF0891B2) : typeBorderColor;
-    final String emoji = widget.isRemote ? '☁️' : typeEmoji;
+    final isPolychat = _isPolychat;
+    final tags = _tags;
+    final Color borderColor = isPolychat ? const Color(0xFF0891B2) : typeBorderColor;
+    final String emoji = isPolychat ? '☁️' : typeEmoji;
 
     final chips = _buildServiceChips();
 
@@ -195,8 +215,8 @@ class _AgentCardState extends State<AgentCard> with SingleTickerProviderStateMix
               child: child,
             ),
             child: GestureDetector(
-              onHorizontalDragUpdate: (!widget.isRemote && widget.onDelete != null) ? _onHorizontalDragUpdate : null,
-              onHorizontalDragEnd: (!widget.isRemote && widget.onDelete != null) ? _onHorizontalDragEnd : null,
+              onHorizontalDragUpdate: widget.onDelete != null ? _onHorizontalDragUpdate : null,
+              onHorizontalDragEnd: widget.onDelete != null ? _onHorizontalDragEnd : null,
               onTap: () {
                 if (_isOpen) { _close(); } else { widget.onTap(); }
               },
@@ -230,39 +250,37 @@ class _AgentCardState extends State<AgentCard> with SingleTickerProviderStateMix
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: widget.isRemote ? const Color(0xFFE0F7FA) : typeBadgeBg,
+                              color: typeBadgeBg,
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (widget.isRemote) ...[
-                                  Icon(Icons.cloud_outlined, size: 10, color: const Color(0xFF0891B2)),
-                                  const SizedBox(width: 3),
-                                ],
-                                Text(
-                                  widget.isRemote ? '云端 · $typeBadgeLabel' : typeBadgeLabel,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: widget.isRemote ? const Color(0xFF0891B2) : typeBadgeColor,
-                                  ),
-                                ),
-                              ],
+                            child: Text(
+                              typeBadgeLabel,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: typeBadgeColor,
+                              ),
                             ),
                           ),
                         ],
                       ),
 
-                      // Service chips
-                      if (chips.isNotEmpty) ...[
+                      // Service chips + tag chips
+                      if (chips.isNotEmpty || tags.isNotEmpty) ...[
                         const SizedBox(height: 10),
                         Wrap(
                           spacing: 5,
                           runSpacing: 4,
-                          children: chips.map((c) =>
-                            _ServiceChip(label: c.label, color: c.color, bg: c.bg),
-                          ).toList(),
+                          children: [
+                            ...chips.map((c) =>
+                              _ServiceChip(label: c.label, color: c.color, bg: c.bg),
+                            ),
+                            ...tags.map((tag) => _ServiceChip(
+                              label: tag,
+                              color: const Color(0xFF0891B2),
+                              bg: const Color(0xFFE0F7FA),
+                            )),
+                          ],
                         ),
                       ],
 

@@ -4,6 +4,7 @@ import android.content.*
 import android.os.IBinder
 import android.util.Log
 import com.aiagent.plugin_interface.*
+import com.aiagent.plugin_interface.AudioOutputManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
@@ -42,9 +43,22 @@ class AgentsServerPlugin : FlutterPlugin {
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
+        AudioOutputManager.init(context)
 
         methodChannel = MethodChannel(binding.binaryMessenger, "agents_server/commands")
         methodChannel.setMethodCallHandler { call, result ->
+            // setAudioOutputMode 不依赖 Service，提前处理
+            if (call.method == "setAudioOutputMode") {
+                val mode = when (call.argument<String>("mode")) {
+                    "earpiece" -> AudioOutputManager.Mode.EARPIECE
+                    "speaker"  -> AudioOutputManager.Mode.SPEAKER
+                    else       -> AudioOutputManager.Mode.AUTO
+                }
+                AudioOutputManager.setMode(mode)
+                result.success(null)
+                return@setMethodCallHandler
+            }
+
             val svc = service
             if (svc == null && call.method != "notifyAppForeground") {
                 Log.w(TAG, "Service not bound, ignoring ${call.method}")
@@ -98,13 +112,15 @@ class AgentsServerPlugin : FlutterPlugin {
                     result.success(null)
                 }
                 "connectService" -> {
-                    Log.d(TAG, "connectService: ${call.argument<String>("agentId")}")
+                    val agentId = call.argument<String>("agentId")!!
+                    Log.d(TAG, "connectService: $agentId")
+                    svc!!.getAgent(agentId)?.connectService()
                     result.success(null)
                 }
                 "disconnectService" -> {
                     val agentId = call.argument<String>("agentId")!!
                     Log.d(TAG, "disconnectService: $agentId")
-                    svc!!.getAgent(agentId)?.release()
+                    svc!!.getAgent(agentId)?.disconnectService()
                     result.success(null)
                 }
                 "pauseAudio" -> {
@@ -172,7 +188,7 @@ class AgentsServerPlugin : FlutterPlugin {
 
     private fun startServiceAndBind() {
         val intent = Intent(context, AgentsServerService::class.java)
-        context.startForegroundService(intent)
+        // 仅 bind，不 startForegroundService；foreground 在 createAgent 时按需启动
         context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 }

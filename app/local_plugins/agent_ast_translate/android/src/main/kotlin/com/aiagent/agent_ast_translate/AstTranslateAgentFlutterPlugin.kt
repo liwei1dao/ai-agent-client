@@ -13,8 +13,8 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
 class AstTranslateAgentFlutterPlugin : FlutterPlugin {
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        NativeAgentRegistry.register("ast") { AstTranslateAgentSession() }
-        Log.d("AstTranslateAgentPlugin", "Registered NativeAgent type=ast")
+        NativeAgentRegistry.register("ast-translate") { AstTranslateAgentSession() }
+        Log.d("AstTranslateAgentPlugin", "Registered NativeAgent type=ast-translate")
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {}

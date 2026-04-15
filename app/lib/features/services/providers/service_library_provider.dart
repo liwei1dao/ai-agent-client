@@ -17,7 +17,53 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
   final _uuid = const Uuid();
 
   Future<void> _load() async {
+    await _migrateVoitransToPolychat();
     state = await _db.getAllServiceConfigs();
+  }
+
+  Future<void> reload() => _load();
+
+  /// 旧版数据迁移：vendor='voitrans' → 'polychat'，Agent tag 'voitrans' → 'polychat'
+  Future<void> _migrateVoitransToPolychat() async {
+    // 1. 迁移 ServiceConfig
+    final services = await _db.getAllServiceConfigs();
+    for (final s in services) {
+      if (s.vendor == 'voitrans') {
+        await _db.upsertServiceConfig(ServiceConfigDto(
+          id: s.id,
+          type: s.type,
+          vendor: 'polychat',
+          name: s.name
+              .replaceFirst('VoiTrans', 'PolyChat')
+              .replaceFirst('voitrans', 'polychat'),
+          configJson: s.configJson,
+          createdAt: s.createdAt,
+        ));
+      }
+    }
+
+    // 2. 迁移 Agent tags
+    final agents = await _db.getAllAgents();
+    for (final a in agents) {
+      try {
+        final cfg = jsonDecode(a.configJson) as Map<String, dynamic>;
+        final tags = (cfg['tags'] as List?)?.cast<String>() ?? const [];
+        if (tags.contains('voitrans')) {
+          final newTags = tags.map((t) => t == 'voitrans' ? 'polychat' : t).toList();
+          cfg['tags'] = newTags;
+          await _db.upsertAgent(AgentDto(
+            id: a.id,
+            name: a.name,
+            type: a.type,
+            configJson: jsonEncode(cfg),
+            createdAt: a.createdAt,
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+        }
+      } catch (_) {
+        // ignore malformed agent configs
+      }
+    }
   }
 
   Future<void> addService({
@@ -64,8 +110,18 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
     await _load();
   }
 
+  /// Export all local services as JSON string.
+  String exportServicesJson() {
+    final list = state.map((s) => {
+      'type': s.type,
+      'vendor': s.vendor,
+      'name': s.name,
+      'config': jsonDecode(s.configJson),
+    }).toList();
+    return jsonEncode({'services': list});
+  }
+
   /// Parse import JSON and separate into conflicts and new services.
-  /// Returns ({List<ImportItem> conflicts, List<ImportItem> newItems}).
   ImportParseResult parseImportJson(String jsonStr) {
     final data = jsonDecode(jsonStr) as Map<String, dynamic>;
     final list = data['services'] as List? ?? [];
@@ -77,7 +133,9 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
       final vendor = m['vendor'] as String?;
       final name = m['name'] as String?;
       final config = m['config'] as Map<String, dynamic>?;
-      if (type == null || vendor == null || name == null || config == null) continue;
+      if (type == null || vendor == null || name == null || config == null) {
+        continue;
+      }
       final existing = state.where(
         (s) => s.type == type && s.vendor == vendor && s.name == name,
       );
@@ -98,7 +156,6 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
   }
 
   /// Execute import with conflict resolution.
-  /// [overwriteIds] contains existingIds of conflicting items the user chose to overwrite.
   Future<int> executeImport({
     required List<ImportItem> newItems,
     required List<ImportItem> conflicts,
@@ -106,7 +163,6 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
   }) async {
     int count = 0;
     final now = DateTime.now().millisecondsSinceEpoch;
-    // Import all new items
     for (final item in newItems) {
       final dto = ServiceConfigDto(
         id: _uuid.v4(),
@@ -119,7 +175,6 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
       await _db.upsertServiceConfig(dto);
       count++;
     }
-    // Import conflicting items that user chose to overwrite
     for (final item in conflicts) {
       if (item.existingId != null && overwriteIds.contains(item.existingId)) {
         final existing = state.firstWhere((s) => s.id == item.existingId);
@@ -145,7 +200,7 @@ class ImportItem {
   final String vendor;
   final String name;
   final Map<String, dynamic> config;
-  final String? existingId; // non-null if conflicts with local service
+  final String? existingId;
 
   const ImportItem({
     required this.type,

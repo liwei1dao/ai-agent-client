@@ -13,8 +13,8 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
 class StsChatAgentFlutterPlugin : FlutterPlugin {
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        NativeAgentRegistry.register("sts") { StsChatAgentSession() }
-        Log.d("StsChatAgentPlugin", "Registered NativeAgent type=sts")
+        NativeAgentRegistry.register("sts-chat") { StsChatAgentSession() }
+        Log.d("StsChatAgentPlugin", "Registered NativeAgent type=sts-chat")
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {}

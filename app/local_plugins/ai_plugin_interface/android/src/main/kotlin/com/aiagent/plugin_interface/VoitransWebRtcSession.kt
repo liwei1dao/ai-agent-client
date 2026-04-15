@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.*
 import okhttp3.*
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
@@ -114,6 +115,7 @@ class VoitransWebRtcSession(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val pendingCandidates = mutableListOf<IceCandidate>()
     @Volatile private var remoteDescriptionSet = false
+    private var pingJob: kotlinx.coroutines.Job? = null
 
     fun initialize(baseUrl: String, appId: String, appSecret: String, agentId: String) {
         this.baseUrl = baseUrl.trimEnd('/')
@@ -143,6 +145,7 @@ class VoitransWebRtcSession(private val context: Context) {
             ensureFactory(context)
 
             // 2. 创建 PeerConnection + 本地音频 + SDP offer（不依赖 token，与 token 请求并行）
+            //    注意：不要在此处调用 setCommunicationDevice()，会和 JavaAudioDeviceModule 冲突
             createPeerConnection()
             createLocalAudioTrack()
             val offer = createOffer()
@@ -192,14 +195,64 @@ class VoitransWebRtcSession(private val context: Context) {
         Log.d(TAG, "Audio stopped")
     }
 
+    // ── DataChannel ping 心跳 ──
+
+    /** 启动 ping 心跳：每 1 秒发一次纯文本 "ping"，服务端用它作为存活判断。 */
+    private fun startPingHeartbeat() {
+        if (pingJob?.isActive == true) return
+        pingJob = scope.launch {
+            while (isActive) {
+                val dc = dataChannel
+                if (dc != null && dc.state() == DataChannel.State.OPEN) {
+                    try {
+                        val buf = java.nio.ByteBuffer.wrap("ping".toByteArray(Charsets.UTF_8))
+                        dc.send(DataChannel.Buffer(buf, false))
+                    } catch (e: Exception) {
+                        Log.w(TAG, "ping send failed", e)
+                    }
+                }
+                delay(1000)
+            }
+        }
+        Log.d(TAG, "ping heartbeat started")
+    }
+
+    private fun stopPingHeartbeat() {
+        pingJob?.cancel()
+        pingJob = null
+    }
+
+    /**
+     * 通过 DataChannel 发送 JSON 控制消息
+     */
+    fun sendDataChannelMessage(json: JSONObject) {
+        val dc = dataChannel
+        if (dc == null || dc.state() != DataChannel.State.OPEN) {
+            Log.w(TAG, "DataChannel not open (state=${dc?.state()}), drop: ${json.toString().take(100)}")
+            return
+        }
+        val bytes = json.toString().toByteArray(Charsets.UTF_8)
+        val buf = java.nio.ByteBuffer.wrap(bytes)
+        dc.send(DataChannel.Buffer(buf, false))
+        Log.d(TAG, "DC → ${json.toString().take(120)}")
+    }
+
     fun release() {
         scope.launch {
             // 断开服务端会话
             val id = pcId
             if (id != null) {
                 try {
+                    // pc_id 可能包含 '#' 等特殊字符（如 "SmallWebRTCConnection#3-xxxx"），
+                    // 不能直接拼字符串，否则 OkHttp 会把 '#' 之后当作 URL fragment 丢弃。
+                    // 使用 HttpUrl.Builder.addPathSegment 让 OkHttp 正确百分号编码。
+                    val url = baseUrl.toHttpUrl().newBuilder()
+                        .addPathSegment("api")
+                        .addPathSegment("sessions")
+                        .addPathSegment(id)
+                        .build()
                     val req = Request.Builder()
-                        .url("$baseUrl/api/sessions/$id")
+                        .url(url)
                         .delete()
                         .build()
                     httpClient.newCall(req).execute().close()
@@ -209,6 +262,9 @@ class VoitransWebRtcSession(private val context: Context) {
                 }
             }
         }
+
+        // 停 ping 心跳
+        stopPingHeartbeat()
 
         // 关闭 WebRTC 资源
         try {
@@ -314,6 +370,11 @@ class VoitransWebRtcSession(private val context: Context) {
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+            // 必须 MAX_BUNDLE：audio / application(DataChannel) 共用同一个 ICE+DTLS transport，
+            // 否则 DataChannel 的 m=application 会拿到独立 transport，我们 trickle ICE 只对单个
+            // m-line 发 candidate，另一条永远起不来 → SCTP/DataChannel 永不 open。
+            bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+            rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
         }
 
         peerConnection = peerConnectionFactory!!.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
@@ -330,7 +391,12 @@ class VoitransWebRtcSession(private val context: Context) {
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
                 Log.d(TAG, "ICE state: $state")
                 when (state) {
-                    PeerConnection.IceConnectionState.CONNECTED -> listener?.onConnected()
+                    PeerConnection.IceConnectionState.CONNECTED -> {
+                        // WebRTC 连接建立后，使用 setSpeakerphoneOn 设置输出路由
+                        // 不能用 setCommunicationDevice()，会触发设备变更导致 AudioRecord 中断
+                        AudioOutputManager.applyModeForWebRtc()
+                        listener?.onConnected()
+                    }
                     PeerConnection.IceConnectionState.DISCONNECTED,
                     PeerConnection.IceConnectionState.FAILED,
                     PeerConnection.IceConnectionState.CLOSED -> listener?.onDisconnected()
@@ -369,7 +435,16 @@ class VoitransWebRtcSession(private val context: Context) {
             override fun onBufferedAmountChange(amount: Long) {}
 
             override fun onStateChange() {
-                Log.d(TAG, "DataChannel state: ${dc.state()}")
+                val state = dc.state()
+                Log.d(TAG, "DataChannel[${dc.label()}] state: $state")
+                if (state == DataChannel.State.OPEN) {
+                    // 服务端 is_connected() 依赖客户端每 3 秒内送达一次 "ping"。
+                    // 没 ping → cleanup 会把连接当成 offline 销毁。
+                    startPingHeartbeat()
+                } else if (state == DataChannel.State.CLOSED ||
+                           state == DataChannel.State.CLOSING) {
+                    stopPingHeartbeat()
+                }
             }
 
             override fun onMessage(buffer: DataChannel.Buffer) {

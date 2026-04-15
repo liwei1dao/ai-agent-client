@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-/// VoiTrans 平台 Agent 公开信息
-class VoitransAgent {
-  const VoitransAgent({
+/// PolyChat 平台 Agent 公开信息
+class PolychatAgent {
+  const PolychatAgent({
     required this.agentId,
     required this.name,
     required this.type,
@@ -19,7 +19,7 @@ class VoitransAgent {
   final String? description;
   final List<String> supportedLangs; // 平台返回的支持语言列表
 
-  factory VoitransAgent.fromJson(Map<String, dynamic> json) => VoitransAgent(
+  factory PolychatAgent.fromJson(Map<String, dynamic> json) => PolychatAgent(
         agentId: json['agent_id'] as String,
         name: json['name'] as String,
         type: json['type'] as String,
@@ -32,9 +32,9 @@ class VoitransAgent {
       );
 }
 
-/// VoiTrans 平台 HTTP 客户端
-class VoitransApiClient {
-  VoitransApiClient({
+/// PolyChat 平台 HTTP 客户端
+class PolychatApiClient {
+  PolychatApiClient({
     required this.baseUrl,
     required this.appId,
     required this.appSecret,
@@ -53,7 +53,7 @@ class VoitransApiClient {
   String get _base => baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
 
   /// 获取平台 Agent 列表
-  Future<List<VoitransAgent>> fetchAgents() async {
+  Future<List<PolychatAgent>> fetchAgents() async {
     final uri = Uri.parse('$_base/open/v1/agents');
     final resp = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 10));
 
@@ -63,7 +63,7 @@ class VoitransApiClient {
 
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
     final agents = (body['agents'] as List)
-        .map((e) => VoitransAgent.fromJson(e as Map<String, dynamic>))
+        .map((e) => PolychatAgent.fromJson(e as Map<String, dynamic>))
         .toList();
     return agents;
   }

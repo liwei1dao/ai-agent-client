@@ -46,6 +46,8 @@ dependencies:
   # Container / management layer
   agents_server:
     path: local_plugins/agents_server
+  service_manager:
+    path: local_plugins/service_manager
 
   # Agent type plugins (register to NativeAgentRegistry on attach)
   agent_chat:
@@ -68,10 +70,10 @@ dependencies:
     path: local_plugins/sts_doubao
   ast_volcengine:
     path: local_plugins/ast_volcengine
-  sts_voitrans:
-    path: local_plugins/sts_voitrans
-  ast_voitrans:
-    path: local_plugins/ast_voitrans
+  sts_polychat:
+    path: local_plugins/sts_polychat
+  ast_polychat:
+    path: local_plugins/ast_polychat
   translation_deepl:
     path: local_plugins/translation_deepl
   translation_aliyun:

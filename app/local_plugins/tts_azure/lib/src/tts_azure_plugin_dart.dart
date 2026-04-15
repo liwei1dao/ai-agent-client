@@ -47,6 +47,11 @@ class TtsAzurePluginDart implements TtsPlugin {
     _controller = null;
   }
 
+  /// 设置 iOS 端音频输出模式 (earpiece / speaker / auto)
+  static Future<void> setAudioOutputMode(String mode) async {
+    await _cmd.invokeMethod('setAudioOutputMode', {'mode': mode});
+  }
+
   void _onNativeEvent(dynamic raw) {
     final map = raw as Map<Object?, Object?>;
     final kind = map['kind'] as String?;

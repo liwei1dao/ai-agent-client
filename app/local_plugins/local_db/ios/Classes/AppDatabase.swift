@@ -135,6 +135,18 @@ final class AppDatabase {
         }
     }
 
+    func deleteMessage(id: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM messages WHERE id = ?", arguments: [id])
+        }
+    }
+
+    func deleteMessagesByAgent(agentId: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM messages WHERE agentId = ?", arguments: [agentId])
+        }
+    }
+
     func getMessages(agentId: String, limit: Int) throws -> [MessageRecord] {
         try dbQueue.read { db in
             try MessageRecord.fetchAll(

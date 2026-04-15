@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.util.Log
+import com.aiagent.plugin_interface.AudioOutputManager
 import com.aiagent.plugin_interface.NativeTtsService
 import com.aiagent.plugin_interface.TtsCallback
 import kotlinx.coroutines.*
@@ -103,6 +104,9 @@ class TtsAzureService(private val appContext: Context) : NativeTtsService {
                     val player = MediaPlayer()
                     activePlayer = player
                     try {
+                        // 在播放前应用音频输出路由设置
+                        AudioOutputManager.applyMode()
+
                         // USAGE_VOICE_COMMUNICATION lets system AEC get reference signal
                         player.setAudioAttributes(
                             AudioAttributes.Builder()

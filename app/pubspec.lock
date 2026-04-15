@@ -75,10 +75,10 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.7.0"
-  ast_voitrans:
+  ast_polychat:
     dependency: "direct main"
     description:
-      path: "local_plugins/ast_voitrans"
+      path: "local_plugins/ast_polychat"
       relative: true
     source: path
     version: "0.1.0"
@@ -790,6 +790,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.6.5"
+  service_manager:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/service_manager"
+      relative: true
+    source: path
+    version: "0.1.0"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -930,10 +937,10 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
-  sts_voitrans:
+  sts_polychat:
     dependency: "direct main"
     description:
-      path: "local_plugins/sts_voitrans"
+      path: "local_plugins/sts_polychat"
       relative: true
     source: path
     version: "0.1.0"

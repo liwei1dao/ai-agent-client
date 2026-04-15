@@ -128,4 +128,8 @@ class AgentsServerBridge {
       _commandChannel.invokeMethod('notifyAppForeground', {
         'isForeground': isForeground,
       });
+
+  /// 设置音频输出模式：earpiece / speaker / auto
+  Future<void> setAudioOutputMode(String mode) =>
+      _commandChannel.invokeMethod('setAudioOutputMode', {'mode': mode});
 }

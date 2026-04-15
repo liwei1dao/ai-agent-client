@@ -11,6 +11,7 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.util.Log
 import com.aiagent.plugin_interface.AstCallback
+import com.aiagent.plugin_interface.AudioOutputManager
 import com.aiagent.plugin_interface.NativeAstService
 import kotlinx.coroutines.*
 import okhttp3.*
@@ -184,6 +185,8 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
             return
         }
         Log.d(TAG, "startAudio()")
+        // 确保音频输出路由在开始音频前是正确的
+        AudioOutputManager.applyMode()
         isAudioRunning = true
         startAudioPump()
         callback?.onStateChanged("listening")
@@ -604,6 +607,9 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
     }
 
     private fun setupAudioTrack() {
+        // 在创建 AudioTrack 前应用音频输出路由设置
+        AudioOutputManager.applyMode()
+
         val minBuf = AudioTrack.getMinBufferSize(
             TTS_SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         audioTrack = AudioTrack(

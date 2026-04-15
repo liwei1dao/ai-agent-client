@@ -3,39 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../providers/agent_list_provider.dart';
-import '../providers/remote_agent_provider.dart';
+import '../providers/agent_tags_provider.dart';
 import '../../services/providers/service_library_provider.dart';
-import '../../settings/providers/settings_provider.dart';
 import '../widgets/agent_card.dart';
 import '../widgets/add_agent_modal.dart';
 
-class AgentPanelScreen extends ConsumerStatefulWidget {
+class AgentPanelScreen extends ConsumerWidget {
   const AgentPanelScreen({super.key});
 
   @override
-  ConsumerState<AgentPanelScreen> createState() => _AgentPanelScreenState();
-}
-
-class _AgentPanelScreenState extends ConsumerState<AgentPanelScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final localAgents = ref.watch(localAgentListProvider);
-    final remoteAgents = ref.watch(remoteAgentListProvider);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final agents = ref.watch(filteredAgentListProvider);
+    final allTags = ref.watch(allAgentTagsProvider);
+    final selectedTag = ref.watch(selectedTagProvider);
+    final services = ref.watch(serviceLibraryProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -48,45 +29,146 @@ class _AgentPanelScreenState extends ConsumerState<AgentPanelScreen>
             onPressed: () => _showAddAgent(context),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: AppTheme.primary,
-          unselectedLabelColor: AppTheme.text2,
-          indicatorColor: AppTheme.primary,
-          indicatorWeight: 2.5,
-          labelStyle:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          unselectedLabelStyle:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w400),
-          tabs: [
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.phone_android, size: 15),
-                  const SizedBox(width: 5),
-                  Text('本地 (${localAgents.length})'),
-                ],
-              ),
-            ),
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_outlined, size: 15),
-                  const SizedBox(width: 5),
-                  Text('远程 (${remoteAgents.length})'),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _LocalAgentTab(),
-          _RemoteAgentTab(),
+      body: CustomScrollView(
+        slivers: [
+          const SliverPadding(padding: EdgeInsets.only(top: 8)),
+
+          // ── Tag filter bar ──
+          if (allTags.isNotEmpty)
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 40,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  children: [
+                    _TagChip(
+                      label: '全部',
+                      selected: selectedTag == null,
+                      onTap: () =>
+                          ref.read(selectedTagProvider.notifier).state = null,
+                    ),
+                    ...allTags.map((tag) => Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: _TagChip(
+                            label: tag,
+                            selected: selectedTag == tag,
+                            onTap: () => ref
+                                .read(selectedTagProvider.notifier)
+                                .state = selectedTag == tag ? null : tag,
+                          ),
+                        )),
+                  ],
+                ),
+              ),
+            ),
+
+          const SliverPadding(padding: EdgeInsets.only(top: 6)),
+
+          // ── Agent list ──
+          if (agents.isNotEmpty)
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) => AgentCard(
+                    agent: agents[i],
+                    services: services,
+                    onTap: () {
+                      final type = agents[i].type;
+                      final id = agents[i].id;
+                      if (type == 'translate' || type == 'ast-translate') {
+                        context.push('/agent/$id/translate');
+                      } else {
+                        context.push('/agent/$id/chat');
+                      }
+                    },
+                    onDelete: () => ref
+                        .read(agentListProvider.notifier)
+                        .removeAgent(agents[i].id),
+                  ),
+                  childCount: agents.length,
+                ),
+              ),
+            ),
+
+          // ── Empty state ──
+          if (agents.isEmpty)
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              sliver: SliverToBoxAdapter(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 40),
+                  child: Column(
+                    children: [
+                      Icon(Icons.smart_toy_outlined,
+                          size: 48,
+                          color: AppTheme.text2.withValues(alpha: 0.4)),
+                      const SizedBox(height: 12),
+                      Text(
+                        selectedTag != null
+                            ? '标签「$selectedTag」下没有 Agent'
+                            : '还没有 Agent，点击 + 创建',
+                        style:
+                            const TextStyle(fontSize: 13, color: AppTheme.text2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          // ── Add new agent card ──
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            sliver: SliverToBoxAdapter(
+              child: GestureDetector(
+                onTap: () => _showAddAgent(context),
+                child: Container(
+                  margin: const EdgeInsets.only(top: 10, bottom: 10),
+                  padding: const EdgeInsets.symmetric(vertical: 28),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                        color: AppTheme.borderColor,
+                        width: 2,
+                        strokeAlign: BorderSide.strokeAlignInside),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2))
+                    ],
+                  ),
+                  foregroundDecoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppTheme.borderColor,
+                      width: 2,
+                      strokeAlign: BorderSide.strokeAlignInside,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Text('+',
+                          style: TextStyle(
+                              fontSize: 28,
+                              color: AppTheme.text2.withValues(alpha: 0.6),
+                              fontWeight: FontWeight.w300)),
+                      const SizedBox(height: 4),
+                      const Text('添加新 Agent',
+                          style:
+                              TextStyle(fontSize: 12, color: AppTheme.text2)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -107,260 +189,40 @@ class _AgentPanelScreenState extends ConsumerState<AgentPanelScreen>
   }
 }
 
-// ── 本地 Agent Tab ──────────────────────────────────────────────────────────
+// ── Tag filter chip ──────────────────────────────────────────────────────────
 
-class _LocalAgentTab extends ConsumerWidget {
+class _TagChip extends StatelessWidget {
+  const _TagChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final localAgents = ref.watch(localAgentListProvider);
-    final services = ref.watch(serviceLibraryProvider);
-
-    return CustomScrollView(
-      slivers: [
-        const SliverPadding(padding: EdgeInsets.only(top: 14)),
-        if (localAgents.isNotEmpty)
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => AgentCard(
-                  agent: localAgents[i],
-                  services: services,
-                  onTap: () =>
-                      context.push('/agent/${localAgents[i].id}/chat'),
-                  onDelete: () => ref
-                      .read(agentListProvider.notifier)
-                      .removeAgent(localAgents[i].id),
-                ),
-                childCount: localAgents.length,
-              ),
-            ),
-          ),
-
-        // 添加新 Agent 按钮
-        SliverPadding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          sliver: SliverToBoxAdapter(
-            child: GestureDetector(
-              onTap: () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => const AddAgentModal(),
-                );
-              },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.symmetric(vertical: 28),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: AppTheme.borderColor,
-                      width: 2,
-                      strokeAlign: BorderSide.strokeAlignInside),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2))
-                  ],
-                ),
-                foregroundDecoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppTheme.borderColor,
-                    width: 2,
-                    strokeAlign: BorderSide.strokeAlignInside,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Text('+',
-                        style: TextStyle(
-                            fontSize: 28,
-                            color: AppTheme.text2.withValues(alpha: 0.6),
-                            fontWeight: FontWeight.w300)),
-                    const SizedBox(height: 4),
-                    const Text('添加新 Agent',
-                        style: TextStyle(fontSize: 12, color: AppTheme.text2)),
-                  ],
-                ),
-              ),
-            ),
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.primary : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppTheme.primary : AppTheme.borderColor,
           ),
         ),
-
-        const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
-      ],
-    );
-  }
-}
-
-// ── 远程 Agent Tab ──────────────────────────────────────────────────────────
-
-class _RemoteAgentTab extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final remoteAgents = ref.watch(remoteAgentListProvider);
-    final services = ref.watch(serviceLibraryProvider);
-    final syncState = ref.watch(remoteSyncStateProvider);
-    final settings = ref.watch(settingsProvider);
-
-    return CustomScrollView(
-      slivers: [
-        const SliverPadding(padding: EdgeInsets.only(top: 8)),
-
-        // 操作按钮栏
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
-            child: Row(
-              children: [
-                // 同步按钮
-                SizedBox(
-                  height: 32,
-                  child: ElevatedButton.icon(
-                    onPressed: syncState.syncing
-                        ? null
-                        : (settings.isVoitransConfigured
-                            ? () => ref
-                                .read(remoteSyncStateProvider.notifier)
-                                .sync()
-                            : null),
-                    icon: syncState.syncing
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 1.5),
-                          )
-                        : const Icon(Icons.sync, size: 16),
-                    label: Text(
-                      syncState.syncing ? '同步中' : '同步',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: selected ? Colors.white : AppTheme.text2,
           ),
         ),
-
-        // 同步错误提示
-        if (syncState.lastError != null)
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            sliver: SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF2F2),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFFECACA)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline,
-                        size: 16, color: Color(0xFFEF4444)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        syncState.lastError ?? '',
-                        style: const TextStyle(
-                            fontSize: 12, color: Color(0xFFDC2626)),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-        // 远程 Agent 列表
-        if (remoteAgents.isNotEmpty)
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) {
-                  final agent = remoteAgents[i];
-                  return AgentCard(
-                    agent: agent,
-                    services: services,
-                    isRemote: true,
-                    onTap: () => context.push('/agent/${agent.id}/chat'),
-                  );
-                },
-                childCount: remoteAgents.length,
-              ),
-            ),
-          ),
-
-        // 远程为空时的提示
-        if (remoteAgents.isEmpty && !syncState.syncing)
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            sliver: SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppTheme.borderColor,
-                    width: 1,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Icon(Icons.cloud_off_outlined,
-                        size: 36,
-                        color: AppTheme.text2.withValues(alpha: 0.4)),
-                    const SizedBox(height: 8),
-                    Text(
-                      settings.isVoitransConfigured
-                          ? '暂无远程 Agent，点击同步按钮获取'
-                          : '请先在设置中配置 VoiTrans 平台',
-                      style:
-                          const TextStyle(fontSize: 13, color: AppTheme.text2),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-        // 同步中加载指示
-        if (syncState.syncing)
-          const SliverPadding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            sliver: SliverToBoxAdapter(
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            ),
-          ),
-
-        const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
-      ],
+      ),
     );
   }
-
 }

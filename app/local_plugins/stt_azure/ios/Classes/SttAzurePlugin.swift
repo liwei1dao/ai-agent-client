@@ -68,39 +68,40 @@ public class SttAzurePlugin: NSObject, FlutterPlugin {
         config.speechRecognitionLanguage = language
         speechConfig = config
 
-        guard let rec = try? SPXSpeechRecognizer(speechConfiguration: config) else {
+        let audioConfig = SPXAudioConfiguration()
+        guard let rec = try? SPXSpeechRecognizer(speechConfiguration: config, audioConfiguration: audioConfig) else {
             pushEvent(["kind": "error", "errorCode": "recognizer_init_failed"])
             return
         }
 
         // Partial result
-        rec.addRecognizingEventHandler { [weak self] _, e in
+        rec.addRecognizingEventHandler { [weak self] (_: SPXSpeechRecognizer, e: SPXSpeechRecognitionEventArgs) in
             self?.pushEvent(["kind": "partialResult", "text": e.result.text ?? ""])
         }
         // Final result
-        rec.addRecognizedEventHandler { [weak self] _, e in
+        rec.addRecognizedEventHandler { [weak self] (_: SPXSpeechRecognizer, e: SPXSpeechRecognitionEventArgs) in
             if e.result.reason == SPXResultReason.recognizedSpeech {
                 self?.pushEvent(["kind": "finalResult", "text": e.result.text ?? ""])
             }
         }
         // Session start
-        rec.addSessionStartedEventHandler { [weak self] _, _ in
+        rec.addSessionStartedEventHandler { [weak self] (_: SPXRecognizer, _: SPXSessionEventArgs) in
             self?.pushEvent(["kind": "listeningStarted"])
         }
         // Session stop
-        rec.addSessionStoppedEventHandler { [weak self] _, _ in
+        rec.addSessionStoppedEventHandler { [weak self] (_: SPXRecognizer, _: SPXSessionEventArgs) in
             self?.pushEvent(["kind": "listeningStopped"])
         }
         // VAD speech start
-        rec.addSpeechStartDetectedEventHandler { [weak self] _, _ in
+        rec.addSpeechStartDetectedEventHandler { [weak self] (_: SPXRecognizer, _: SPXRecognitionEventArgs) in
             self?.pushEvent(["kind": "vadSpeechStart"])
         }
         // VAD speech end
-        rec.addSpeechEndDetectedEventHandler { [weak self] _, _ in
+        rec.addSpeechEndDetectedEventHandler { [weak self] (_: SPXRecognizer, _: SPXRecognitionEventArgs) in
             self?.pushEvent(["kind": "vadSpeechEnd"])
         }
         // Canceled / error
-        rec.addCanceledEventHandler { [weak self] _, e in
+        rec.addCanceledEventHandler { [weak self] (_: SPXRecognizer, e: SPXSpeechRecognitionCanceledEventArgs) in
             if e.reason == SPXCancellationReason.error {
                 self?.pushEvent([
                     "kind": "error",

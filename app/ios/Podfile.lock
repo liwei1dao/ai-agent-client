@@ -1,7 +1,4 @@
 PODS:
-  - agent_runtime (0.1.0):
-    - Flutter
-    - local_db
   - Flutter (1.0.0)
   - GRDB.swift (6.24.1):
     - GRDB.swift/standard (= 6.24.1)
@@ -20,7 +17,6 @@ PODS:
     - MicrosoftCognitiveServicesSpeech-iOS (~> 1.43)
 
 DEPENDENCIES:
-  - agent_runtime (from `.symlinks/plugins/agent_runtime/ios`)
   - Flutter (from `Flutter`)
   - local_db (from `.symlinks/plugins/local_db/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
@@ -33,8 +29,6 @@ SPEC REPOS:
     - MicrosoftCognitiveServicesSpeech-iOS
 
 EXTERNAL SOURCES:
-  agent_runtime:
-    :path: ".symlinks/plugins/agent_runtime/ios"
   Flutter:
     :path: Flutter
   local_db:
@@ -47,7 +41,6 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/tts_azure/ios"
 
 SPEC CHECKSUMS:
-  agent_runtime: 78e12cdbd84cdea166bf1bc269700972ecd35268
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
   GRDB.swift: 136dcb5d8dddca50aae3ba7d77475f79e7232cd8
   local_db: 5b1c17010ee12837e23d0db9f8fc442155cd51f8

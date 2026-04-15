@@ -11,6 +11,9 @@ interface ServiceConfigDao {
     @Query("DELETE FROM service_configs WHERE id = :id")
     suspend fun delete(id: String)
 
+    @Query("SELECT * FROM service_configs WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): ServiceConfigEntity?
+
     @Query("SELECT * FROM service_configs ORDER BY createdAt DESC")
     suspend fun getAll(): List<ServiceConfigEntity>
 }

@@ -29,8 +29,17 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
   String? _astId;
   late final List<String> _mcpIds;
 
+  // Tags
+  late List<String> _tags;
+  final TextEditingController _tagCtrl = TextEditingController();
+
   // Chat / STS-Chat config
   late final TextEditingController _promptCtrl;
+
+  // 音频配置（每个 Agent 独立）
+  bool _vadEnabled = true;
+  int _silenceTimeout = 3;
+  int _speechMinDuration = 300; // ms, 最短说话时长
 
   // Translate / AST language support (multi-select)
   late Set<String> _srcLangs;
@@ -48,10 +57,10 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
   };
   // Type-specific accent colors
   static const _typeColors = {
-    'chat':      (Color(0xFF6C63FF), Color(0xFFEEF0FF), Color(0xFF4A42D9)),
-    'translate': (Color(0xFF0EA5E9), Color(0xFFE0F2FE), Color(0xFF0369A1)),
-    'sts':       (Color(0xFFF59E0B), Color(0xFFFFFBEB), Color(0xFFB45309)),
-    'ast':       (Color(0xFF14B8A6), Color(0xFFF0FDFA), Color(0xFF0F766E)),
+    'chat':          (Color(0xFF6C63FF), Color(0xFFEEF0FF), Color(0xFF4A42D9)),
+    'translate':     (Color(0xFF0EA5E9), Color(0xFFE0F2FE), Color(0xFF0369A1)),
+    'sts-chat':      (Color(0xFFF59E0B), Color(0xFFFFFBEB), Color(0xFFB45309)),
+    'ast-translate': (Color(0xFF14B8A6), Color(0xFFF0FDFA), Color(0xFF0F766E)),
   };
 
   Color get _accentColor => _typeColors[_type]!.$1;
@@ -71,7 +80,11 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
       _translationId = cfg['translationServiceId'] as String?;
       _stsId = cfg['stsServiceId'] as String?;
       _astId = cfg['astServiceId'] as String?;
+      _tags = List<String>.from(cfg['tags'] as List? ?? []);
       _mcpIds = List<String>.from(cfg['mcpServiceIds'] as List? ?? []);
+      _vadEnabled = cfg['vadEnabled'] as bool? ?? true;
+      _silenceTimeout = cfg['silenceTimeout'] as int? ?? 3;
+      _speechMinDuration = cfg['speechMinDuration'] as int? ?? 300;
       _promptCtrl = TextEditingController(
           text: cfg['systemPrompt'] as String? ??
               '你是一位专业的 AI 助手，请简洁准确地回答用户问题。');
@@ -93,6 +106,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
     } else {
       _nameCtrl = TextEditingController();
       _type = 'chat';
+      _tags = [];
       _mcpIds = [];
       _promptCtrl = TextEditingController(text: '你是一位专业的 AI 助手，请简洁准确地回答用户问题。');
       _srcLangs = {'auto', 'zh', 'en'};
@@ -103,6 +117,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _tagCtrl.dispose();
     _promptCtrl.dispose();
     super.dispose();
   }
@@ -242,6 +257,47 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                   ),
                   const SizedBox(height: 16),
 
+                  // ── Tags ──
+                  _label('标签（可选）'),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ..._tags.map((tag) => Chip(
+                        label: Text(tag, style: const TextStyle(fontSize: 12)),
+                        deleteIcon: const Icon(Icons.close, size: 14),
+                        onDeleted: () => setState(() => _tags.remove(tag)),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        backgroundColor: AppTheme.primaryLight,
+                        side: BorderSide.none,
+                      )),
+                      SizedBox(
+                        width: 100,
+                        height: 32,
+                        child: TextField(
+                          controller: _tagCtrl,
+                          style: const TextStyle(fontSize: 12),
+                          decoration: const InputDecoration(
+                            hintText: '+ 添加标签',
+                            hintStyle: TextStyle(fontSize: 12, color: AppTheme.text2),
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            border: OutlineInputBorder(),
+                          ),
+                          onSubmitted: (v) {
+                            final tag = v.trim();
+                            if (tag.isNotEmpty && !_tags.contains(tag)) {
+                              setState(() => _tags.add(tag));
+                            }
+                            _tagCtrl.clear();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
                   // ── Type selector (2×2 grid) ──
                   _label('Agent 类型'),
                   Column(children: [
@@ -252,9 +308,9 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                     ]),
                     const SizedBox(height: 8),
                     Row(children: [
-                      _typeBtn('🗣️ STS-Chat', '端到端 · 聊天', 'sts'),
+                      _typeBtn('🗣️ STS-Chat', '端到端 · 聊天', 'sts-chat'),
                       const SizedBox(width: 8),
-                      _typeBtn('🔄 AST-Translate', '端到端 · 翻译', 'ast'),
+                      _typeBtn('🔄 AST-Translate', '端到端 · 翻译', 'ast-translate'),
                     ]),
                   ]),
                   const SizedBox(height: 16),
@@ -357,7 +413,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                   // ══════════════════════════════════════════════════════════
                   //  STS-CHAT: STS服务* + 系统提示词 + MCP
                   // ══════════════════════════════════════════════════════════
-                  if (_type == 'sts') ...[
+                  if (_type == 'sts-chat') ...[
                     _e2eBanner(
                       bg: const Color(0xFFFFFBEB),
                       border: const Color(0xFFFDE68A),
@@ -392,7 +448,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                   // ══════════════════════════════════════════════════════════
                   //  AST-TRANSLATE: AST服务* + 语言支持
                   // ══════════════════════════════════════════════════════════
-                  if (_type == 'ast') ...[
+                  if (_type == 'ast-translate') ...[
                     _e2eBanner(
                       bg: const Color(0xFFF0FDFA),
                       border: const Color(0xFF99F6E4),
@@ -412,6 +468,91 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                     const SizedBox(height: 14),
                     _langMultiSelect('目标语言支持', _dstLangs, includingAuto: false, accent: const Color(0xFF14B8A6)),
                   ],
+
+                  // ══════════════════════════════════════════════════════════
+                  //  音频配置（所有 Agent 类型通用）
+                  // ══════════════════════════════════════════════════════════
+                  const SizedBox(height: 20),
+                  const Divider(color: AppTheme.borderColor),
+                  const SizedBox(height: 12),
+                  _label('音频配置'),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgColor,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.borderColor),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // VAD 开关
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('语音活动检测 (VAD)',
+                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.text1)),
+                                  SizedBox(height: 2),
+                                  Text('自动检测说话开始与结束',
+                                      style: TextStyle(fontSize: 11, color: AppTheme.text2)),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: _vadEnabled,
+                              activeColor: _accentColor,
+                              onChanged: (v) => setState(() => _vadEnabled = v),
+                            ),
+                          ],
+                        ),
+                        if (_vadEnabled) ...[
+                          const SizedBox(height: 12),
+                          // 静音超时
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text('静音断句超时',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.text1)),
+                              ),
+                              Text('$_silenceTimeout 秒',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _accentColor)),
+                            ],
+                          ),
+                          Slider(
+                            value: _silenceTimeout.toDouble(),
+                            min: 1,
+                            max: 10,
+                            divisions: 9,
+                            activeColor: _accentColor,
+                            onChanged: (v) => setState(() => _silenceTimeout = v.round()),
+                          ),
+                          const SizedBox(height: 8),
+                          // 最短说话时长
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text('最短说话时长',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.text1)),
+                              ),
+                              Text('$_speechMinDuration ms',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _accentColor)),
+                            ],
+                          ),
+                          Slider(
+                            value: _speechMinDuration.toDouble(),
+                            min: 100,
+                            max: 1000,
+                            divisions: 9,
+                            activeColor: _accentColor,
+                            onChanged: (v) => setState(() => _speechMinDuration = v.round()),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
 
                   const SizedBox(height: 8),
                 ],
@@ -653,23 +794,28 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
   // ── Config & validation ─────────────────────────────────────────────────────
 
   Map<String, dynamic> _buildConfig() => {
+    if (_tags.isNotEmpty) 'tags': _tags,
     if (_llmId != null) 'llmServiceId': _llmId,
     if (_sttId != null) 'sttServiceId': _sttId,
     if (_ttsId != null) 'ttsServiceId': _ttsId,
     if (_voiceName != null) 'voiceName': _voiceName,
     if (_stsId != null) 'stsServiceId': _stsId,
     if (_astId != null) 'astServiceId': _astId,
-    if ((_type == 'chat' || _type == 'sts') && _mcpIds.isNotEmpty) 'mcpServiceIds': _mcpIds,
-    if (_type == 'chat' || _type == 'sts') 'systemPrompt': _promptCtrl.text.trim(),
+    if ((_type == 'chat' || _type == 'sts-chat') && _mcpIds.isNotEmpty) 'mcpServiceIds': _mcpIds,
+    if (_type == 'chat' || _type == 'sts-chat') 'systemPrompt': _promptCtrl.text.trim(),
     if (_type == 'translate') ...{
       if (_translationId != null) 'translationServiceId': _translationId,
       'srcLangs': _srcLangs.toList(),
       'dstLangs': _dstLangs.toList(),
     },
-    if (_type == 'ast') ...{
+    if (_type == 'ast-translate') ...{
       'srcLangs': _srcLangs.toList(),
       'dstLangs': _dstLangs.toList(),
     },
+    // 音频配置
+    'vadEnabled': _vadEnabled,
+    'silenceTimeout': _silenceTimeout,
+    'speechMinDuration': _speechMinDuration,
   };
 
   String? _validate() {
@@ -684,8 +830,8 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
       if (_srcLangs.isEmpty) return '请至少选择一个来源语言';
       if (_dstLangs.isEmpty) return '请至少选择一个目标语言';
     }
-    if (_type == 'sts' && _stsId == null) return '请选择 STS 服务';
-    if (_type == 'ast') {
+    if (_type == 'sts-chat' && _stsId == null) return '请选择 STS 服务';
+    if (_type == 'ast-translate') {
       if (_astId == null) return '请选择 AST 服务';
       if (_srcLangs.isEmpty) return '请至少选择一个来源语言';
       if (_dstLangs.isEmpty) return '请至少选择一个目标语言';

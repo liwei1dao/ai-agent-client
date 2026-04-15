@@ -10,6 +10,7 @@ import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.util.Log
+import com.aiagent.plugin_interface.AudioOutputManager
 import com.aiagent.plugin_interface.NativeStsService
 import com.aiagent.plugin_interface.StsCallback
 import kotlinx.coroutines.*
@@ -243,6 +244,8 @@ class StsDoubaoService(private val appContext: Context) : NativeStsService {
             return
         }
         Log.d(TAG, "startAudio()")
+        // 确保音频输出路由在开始音频前是正确的
+        AudioOutputManager.applyMode()
         isAudioRunning = true
         startAudioPump()
         callback?.onStateChanged("listening")
@@ -679,6 +682,9 @@ class StsDoubaoService(private val appContext: Context) : NativeStsService {
     }
 
     private fun setupAudioTrack() {
+        // 在创建 AudioTrack 前应用音频输出路由设置
+        AudioOutputManager.applyMode()
+
         // TTS 输出 24kHz，AudioTrack 必须匹配
         val minBuf = AudioTrack.getMinBufferSize(
             TTS_SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)

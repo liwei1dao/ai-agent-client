@@ -40,6 +40,7 @@ class AstTranslateAgentSession : NativeAgent {
     private lateinit var db: AppDatabase
     private lateinit var eventSink: AgentEventSink
     private lateinit var config: NativeAgentConfig
+    private lateinit var appContext: Context
 
     private var connectJob: Job? = null
     private var inputMode: String = "text"
@@ -59,6 +60,7 @@ class AstTranslateAgentSession : NativeAgent {
         this.config = config
         this.eventSink = eventSink
         this.inputMode = config.inputMode
+        this.appContext = context.applicationContext
         this.db = AppDatabase.getInstance(context)
 
         // Create AST service from NativeServiceRegistry
@@ -68,8 +70,16 @@ class AstTranslateAgentSession : NativeAgent {
         astService.initialize(config.astConfigJson ?: "{}", context)
 
         Log.d(TAG, "initialized: agentId=${config.agentId} astVendor=${config.astVendor}")
+    }
 
-        // 进入聊天界面时自动建立 WebSocket 连接，不启动麦克风
+    override fun connectService() {
+        Log.d(TAG, "connectService: agentId=${config.agentId}")
+        connectJob?.cancel()
+
+        // 重建 AST service（上一次 disconnectService 调用了 release）
+        astService = NativeServiceRegistry.createAst(config.astVendor ?: "volcengine")
+        astService.initialize(config.astConfigJson ?: "{}", appContext)
+
         connectJob = scope.launch {
             try {
                 astService.connect(astCallback)
@@ -81,6 +91,14 @@ class AstTranslateAgentSession : NativeAgent {
                 eventSink.onError(config.agentId, "ast_connect_error", e.message ?: "Unknown error", null)
             }
         }
+    }
+
+    override fun disconnectService() {
+        Log.d(TAG, "disconnectService: agentId=${config.agentId}")
+        connectJob?.cancel()
+        astService.release()
+        transitionTo(State.IDLE)
+        eventSink.onConnectionStateChanged(config.agentId, "disconnected")
     }
 
     override fun sendText(requestId: String, text: String) {
@@ -104,7 +122,7 @@ class AstTranslateAgentSession : NativeAgent {
         inputMode = mode
         when (mode) {
             "call" -> {
-                // 开始发送麦克风音频，WebSocket 已在 init 时建立
+                // 开始发送麦克风音频（需先调用 connectService 建立 WebSocket）
                 astService.startAudio()
             }
             "short_voice" -> { /* 按住说话，由 UI 调用 startListening/stopListening */ }
