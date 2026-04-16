@@ -10,6 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
@@ -21,3 +23,6 @@ flutter:
       android:
         package: com.aiagent.plugin_interface
         pluginClass: AiPluginInterfacePlugin
+      web:
+        pluginClass: AiPluginInterfaceWeb
+        fileName: ai_plugin_interface_web.dart

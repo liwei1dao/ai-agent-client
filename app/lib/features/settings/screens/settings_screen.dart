@@ -518,15 +518,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final appConfig = ref.watch(configServiceProvider);
     _initVtControllers(appConfig.polychat);
+    final colors = context.appColors;
 
     return Scaffold(
-      backgroundColor: AppTheme.bgColor,
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 12),
         children: [
           // ── 外观 ──
-          _SectionLabel('外观'),
+          const _SectionLabel('外观'),
           _SectionCard(
             children: [
               Padding(
@@ -534,12 +534,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     horizontal: 16, vertical: 12),
                 child: Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text('主题模式',
                           style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w500,
-                              color: AppTheme.text1)),
+                              color: colors.text1)),
                     ),
                     _ThemePill(
                       current: appConfig.themeMode,
@@ -554,7 +554,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
 
           // ── 播报设置 ──
-          _SectionLabel('播报设置'),
+          const _SectionLabel('播报设置'),
           _SectionCard(
             children: [
               Padding(
@@ -562,7 +562,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     horizontal: 16, vertical: 12),
                 child: Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -570,11 +570,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w500,
-                                  color: AppTheme.text1)),
-                          SizedBox(height: 2),
+                                  color: colors.text1)),
+                          const SizedBox(height: 2),
                           Text('自动模式：有耳机走系统路由，无耳机走扬声器',
                               style: TextStyle(
-                                  fontSize: 11, color: AppTheme.text2)),
+                                  fontSize: 11, color: colors.text2)),
                         ],
                       ),
                     ),
@@ -589,7 +589,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
 
           // ── PolyChat 平台 ──
-          _SectionLabel('PolyChat 平台'),
+          const _SectionLabel('PolyChat 平台'),
           _SectionCard(
             children: [
               Padding(
@@ -602,8 +602,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     isDense: true,
                     border: OutlineInputBorder(),
                   ),
-                  style:
-                      const TextStyle(fontSize: 14, color: AppTheme.text1),
+                  style: TextStyle(fontSize: 14, color: colors.text1),
                   onChanged: (_) => _saveVtConfig(),
                 ),
               ),
@@ -616,8 +615,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     isDense: true,
                     border: OutlineInputBorder(),
                   ),
-                  style:
-                      const TextStyle(fontSize: 14, color: AppTheme.text1),
+                  style: TextStyle(fontSize: 14, color: colors.text1),
                   onChanged: (_) => _saveVtConfig(),
                 ),
               ),
@@ -630,8 +628,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     isDense: true,
                     border: OutlineInputBorder(),
                   ),
-                  style:
-                      const TextStyle(fontSize: 14, color: AppTheme.text1),
+                  style: TextStyle(fontSize: 14, color: colors.text1),
                   obscureText: true,
                   onChanged: (_) => _saveVtConfig(),
                 ),
@@ -666,70 +663,67 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
 
           // ── 配置管理 ──
-          _SectionLabel('配置管理'),
+          const _SectionLabel('配置管理'),
           _SectionCard(
             children: [
               ListTile(
                 leading: const Icon(Icons.file_upload_outlined,
                     color: AppTheme.primary, size: 20),
-                title: const Text('导出配置',
+                title: Text('导出配置',
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        color: AppTheme.text1)),
-                subtitle: const Text('选择导出 Agent 或服务配置',
-                    style:
-                        TextStyle(fontSize: 12, color: AppTheme.text2)),
-                trailing: const Icon(Icons.chevron_right,
-                    color: AppTheme.text2, size: 20),
+                        color: colors.text1)),
+                subtitle: Text('选择导出 Agent 或服务配置',
+                    style: TextStyle(fontSize: 12, color: colors.text2)),
+                trailing: Icon(Icons.chevron_right,
+                    color: colors.text2, size: 20),
                 onTap: () => _showExportScopeDialog(context),
               ),
-              const Divider(height: 1, color: AppTheme.borderColor),
+              Divider(height: 1, color: colors.border),
               ListTile(
                 leading: const Icon(Icons.file_download_outlined,
                     color: AppTheme.primary, size: 20),
-                title: const Text('导入配置',
+                title: Text('导入配置',
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        color: AppTheme.text1)),
-                subtitle: const Text('选择导入 Agent 或服务配置',
-                    style:
-                        TextStyle(fontSize: 12, color: AppTheme.text2)),
-                trailing: const Icon(Icons.chevron_right,
-                    color: AppTheme.text2, size: 20),
+                        color: colors.text1)),
+                subtitle: Text('选择导入 Agent 或服务配置',
+                    style: TextStyle(fontSize: 12, color: colors.text2)),
+                trailing: Icon(Icons.chevron_right,
+                    color: colors.text2, size: 20),
                 onTap: () => _showImportScopeDialog(context),
               ),
             ],
           ),
 
           // ── 关于 ──
-          _SectionLabel('关于'),
+          const _SectionLabel('关于'),
           _SectionCard(
             children: [
-              const ListTile(
-                leading:
-                    Icon(Icons.smart_toy_outlined, color: AppTheme.primary),
+              ListTile(
+                leading: const Icon(Icons.smart_toy_outlined,
+                    color: AppTheme.primary),
                 title: Text('AI Agent Client',
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        color: AppTheme.text1)),
+                        color: colors.text1)),
                 subtitle: Text('v1.0.0',
-                    style:
-                        TextStyle(fontSize: 12, color: AppTheme.text2)),
+                    style: TextStyle(fontSize: 12, color: colors.text2)),
               ),
-              const Divider(height: 1, color: AppTheme.borderColor),
+              Divider(height: 1, color: colors.border),
               ListTile(
                 leading: const Icon(Icons.code_outlined,
                     color: AppTheme.primary),
-                title: const Text('开源地址',
+                title: Text('开源地址',
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        color: AppTheme.text1)),
-                trailing: const Icon(Icons.open_in_new,
-                    size: 18, color: AppTheme.text2),
+                        color: colors.text1)),
+                trailing: Icon(Icons.open_in_new,
+                    size: 18, color: colors.text2),
                 onTap: () {},
               ),
             ],
@@ -752,10 +746,10 @@ class _SectionLabel extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
       child: Text(title,
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: AppTheme.text2)),
+              color: context.appColors.text2)),
     );
   }
 }
@@ -770,7 +764,7 @@ class _SectionCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -803,6 +797,10 @@ class _ThemePill extends StatelessWidget {
             value: ThemeMode.dark,
             icon: Icon(Icons.dark_mode_outlined),
             tooltip: '深色'),
+        ButtonSegment(
+            value: ThemeMode.system,
+            icon: Icon(Icons.brightness_auto_outlined),
+            tooltip: '跟随系统'),
       ],
       selected: {current},
       onSelectionChanged: (v) => onChanged(v.first),

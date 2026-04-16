@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
   ai_plugin_interface:
     path: ../ai_plugin_interface
 
@@ -22,3 +24,6 @@ flutter:
       android:
         package: com.aiagent.agent_chat
         pluginClass: ChatAgentFlutterPlugin
+      web:
+        pluginClass: AgentChatWeb
+        fileName: agent_chat_web.dart

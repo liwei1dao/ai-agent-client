@@ -83,6 +83,8 @@ dependencies:
   local_db:
     path: local_plugins/local_db
   file_picker: ^10.3.10
+  web: ^1.1.1
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   flutter_test:

@@ -12,9 +12,14 @@ flutter:
       android:
         package: com.aiagent.ast_polychat
         pluginClass: AstPolychatPlugin
+      web:
+        pluginClass: AstPolychatWeb
+        fileName: ast_polychat_web.dart
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_web_plugins:
     sdk: flutter
   ai_plugin_interface:
     path: ../ai_plugin_interface

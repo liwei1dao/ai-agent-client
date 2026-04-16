@@ -88,6 +88,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   @override
   Widget build(BuildContext context) {
     final services = ref.watch(serviceLibraryProvider);
+    final colors = context.appColors;
 
     // 没有服务时自动退出编辑模式
     if (services.isEmpty && _editing) {
@@ -95,18 +96,16 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
         elevation: 0,
         titleSpacing: 16,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('服务中心',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.text1)),
+            Text('服务中心',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: colors.text1)),
             Text('已配置 ${services.length} 个服务',
-                style: const TextStyle(fontSize: 11, color: AppTheme.text2, fontWeight: FontWeight.w500)),
+                style: TextStyle(fontSize: 11, color: colors.text2, fontWeight: FontWeight.w500)),
           ],
         ),
         actions: [
@@ -118,7 +117,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: _editing ? AppTheme.primary : AppTheme.text2,
+                  color: _editing ? AppTheme.primary : colors.text2,
                 ),
               ),
             ),
@@ -169,21 +168,22 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   }
 
   Widget _buildEmpty(BuildContext context) {
+    final colors = context.appColors;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 72, height: 72,
-            decoration: const BoxDecoration(color: AppTheme.primaryLight, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: colors.primaryTint, shape: BoxShape.circle),
             child: const Icon(Icons.grid_view_rounded, size: 36, color: AppTheme.primary),
           ),
           const SizedBox(height: 14),
-          const Text('还没有配置服务',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.text1)),
+          Text('还没有配置服务',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: colors.text1)),
           const SizedBox(height: 6),
-          const Text('点击下方 + 添加 STT / TTS / LLM 等服务',
-              style: TextStyle(fontSize: 12, color: AppTheme.text2)),
+          Text('点击下方 + 添加 STT / TTS / LLM 等服务',
+              style: TextStyle(fontSize: 12, color: colors.text2)),
           const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: () => _showAddModal(context),
@@ -210,11 +210,12 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
         return (ai == -1 ? 99 : ai).compareTo(bi == -1 ? 99 : bi);
       });
 
+    final colors = context.appColors;
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 80),
       children: [
-        const Text('已配置服务',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.text1)),
+        Text('已配置服务',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: colors.text1)),
         const SizedBox(height: 10),
         GridView.builder(
           shrinkWrap: true,
@@ -240,16 +241,16 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
               onTap: () => _showAddModal(context),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: colors.surface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.borderColor, width: 1.5),
+                  border: Border.all(color: colors.border, width: 1.5),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('+', style: TextStyle(fontSize: 22, color: AppTheme.text2.withValues(alpha: 0.5), fontWeight: FontWeight.w300)),
+                    Text('+', style: TextStyle(fontSize: 22, color: colors.text2.withValues(alpha: 0.5), fontWeight: FontWeight.w300)),
                     const SizedBox(height: 2),
-                    const Text('添加服务', style: TextStyle(fontSize: 11, color: AppTheme.text2)),
+                    Text('添加服务', style: TextStyle(fontSize: 11, color: colors.text2)),
                   ],
                 ),
               ),
@@ -592,6 +593,7 @@ class _ServiceCard extends StatelessWidget {
     // Extract masked key hint from configJson
     final cfg = _parseCfg(service.configJson);
     final hint = _buildHint(cfg);
+    final colors = context.appColors;
 
     return GestureDetector(
       onTap: onTap,
@@ -600,7 +602,7 @@ class _ServiceCard extends StatelessWidget {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: colors.surface,
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, 2)),
@@ -617,7 +619,7 @@ class _ServiceCard extends StatelessWidget {
                     const Spacer(),
                     Row(
                       children: [
-                        Text('● ',
+                        const Text('● ',
                             style: TextStyle(
                                 fontSize: 8,
                                 color: AppTheme.success)),
@@ -636,7 +638,7 @@ class _ServiceCard extends StatelessWidget {
                 // Service name
                 Text(
                   service.name,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.text1),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: colors.text1),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -644,7 +646,7 @@ class _ServiceCard extends StatelessWidget {
                 // Vendor · hint
                 Text(
                   hint,
-                  style: const TextStyle(fontSize: 10, color: AppTheme.text2),
+                  style: TextStyle(fontSize: 10, color: colors.text2),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

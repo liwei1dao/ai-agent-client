@@ -71,9 +71,9 @@ class ConfigService extends StateNotifier<AppConfig> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final themeIndex = prefs.getInt('theme_mode') ?? ThemeMode.light.index;
-    final themeMode = themeIndex == ThemeMode.system.index
-        ? ThemeMode.light
-        : ThemeMode.values[themeIndex];
+    final themeMode = (themeIndex >= 0 && themeIndex < ThemeMode.values.length)
+        ? ThemeMode.values[themeIndex]
+        : ThemeMode.light;
 
     final audioModeIndex = prefs.getInt('audio_output_mode') ?? AudioOutputMode.auto.index;
     final audioOutputMode = audioModeIndex < AudioOutputMode.values.length

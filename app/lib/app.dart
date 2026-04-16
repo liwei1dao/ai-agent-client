@@ -96,13 +96,14 @@ class _ShellScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     return Scaffold(
       body: shell,
       bottomNavigationBar: Container(
         height: 56 + MediaQuery.paddingOf(context).bottom,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: AppTheme.borderColor)),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          border: Border(top: BorderSide(color: colors.border)),
         ),
         padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
         child: Row(
@@ -118,7 +119,7 @@ class _ShellScaffold extends StatelessWidget {
                     Icon(
                       active ? _items[i].$2 : _items[i].$1,
                       size: 24,
-                      color: active ? AppTheme.primary : AppTheme.text2,
+                      color: active ? AppTheme.primary : colors.text2,
                     ),
                     const SizedBox(height: 4),
                     AnimatedContainer(

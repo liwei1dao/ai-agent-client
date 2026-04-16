@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/themes/app_theme.dart';
 import '../providers/chat_provider.dart';
 
 class AgentLogScreen extends ConsumerWidget {
@@ -11,12 +12,13 @@ class AgentLogScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final logs = ref.watch(chatAgentProvider(agentId).select((s) => s.logs));
     final agentName = ref.watch(chatAgentProvider(agentId).select((s) => s.agentName));
+    final colors = context.appColors;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: colors.logBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1A2E),
-        foregroundColor: Colors.white,
+        backgroundColor: colors.logBg,
+        foregroundColor: colors.logText,
         title: Text('$agentName 日志', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
         actions: [
           IconButton(
@@ -41,8 +43,8 @@ class AgentLogScreen extends ConsumerWidget {
         ],
       ),
       body: logs.isEmpty
-          ? const Center(
-              child: Text('暂无日志', style: TextStyle(color: Colors.white38, fontSize: 14)),
+          ? Center(
+              child: Text('暂无日志', style: TextStyle(color: colors.logMuted, fontSize: 14)),
             )
           : ListView.builder(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
@@ -59,17 +61,16 @@ class _LogLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Format: [HH:mm:ss.mmm] LEVEL: message
     final isError = log.contains('ERROR:');
     final isEvent = log.contains('EVENT:');
 
     final Color color;
     if (isError) {
-      color = const Color(0xFFEF4444);
+      color = AppTheme.danger;
     } else if (isEvent) {
       color = const Color(0xFF38BDF8);
     } else {
-      color = const Color(0xFF10B981);
+      color = AppTheme.success;
     }
 
     return Padding(
@@ -88,7 +89,7 @@ class _LogLine extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontFamily: 'monospace',
-                color: isError ? color : Colors.white70,
+                color: isError ? color : context.appColors.logText,
                 height: 1.5,
               ),
             ),

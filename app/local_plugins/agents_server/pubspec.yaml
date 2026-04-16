@@ -9,8 +9,31 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
   ai_plugin_interface:
     path: ../ai_plugin_interface
+  local_db:
+    path: ../local_db
+  llm_openai:
+    path: ../llm_openai
+  stt_azure:
+    path: ../stt_azure
+  tts_azure:
+    path: ../tts_azure
+  sts_doubao:
+    path: ../sts_doubao
+  ast_volcengine:
+    path: ../ast_volcengine
+  sts_polychat:
+    path: ../sts_polychat
+  ast_polychat:
+    path: ../ast_polychat
+  translation_deepl:
+    path: ../translation_deepl
+  translation_aliyun:
+    path: ../translation_aliyun
+  uuid: ^4.5.1
 
 dev_dependencies:
   flutter_test:
@@ -22,3 +45,6 @@ flutter:
       android:
         package: com.aiagent.agents_server
         pluginClass: AgentsServerPlugin
+      web:
+        pluginClass: AgentsServerWeb
+        fileName: agents_server_web.dart

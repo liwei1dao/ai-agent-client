@@ -9,8 +9,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
   ai_plugin_interface:
     path: ../ai_plugin_interface
+  web: ^1.0.0
+  web_socket_channel: ^3.0.0
 
 dev_dependencies:
   flutter_test:
@@ -24,3 +28,6 @@ flutter:
         pluginClass: SttAzurePlugin
       ios:
         pluginClass: SttAzurePlugin
+      web:
+        pluginClass: SttAzureWeb
+        fileName: stt_azure_web.dart

@@ -9,6 +9,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  shared_preferences: ^2.3.4
 
 dev_dependencies:
   flutter_test:
@@ -23,3 +26,6 @@ flutter:
         pluginClass: LocalDbPlugin
       ios:
         pluginClass: LocalDbPlugin
+      web:
+        pluginClass: LocalDbWeb
+        fileName: local_db_web.dart

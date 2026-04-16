@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
   ai_plugin_interface:
     path: ../ai_plugin_interface
 
@@ -22,3 +24,6 @@ flutter:
       android:
         package: com.aiagent.agent_ast_translate
         pluginClass: AstTranslateAgentFlutterPlugin
+      web:
+        pluginClass: AgentAstTranslateWeb
+        fileName: agent_ast_translate_web.dart

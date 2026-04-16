@@ -104,14 +104,14 @@ class AgentPanelScreen extends ConsumerWidget {
                     children: [
                       Icon(Icons.smart_toy_outlined,
                           size: 48,
-                          color: AppTheme.text2.withValues(alpha: 0.4)),
+                          color: context.appColors.text2.withValues(alpha: 0.4)),
                       const SizedBox(height: 12),
                       Text(
                         selectedTag != null
                             ? '标签「$selectedTag」下没有 Agent'
                             : '还没有 Agent，点击 + 创建',
                         style:
-                            const TextStyle(fontSize: 13, color: AppTheme.text2),
+                            TextStyle(fontSize: 13, color: context.appColors.text2),
                       ),
                     ],
                   ),
@@ -129,10 +129,10 @@ class AgentPanelScreen extends ConsumerWidget {
                   margin: const EdgeInsets.only(top: 10, bottom: 10),
                   padding: const EdgeInsets.symmetric(vertical: 28),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: context.appColors.surface,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                        color: AppTheme.borderColor,
+                        color: context.appColors.border,
                         width: 2,
                         strokeAlign: BorderSide.strokeAlignInside),
                     boxShadow: [
@@ -145,7 +145,7 @@ class AgentPanelScreen extends ConsumerWidget {
                   foregroundDecoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: AppTheme.borderColor,
+                      color: context.appColors.border,
                       width: 2,
                       strokeAlign: BorderSide.strokeAlignInside,
                     ),
@@ -155,12 +155,12 @@ class AgentPanelScreen extends ConsumerWidget {
                       Text('+',
                           style: TextStyle(
                               fontSize: 28,
-                              color: AppTheme.text2.withValues(alpha: 0.6),
+                              color: context.appColors.text2.withValues(alpha: 0.6),
                               fontWeight: FontWeight.w300)),
                       const SizedBox(height: 4),
-                      const Text('添加新 Agent',
+                      Text('添加新 Agent',
                           style:
-                              TextStyle(fontSize: 12, color: AppTheme.text2)),
+                              TextStyle(fontSize: 12, color: context.appColors.text2)),
                     ],
                   ),
                 ),
@@ -203,15 +203,16 @@ class _TagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? AppTheme.primary : Colors.white,
+          color: selected ? AppTheme.primary : colors.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected ? AppTheme.primary : AppTheme.borderColor,
+            color: selected ? AppTheme.primary : colors.border,
           ),
         ),
         child: Text(
@@ -219,7 +220,7 @@ class _TagChip extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w500,
-            color: selected ? Colors.white : AppTheme.text2,
+            color: selected ? Colors.white : colors.text2,
           ),
         ),
       ),

@@ -79,15 +79,16 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
         state.sessionState == AgentSessionState.tts;
     final isCall = state.inputMode == 'call';
 
+    final colors = context.appColors;
     return Scaffold(
-      backgroundColor: AppTheme.bgColor,
+      backgroundColor: colors.bg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: colors.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              size: 18, color: AppTheme.text2),
+          icon: Icon(Icons.arrow_back_ios_new,
+              size: 18, color: colors.text2),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(
@@ -109,10 +110,10 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
               children: [
                 Text(
                   state.agentName,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.text1),
+                      color: colors.text1),
                 ),
                 Text(
                   statusLabel(state.sessionState),
@@ -136,7 +137,7 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
               ),
             ),
           IconButton(
-            icon: const Icon(Icons.more_horiz, color: AppTheme.text2),
+            icon: Icon(Icons.more_horiz, color: colors.text2),
             onPressed: () =>
                 showAgentMenu(context, ref: ref, agentId: widget.agentId),
           ),
@@ -149,7 +150,7 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
               state.sttServiceName.isNotEmpty ||
               state.ttsServiceName.isNotEmpty)
             Container(
-              color: Colors.white,
+              color: colors.surface,
               padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
               child: Row(
                 children: [

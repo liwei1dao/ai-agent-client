@@ -9,8 +9,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
   ai_plugin_interface:
     path: ../ai_plugin_interface
+  web: ^1.0.0
+  web_socket_channel: ^3.0.0
+  archive: ^4.0.0
 
 dev_dependencies:
   flutter_test:
@@ -22,3 +27,6 @@ flutter:
       android:
         package: com.aiagent.ast_volcengine
         pluginClass: AstVolcenginePlugin
+      web:
+        pluginClass: AstVolcengineWeb
+        fileName: ast_volcengine_web.dart

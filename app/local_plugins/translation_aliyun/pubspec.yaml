@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
   ai_plugin_interface:
     path: ../ai_plugin_interface
   http: ^1.3.0
@@ -24,3 +26,6 @@ flutter:
       android:
         package: com.aiagent.translation_aliyun
         pluginClass: TranslationAliyunPlugin
+      web:
+        pluginClass: TranslationAliyunWeb
+        fileName: translation_aliyun_web.dart
