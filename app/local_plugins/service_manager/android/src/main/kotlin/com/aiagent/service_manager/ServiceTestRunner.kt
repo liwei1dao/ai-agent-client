@@ -321,23 +321,7 @@ class ServiceTestRunner(
                 releaseSession(testId)
                 sessions[testId] = TestSession.AstSession(service)
 
-                service.connect(object : AstCallback {
-                    override fun onConnected() =
-                        eventSink.onAstTestEvent(testId, "connected")
-                    override fun onSourceSubtitle(text: String) =
-                        eventSink.onAstTestEvent(testId, "sourceSubtitle", text = text)
-                    override fun onTranslatedSubtitle(text: String) =
-                        eventSink.onAstTestEvent(testId, "translatedSubtitle", text = text)
-                    override fun onTtsAudioChunk(pcmData: ByteArray) { /* 底层自行播放 */ }
-                    override fun onDisconnected() =
-                        eventSink.onAstTestEvent(testId, "disconnected")
-                    override fun onError(code: String, message: String) =
-                        eventSink.onAstTestEvent(testId, "error", errorCode = code, errorMessage = message)
-                    override fun onSpeechStart() =
-                        eventSink.onAstTestEvent(testId, "speechStart")
-                    override fun onStateChanged(state: String) =
-                        eventSink.onAstTestEvent(testId, "stateChanged", state = state)
-                })
+                service.connect(buildAstTestCallback(testId))
             } catch (e: Exception) {
                 Log.e(TAG, "testAstConnect error: ${e.message}", e)
                 eventSink.onAstTestEvent(testId, "error", errorCode = "init_error", errorMessage = e.message)
@@ -355,6 +339,51 @@ class ServiceTestRunner(
 
     fun testAstDisconnect(testId: String) {
         releaseSession(testId)
+    }
+
+    /**
+     * Helper that maps the AST recognition five-piece lifecycle back onto the
+     * legacy test event vocabulary (sourceSubtitle / translatedSubtitle) so the
+     * test panel keeps working without change.
+     */
+    private fun buildAstTestCallback(
+        testId: String,
+        onConnectedExtra: (() -> Unit)? = null,
+        onErrorExtra: ((String, String) -> Unit)? = null,
+    ): AstCallback = object : AstCallback {
+        override fun onConnected() {
+            eventSink.onAstTestEvent(testId, "connected")
+            onConnectedExtra?.invoke()
+        }
+
+        override fun onDisconnected() {
+            eventSink.onAstTestEvent(testId, "disconnected")
+        }
+
+        override fun onRecognitionStart(role: AstRole, requestId: String) { /* no-op */ }
+
+        override fun onRecognizing(role: AstRole, requestId: String, text: String) {
+            val kind = if (role == AstRole.TRANSLATED) "translatedSubtitle" else "sourceSubtitle"
+            eventSink.onAstTestEvent(testId, kind, text = text)
+        }
+
+        override fun onRecognized(role: AstRole, requestId: String, text: String) {
+            val kind = if (role == AstRole.TRANSLATED) "translatedSubtitle" else "sourceSubtitle"
+            eventSink.onAstTestEvent(testId, kind, text = text)
+        }
+
+        override fun onRecognitionDone(role: AstRole, requestId: String) { /* no-op */ }
+
+        override fun onRecognitionEnd(requestId: String) { /* no-op */ }
+
+        override fun onRecognitionError(requestId: String?, role: AstRole?, code: String, message: String) {
+            eventSink.onAstTestEvent(testId, "error", errorCode = code, errorMessage = message)
+        }
+
+        override fun onError(code: String, message: String) {
+            eventSink.onAstTestEvent(testId, "error", errorCode = code, errorMessage = message)
+            onErrorExtra?.invoke(code, message)
+        }
     }
 
     // ─────────────────────────────────────────────────
@@ -659,29 +688,17 @@ class ServiceTestRunner(
         var errorMsg: String? = null
         val connectLatch = CompletableDeferred<Boolean>()
 
-        service.connect(object : AstCallback {
-            override fun onConnected() {
-                eventSink.onAstTestEvent(testId, "connected")
+        service.connect(buildAstTestCallback(
+            testId,
+            onConnectedExtra = {
                 connected = true
                 connectLatch.complete(true)
-            }
-            override fun onSourceSubtitle(text: String) =
-                eventSink.onAstTestEvent(testId, "sourceSubtitle", text = text)
-            override fun onTranslatedSubtitle(text: String) =
-                eventSink.onAstTestEvent(testId, "translatedSubtitle", text = text)
-            override fun onTtsAudioChunk(pcmData: ByteArray) {}
-            override fun onDisconnected() =
-                eventSink.onAstTestEvent(testId, "disconnected")
-            override fun onError(code: String, message: String) {
-                eventSink.onAstTestEvent(testId, "error", errorCode = code, errorMessage = message)
+            },
+            onErrorExtra = { _, message ->
                 errorMsg = message
                 connectLatch.complete(false)
-            }
-            override fun onSpeechStart() =
-                eventSink.onAstTestEvent(testId, "speechStart")
-            override fun onStateChanged(state: String) =
-                eventSink.onAstTestEvent(testId, "stateChanged", state = state)
-        })
+            },
+        ))
 
         // 等待连接建立
         val didConnect = withTimeoutOrNull(10_000) { connectLatch.await() } ?: false

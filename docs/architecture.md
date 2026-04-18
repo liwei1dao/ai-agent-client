@@ -72,7 +72,7 @@
 │                                                  │ llm_coze  │  │
 │  STS 插件                                        └───────────┘  │
 │  ┌───────────┐                                                   │
-│  │sts_doubao │  （端到端语音，agent_runtime 直接调度，无中间层）     │
+│  │sts_volcengine │  （端到端语音，agent_runtime 直接调度，无中间层）     │
 │  └───────────┘                                                   │
 │  Translation 插件（纯 Dart HTTP）                                  │
 │  ┌──────────────────┬──────────────────┬──────────────────┐    │
@@ -186,7 +186,7 @@ ai_agent_client/
 │   ├── llm_openai/                    # OpenAI-compatible LLM + MCP 内置
 │   ├── llm_coze/                      # Coze 平台（独立 API）
 │   │
-│   ├── sts_doubao/                    # 豆包 STS（端到端，agent_runtime 直接调度）
+│   ├── sts_volcengine/                    # 火山引擎 STS（端到端，agent_runtime 直接调度）
 │   │
 │   ├── translation_deepl/             # DeepL 翻译（纯 Dart HTTP）
 │   ├── translation_google/            # Google 翻译（纯 Dart HTTP）

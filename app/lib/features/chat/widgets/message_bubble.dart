@@ -95,7 +95,7 @@ class _TranslationPairCard extends StatelessWidget {
             ),
           ),
 
-          // 双语气泡
+          // 原文气泡（普通聊天气泡样式）
           Container(
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.78,
@@ -118,46 +118,42 @@ class _TranslationPairCard extends StatelessWidget {
                         offset: const Offset(0, 2),
                       ),
                     ],
+              border: isRight ? null : Border.all(color: AppTheme.borderColor),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 原文
-                Text(
-                  message.content,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isRight ? Colors.white : AppTheme.text1,
-                    height: 1.5,
-                  ),
-                ),
-                // 分隔线 + 译文
-                if (message.translatedContent != null &&
-                    message.translatedContent!.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Container(
-                      height: 1,
-                      color: isRight
-                          ? Colors.white.withValues(alpha: 0.25)
-                          : AppTheme.borderColor,
-                    ),
-                  ),
-                  Text(
-                    message.translatedContent!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isRight
-                          ? Colors.white.withValues(alpha: 0.85)
-                          : const Color(0xFF0EA5E9),
-                      height: 1.5,
-                      fontStyle: isRight ? FontStyle.italic : FontStyle.normal,
-                    ),
-                  ),
-                ],
-              ],
+            child: Text(
+              message.content,
+              style: TextStyle(
+                fontSize: 14,
+                color: isRight ? Colors.white : AppTheme.text1,
+                height: 1.5,
+              ),
             ),
           ),
+
+          // 译文：气泡下方小号灰色文字（与气泡同侧对齐）
+          if (message.translatedContent != null &&
+              message.translatedContent!.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(
+                top: 4,
+                left: isRight ? 0 : 6,
+                right: isRight ? 6 : 0,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.78,
+                ),
+                child: Text(
+                  message.translatedContent!,
+                  textAlign: isRight ? TextAlign.right : TextAlign.left,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.text2,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

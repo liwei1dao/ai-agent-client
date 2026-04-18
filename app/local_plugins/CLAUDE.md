@@ -3,7 +3,7 @@
 本目录下所有插件必须遵守以下规范，目的是让 `agent_chat` / `agent_sts_chat` / `agent_translate` / `agent_ast_translate` / `agents_server` / `service_manager` 等上层调度方可以**无差别替换厂商实现**。
 
 - 所有接口、配置、事件结构统一定义在 [ai_plugin_interface/](ai_plugin_interface/)，厂商包只做**实现**，禁止新增面向业务层的公开类型。
-- 厂商插件命名：`<能力>_<厂商>`，如 [stt_azure/](stt_azure/)、[tts_azure/](tts_azure/)、[sts_doubao/](sts_doubao/)、[ast_volcengine/](ast_volcengine/)。
+- 厂商插件命名：`<能力>_<厂商>`，如 [stt_azure/](stt_azure/)、[tts_azure/](tts_azure/)、[sts_volcengine/](sts_volcengine/)、[ast_volcengine/](ast_volcengine/)。
 - 组合能力（对话/翻译/STS/AST）统一放在 `agent_*` 插件内，不应直接在厂商包里糅合。
 
 ---
@@ -130,20 +130,60 @@ AST 参见 [ai_plugin_interface/lib/src/ast_plugin.dart](ai_plugin_interface/lib
 
 ### 5.1 通用
 
-- 长连接 WebSocket：`startCall` 建连成功后**必须**派发 `connected`；断连派发 `disconnected`（区分主动/被动，被动需额外 `error`）。
-- `sendAudio(pcmData)`：PCM 16bit mono 16kHz（小端），非该格式由插件内部重采样，**不要**把责任甩给上层。
+- 长连接 WebSocket / WebRTC：`startCall` 建连成功后**必须**派发 `connected`；断连派发 `disconnected`（区分主动/被动，被动需额外 `error`）。
+- `sendAudio(pcmData)`：PCM 16bit mono 16kHz（小端），非该格式由插件内部重采样，**不要**把责任甩给上层。Web 端浏览器自驱麦克风时可为 no-op。
 - 心跳：空闲 15s 无数据时发送心跳帧，超时 30s 判定断连。
 - 自动重连：**不做**。断连直接抛出 `disconnected + error`，由上层 `agent_sts_chat` / `agent_ast_translate` 容器决策。
 
-### 5.2 STS 特有
+### 5.2 STS 事件协议（识别 5 件套 + 合成 4 件套 + 播报 + 音频）
 
-- `audioChunk.audioData` 为 PCM（或 Opus，视厂商；需在 `extraParams` 里标注 `audio_format`），**一次响应的音频必须属于同一 `requestId`**。
-- 打断：调用方重新 `sendAudio` 用户语音开始时，插件须主动丢弃尚未下发的 `audioChunk` 并派发一次 `sentenceDone(text=null)` 表示上一句被抢占。
+STS 是"识别 + 合成 + 播报"的合体，`StsEventType` 覆盖三个生命周期 + 连接 + 音频 + 错误，事件定义见 [sts_plugin.dart](ai_plugin_interface/lib/src/sts_plugin.dart)。
 
-### 5.3 AST 特有
+**识别生命周期**（user / bot 两侧共用，通过 `StsRole` 区分；每个事件**必带** `requestId`）：
 
-- `sourceSubtitle` / `translatedSubtitle` 遵循与 STT 相同的 **"覆盖 vs 累加"** 规则：中间字幕覆盖，句末字幕累加。厂商 SDK 无此区分时需由插件自行判定终结。
-- `sourceSubtitle.text` 与 `translatedSubtitle.text` **必须同句成对**；若厂商只提供翻译，`sourceSubtitle` 可省略但不得错位。
+| 阶段 | `text` 语义 | 消费端策略 |
+|---|---|---|
+| `recognitionStart` | 无 | 新建本 role 的段落缓冲 |
+| `recognizing` | **累计快照**（从本段起点到当前） | **覆盖模式**：`current = event.text` |
+| `recognized` | **本段定稿** | **累加模式**：`committed += event.text`；`current` 清空；**后续 role 仍可继续出现新的 `recognizing`** |
+| `recognitionDone` | 无 | 本 role 的识别链路闭合（用户断句说完 / bot 文本全部送完） |
+| `recognitionEnd` | 无 | 整个 `requestId` 回合关闭（所有 role 都 done 之后派发，**role=null**） |
+| `recognitionError` | 无 | 错误，不关闭流；后续仍须补齐缺失的 Done / End |
+
+**闭合铁律**：
+- 每个 `recognitionStart(role)` 必然以 `recognitionDone(role)` 闭合；每个 `recognitionStart` 所属的 requestId 必然以 `recognitionEnd` 闭合。
+- `error` / `recognitionError` **不关闭事件流**，但发生错误时插件必须补齐缺失的 `Done` / `End`，避免上层状态机悬挂。
+- 用户抢占（新用户说话打断当前回合）：插件须自行 `recognitionDone → recognitionEnd` 旧 requestId，然后开新回合。
+
+**合成生命周期**（`role = bot`，仅云端 TTS 流；WebRTC 端到端音频流插件可不派发合成事件）：
+
+`synthesisStart → synthesizing* → synthesized* → synthesisEnd`；任一阶段可伴随 `synthesisError`（不关流）。
+
+**播报 + 音频**（`role = bot`）：
+
+- `playbackStart → audioChunk* → playbackEnd`
+- `audioChunk.audioData` 为 PCM（或 Opus），首帧必须带 `audioFormat`
+- `playbackEnd.interrupted = true` 表示被新 requestId 抢占或 teardown 打断
+
+### 5.3 STS `requestId` 贯通规则
+
+- **生成**：user 侧 `recognitionStart` 时生成；格式 `sts_<vendor>_<unixMs>_<rand6>`。
+- **bot 主动发起**（无用户前导）：首帧（`bot_response_start` / chat_ended 等）由插件本地补生成，仍须走完整的 start→end 生命周期。
+- **贯通**：一个回合内所有事件（识别、合成、播报、audioChunk）共享同一 requestId。
+- **透传**：`agent_sts_chat` 容器桥接到 `LlmEvent.requestId` 时**原样透传**，不得重生成。
+
+### 5.4 STS 插件自检清单
+
+1. 覆盖 §2.1 生命周期（dispose 后任何方法抛 `StateError`）。
+2. `recognizing.text` 必须是累计快照，**禁止**每帧只送增量。服务器若只发增量，插件自行累加后再发。
+3. 每个 `recognitionStart` 必有配对 `recognitionDone`（同 role、同 requestId）；每个 requestId 必有一次 `recognitionEnd`。
+4. 断连 / 异常时必须派发缺失的 `recognitionDone` / `recognitionEnd` / `playbackEnd(interrupted=true)`。
+5. 空文本禁止派发 `recognized`。
+
+### 5.5 AST 特有（待迁移到同协议）
+
+- 当前 `AstEventType` 仍是旧版 `sourceSubtitle` / `translatedSubtitle` / `ttsAudioChunk`。
+- **待办**：按 §5.2 升级到 `recognitionStart/recognizing/recognized/recognitionDone/recognitionEnd` 五件套 + 合成 + 播报，`AstRole { source, translated }` 区分两路字幕；`source` 侧负责生成 requestId。详见 P4 计划。
 
 ---
 

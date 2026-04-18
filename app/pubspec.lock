@@ -946,17 +946,17 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
-  sts_doubao:
-    dependency: "direct main"
-    description:
-      path: "local_plugins/sts_doubao"
-      relative: true
-    source: path
-    version: "0.1.0"
   sts_polychat:
     dependency: "direct main"
     description:
       path: "local_plugins/sts_polychat"
+      relative: true
+    source: path
+    version: "0.1.0"
+  sts_volcengine:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/sts_volcengine"
       relative: true
     source: path
     version: "0.1.0"

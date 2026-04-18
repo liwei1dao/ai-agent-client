@@ -6,7 +6,16 @@ import '../agent_event.dart';
 import 'web_agent.dart';
 import 'web_service_factory.dart';
 
-/// AST translate agent — thin wrapper over the AST plugin. Ports AstTranslateAgentSession.kt.
+/// AST translate agent — bridges the AST recognition five-piece lifecycle
+/// (see [ai.AstEventType]) onto the chat provider's [SttEvent] / [LlmEvent]
+/// streams.
+///
+/// Mapping:
+/// - `recognizing(source)`  → `SttEvent.partialResult` (text = snapshot)
+/// - `recognized(source)`   → `SttEvent.finalResult`   (requestId, text = final)
+/// - `recognizing(translated)` → `LlmEvent.firstToken` (textDelta = snapshot, requestId)
+/// - `recognized(translated)`  → `LlmEvent.firstToken` (textDelta = final, requestId)
+/// - `recognitionEnd`       → `LlmEvent.done`          (requestId, fullText = last translated)
 class WebAstTranslateAgent implements WebAgent {
   WebAstTranslateAgent(this._emit);
 
@@ -16,9 +25,10 @@ class WebAstTranslateAgent implements WebAgent {
   late ai.AstPlugin _ast;
   StreamSubscription<ai.AstEvent>? _sub;
 
-  String? _currentTranslationId;
-  String _currentTranslationText = '';
-  String _pendingSourceText = '';
+  /// Last `recognized` text seen on the translated role of the current round —
+  /// emitted as `LlmEvent.done.fullText` when the round closes.
+  String _lastTranslatedText = '';
+  String? _activeTranslationRequestId;
 
   @override
   Future<void> initialize(WebAgentConfig config) async {
@@ -90,40 +100,44 @@ class WebAstTranslateAgent implements WebAgent {
           connectionState: ServiceConnectionState.connected,
         ));
         break;
-      case ai.AstEventType.sourceSubtitle:
-        final text = e.text ?? '';
-        _pendingSourceText = text;
-        _emit(SttEvent(
-          sessionId: _config.agentId,
-          requestId: '',
-          kind: SttEventKind.partialResult,
-          text: text,
-        ));
-        // When new source subtitle arrives, finalize any pending translation.
-        _commitPendingTranslation();
-        _commitPendingSource();
-        break;
-      case ai.AstEventType.translatedSubtitle:
-        final text = e.text ?? '';
-        final id = _currentTranslationId ?? newRequestId();
-        _currentTranslationId = id;
-        _currentTranslationText = text;
-        _emit(LlmEvent(
-          sessionId: _config.agentId,
-          requestId: id,
-          kind: LlmEventKind.firstToken,
-          textDelta: text,
-        ));
-        break;
-      case ai.AstEventType.ttsAudioChunk:
-        // Played internally by the AST plugin on web.
-        break;
+
       case ai.AstEventType.disconnected:
         _emit(ServiceConnectionStateEvent(
           sessionId: _config.agentId,
           connectionState: ServiceConnectionState.disconnected,
         ));
         break;
+
+      case ai.AstEventType.recognitionStart:
+        // No-op — chat provider lazily creates the message on the first
+        // partial / firstToken event.
+        break;
+
+      case ai.AstEventType.recognizing:
+        _onRecognizing(e);
+        break;
+
+      case ai.AstEventType.recognized:
+        _onRecognized(e);
+        break;
+
+      case ai.AstEventType.recognitionDone:
+        // No-op — round-level closure is signalled by recognitionEnd.
+        break;
+
+      case ai.AstEventType.recognitionEnd:
+        _onRecognitionEnd(e);
+        break;
+
+      case ai.AstEventType.recognitionError:
+        _emit(AgentErrorEvent(
+          sessionId: _config.agentId,
+          errorCode: e.errorCode ?? 'ast_recognition_error',
+          message: e.errorMessage ?? '',
+          requestId: e.requestId,
+        ));
+        break;
+
       case ai.AstEventType.error:
         _emit(ServiceConnectionStateEvent(
           sessionId: _config.agentId,
@@ -139,31 +153,77 @@ class WebAstTranslateAgent implements WebAgent {
     }
   }
 
-  void _commitPendingTranslation() {
-    final id = _currentTranslationId;
-    final text = _currentTranslationText;
-    if (id != null && text.isNotEmpty) {
-      _emit(LlmEvent(
-        sessionId: _config.agentId,
-        requestId: id,
-        kind: LlmEventKind.done,
-        fullText: text,
-      ));
+  void _onRecognizing(ai.AstEvent e) {
+    final text = e.text ?? '';
+    if (text.isEmpty) return;
+    switch (e.role) {
+      case ai.AstRole.source:
+        _emit(SttEvent(
+          sessionId: _config.agentId,
+          requestId: '',
+          kind: SttEventKind.partialResult,
+          text: text,
+        ));
+        break;
+      case ai.AstRole.translated:
+        final rid = e.requestId ?? '';
+        if (rid.isEmpty) return;
+        _activeTranslationRequestId = rid;
+        _lastTranslatedText = text;
+        _emit(LlmEvent(
+          sessionId: _config.agentId,
+          requestId: rid,
+          kind: LlmEventKind.firstToken,
+          textDelta: text,
+        ));
+        break;
+      case null:
+        break;
     }
-    _currentTranslationId = null;
-    _currentTranslationText = '';
   }
 
-  void _commitPendingSource() {
-    final text = _pendingSourceText;
+  void _onRecognized(ai.AstEvent e) {
+    final text = e.text ?? '';
     if (text.isEmpty) return;
-    final rid = newRequestId();
-    _emit(SttEvent(
-      sessionId: _config.agentId,
-      requestId: rid,
-      kind: SttEventKind.finalResult,
-      text: text,
-    ));
-    _pendingSourceText = '';
+    switch (e.role) {
+      case ai.AstRole.source:
+        final rid = e.requestId ?? '';
+        if (rid.isEmpty) return;
+        _emit(SttEvent(
+          sessionId: _config.agentId,
+          requestId: rid,
+          kind: SttEventKind.finalResult,
+          text: text,
+        ));
+        break;
+      case ai.AstRole.translated:
+        final rid = e.requestId ?? '';
+        if (rid.isEmpty) return;
+        _activeTranslationRequestId = rid;
+        _lastTranslatedText = text;
+        _emit(LlmEvent(
+          sessionId: _config.agentId,
+          requestId: rid,
+          kind: LlmEventKind.firstToken,
+          textDelta: text,
+        ));
+        break;
+      case null:
+        break;
+    }
+  }
+
+  void _onRecognitionEnd(ai.AstEvent e) {
+    final rid = _activeTranslationRequestId;
+    if (rid != null && _lastTranslatedText.isNotEmpty) {
+      _emit(LlmEvent(
+        sessionId: _config.agentId,
+        requestId: rid,
+        kind: LlmEventKind.done,
+        fullText: _lastTranslatedText,
+      ));
+    }
+    _activeTranslationRequestId = null;
+    _lastTranslatedText = '';
   }
 }

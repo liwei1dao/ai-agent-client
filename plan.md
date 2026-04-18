@@ -21,7 +21,7 @@ ai-agent-client/          ← repo 根目录
 │       ├── stt_azure/             # Azure STT（参考实现）
 │       ├── tts_azure/             # Azure TTS（参考实现）
 │       ├── llm_openai/            # LLM（OpenAI compatible + MCP）
-│       ├── sts_doubao/            # 端到端语音
+│       ├── sts_volcengine/            # 端到端语音
 │       ├── translation_deepl/     # DeepL 翻译
 │       └── translation_aliyun/    # 阿里云翻译
 ├── docs/
@@ -221,11 +221,11 @@ Thinking（可选）→ FirstToken → [ToolCallStart → ToolCallArguments → 
 
 ---
 
-## Phase 10 — STS 插件（sts_doubao）
+## Phase 10 — STS 插件（sts_volcengine）
 
 **目标**：端到端语音，agent_runtime 直接调度，无中间 STT/LLM/TTS 分步。
 
-- 豆包 STS WebSocket API
+- 火山引擎 STS WebSocket API
 - Android：OkHttp WebSocket（Kotlin）
 - iOS：URLSessionWebSocketTask（Swift）
 

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/app_config.dart' as env;
+
 /// 音频播报输出模式
 enum AudioOutputMode {
   /// 听筒
@@ -80,13 +82,21 @@ class ConfigService extends StateNotifier<AppConfig> {
         ? AudioOutputMode.values[audioModeIndex]
         : AudioOutputMode.auto;
 
+    // PolyChat 默认值来自 .env，SharedPreferences 有值则覆盖。
+    final envCfg = env.AppConfig.instance;
     state = AppConfig(
       themeMode: themeMode,
       historyMessageCount: prefs.getInt('history_message_count') ?? 20,
       polychat: PolychatConfig(
-        baseUrl: prefs.getString('polychat_base_url') ?? prefs.getString('voitrans_base_url') ?? '',
-        appId: prefs.getString('polychat_app_id') ?? prefs.getString('voitrans_app_id') ?? '',
-        appSecret: prefs.getString('polychat_app_secret') ?? prefs.getString('voitrans_app_secret') ?? '',
+        baseUrl: prefs.getString('polychat_base_url') ??
+            prefs.getString('voitrans_base_url') ??
+            envCfg.polychatBaseUrl,
+        appId: prefs.getString('polychat_app_id') ??
+            prefs.getString('voitrans_app_id') ??
+            envCfg.polychatAppId,
+        appSecret: prefs.getString('polychat_app_secret') ??
+            prefs.getString('voitrans_app_secret') ??
+            envCfg.polychatAppSecret,
       ),
       audioOutputMode: audioOutputMode,
     );

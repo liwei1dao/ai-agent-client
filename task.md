@@ -173,11 +173,11 @@
 
 ---
 
-## Phase 10 — sts_doubao 插件
+## Phase 10 — sts_volcengine 插件
 
-- [ ] **T10.1** Android：`StsDoubaoPlugin.kt`（OkHttp WebSocket，豆包 STS API）
-- [ ] **T10.2** iOS：`StsDoubaoPlugin.swift`（URLSessionWebSocketTask）
-- [ ] **T10.3** Dart：`sts_doubao.dart`（公开 API，agent_runtime 调度入口）
+- [ ] **T10.1** Android：`StsVolcenginePlugin.kt`（OkHttp WebSocket，火山引擎 STS API）
+- [ ] **T10.2** iOS：`StsVolcenginePlugin.swift`（URLSessionWebSocketTask）
+- [ ] **T10.3** Dart：`sts_volcengine.dart`（公开 API，agent_runtime 调度入口）
 
 ---
 

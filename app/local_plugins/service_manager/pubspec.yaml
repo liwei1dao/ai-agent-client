@@ -21,8 +21,8 @@ dependencies:
     path: ../stt_azure
   tts_azure:
     path: ../tts_azure
-  sts_doubao:
-    path: ../sts_doubao
+  sts_volcengine:
+    path: ../sts_volcengine
   ast_volcengine:
     path: ../ast_volcengine
   sts_polychat:

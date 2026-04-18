@@ -490,12 +490,10 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
             }
           } else if (idx == -1) {
             msgs.add(ChatMessage(id: requestId, role: 'assistant', content: textDelta, status: 'streaming'));
-          } else if (state.isEndToEnd) {
-            // STS 端到端模式：服务端发送累积的完整文本，直接覆盖
-            msgs[idx].content = textDelta;
-            msgs[idx].status = 'streaming';
           } else {
-            // 三段式模式：LLM 流式输出 delta，追加
+            // textDelta 始终是增量片段：
+            //   - 三段式 LLM：每次回调一个 token delta
+            //   - STS 端到端：web 桥已把 cumulative 快照转成 delta，Android 桥按句下发
             msgs[idx].content += textDelta;
             msgs[idx].status = 'streaming';
           }

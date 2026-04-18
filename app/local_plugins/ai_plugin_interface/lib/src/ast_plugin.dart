@@ -17,24 +17,45 @@ class AstConfig {
   final Map<String, String> extraParams;
 }
 
-/// AST 事件类型
+/// 识别事件归属的角色
+///
+/// - [source]：原文（用户语音识别结果）
+/// - [translated]：译文（服务端翻译结果）
+enum AstRole {
+  source,
+  translated,
+}
+
+/// AST 事件类型。
+///
+/// 与 STS 协议对齐，识别 5 件套（每事件携带 [requestId] 与 [AstRole]，
+/// [recognitionEnd] 的 role 为 null）：
+///
+///   `recognitionStart` → `recognizing`* → `recognized`* → `recognitionDone`
+///   → `recognitionEnd`
+///
+/// 任一阶段可伴随 `recognitionError`（不关闭流）。
+///
+/// 文本语义：
+/// - `recognizing.text` = **累计快照**（覆盖语义）
+/// - `recognized.text`  = **本段定稿**（累加语义）
+///
+/// AST 端无独立的合成 / 播报事件流（Web 浏览器自播 remote audio，
+/// Android 由 SDK 内部播放），需要时上层从 [recognitionEnd] 推断回合结束。
 enum AstEventType {
-  /// 连接建立
+  // ── 连接 ───────────────────────
   connected,
-
-  /// 源语言字幕（用户语音识别文字）
-  sourceSubtitle,
-
-  /// 翻译后字幕
-  translatedSubtitle,
-
-  /// 收到 TTS 音频数据
-  ttsAudioChunk,
-
-  /// 断开连接
   disconnected,
 
-  /// 错误
+  // ── 识别 ───────────────────────
+  recognitionStart,
+  recognizing,
+  recognized,
+  recognitionDone,
+  recognitionEnd,
+  recognitionError,
+
+  /// 非归属错误（连接层 / 未知异常）。识别错误请使用 [recognitionError]。
   error,
 }
 
@@ -43,15 +64,27 @@ enum AstEventType {
 class AstEvent {
   const AstEvent({
     required this.type,
+    this.role,
+    this.requestId,
     this.text,
-    this.audioData,
     this.errorCode,
     this.errorMessage,
   });
 
   final AstEventType type;
+
+  /// 识别 5 件套必带；[AstEventType.recognitionEnd] 为 `null`（跨 role 的回合级事件）。
+  final AstRole? role;
+
+  /// 识别 5 件套必带。一问一答链路的关联 id，由 source 侧
+  /// [AstEventType.recognitionStart] 生成，贯穿整个回合。
+  final String? requestId;
+
+  /// [AstEventType.recognizing]：累计快照（覆盖）
+  /// [AstEventType.recognized] ：本段定稿（累加）
+  /// 其它识别事件不带文本。
   final String? text;
-  final List<int>? audioData;
+
   final String? errorCode;
   final String? errorMessage;
 }
@@ -61,10 +94,10 @@ abstract class AstPlugin {
   /// 初始化
   Future<void> initialize(AstConfig config);
 
-  /// 建立 WebSocket 连接
+  /// 建立连接（WebSocket / WebRTC）
   Future<void> startCall();
 
-  /// 发送音频数据（麦克风录制的 PCM）
+  /// 发送音频数据（麦克风录制的 PCM）。Web 端浏览器自驱麦克风时为 no-op。
   void sendAudio(List<int> pcmData);
 
   /// 结束通话

@@ -39,6 +39,7 @@
 import 'dart:async';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:ai_plugin_interface/ai_plugin_interface.dart';
@@ -97,6 +98,11 @@ class AstVolcenginePluginWeb implements AstPlugin {
   final StringBuffer _srcAccum = StringBuffer();
   final StringBuffer _transAccum = StringBuffer();
 
+  // Recognition round state (mirrors AST 5-piece lifecycle in [AstEvent]).
+  String? _currentRequestId;
+  bool _sourceRoleOpen = false;
+  bool _translatedRoleOpen = false;
+
   // ─── Microphone ───────────────────────────────────────────────────────────
   web.AudioContext? _micContext;
   web.MediaStream? _micStream;
@@ -144,6 +150,7 @@ class AstVolcenginePluginWeb implements AstPlugin {
     _sessionId = _uuid();
     _srcAccum.clear();
     _transAccum.clear();
+    _resetRoundState();
 
     final resourceId =
         cfg.extraParams['resourceId'] ?? _fixedResourceId;
@@ -215,6 +222,7 @@ class AstVolcenginePluginWeb implements AstPlugin {
   @override
   Future<void> stopCall() async {
     _running = false;
+    _forceEndRound();
     // Best-effort FinishSession.
     try {
       if (_channel != null && _sessionStarted) {
@@ -301,6 +309,7 @@ class AstVolcenginePluginWeb implements AstPlugin {
 
       case _evtSessionFinished:
         _connected = false;
+        _forceEndRound();
         _emit(const AstEvent(type: AstEventType.disconnected));
         break;
 
@@ -315,56 +324,77 @@ class AstVolcenginePluginWeb implements AstPlugin {
 
       case _evtAsrResponse:
         if (text.isNotEmpty) {
-          _emit(AstEvent(type: AstEventType.sourceSubtitle, text: text));
+          _beginRound();
+          _openRole(AstRole.source);
+          _emitRoleText(AstRole.source, AstEventType.recognizing, text);
         }
         if (audio.isNotEmpty) _playTts(audio);
         break;
 
       case _evtSrcSubtitleStart:
+        _beginRound();
+        _openRole(AstRole.source);
         _srcAccum.clear();
         if (audio.isNotEmpty) _playTts(audio);
         break;
 
       case _evtSrcSubtitle:
         if (text.isNotEmpty) {
+          _beginRound();
+          _openRole(AstRole.source);
           _srcAccum.write(text);
-          _emit(AstEvent(
-            type: AstEventType.sourceSubtitle,
-            text: _srcAccum.toString(),
-          ));
+          _emitRoleText(
+            AstRole.source,
+            AstEventType.recognizing,
+            _srcAccum.toString(),
+          );
         }
         if (audio.isNotEmpty) _playTts(audio);
         break;
 
       case _evtSrcSubtitleEnd:
-        // Source sentence closed; nothing to emit — accumulated text was
-        // already sent as the final sourceSubtitle update.
+        if (_srcAccum.isNotEmpty) {
+          _emitRoleText(
+            AstRole.source,
+            AstEventType.recognized,
+            _srcAccum.toString(),
+          );
+        }
+        _closeRole(AstRole.source);
+        _maybeEndRound();
         break;
 
       case _evtTransSubtitleStart:
+        _beginRound();
+        _openRole(AstRole.translated);
         _transAccum.clear();
         if (audio.isNotEmpty) _playTts(audio);
         break;
 
       case _evtTransSubtitle:
         if (text.isNotEmpty) {
+          _beginRound();
+          _openRole(AstRole.translated);
           _transAccum.write(text);
-          _emit(AstEvent(
-            type: AstEventType.translatedSubtitle,
-            text: _transAccum.toString(),
-          ));
+          _emitRoleText(
+            AstRole.translated,
+            AstEventType.recognizing,
+            _transAccum.toString(),
+          );
         }
-        if (audio.isNotEmpty) {
-          _playTts(audio);
-          _emit(AstEvent(
-            type: AstEventType.ttsAudioChunk,
-            audioData: audio,
-          ));
-        }
+        if (audio.isNotEmpty) _playTts(audio);
         break;
 
       case _evtTransSubtitleEnd:
-        // Sentence closed.
+        if (_transAccum.isNotEmpty) {
+          _emitRoleText(
+            AstRole.translated,
+            AstEventType.recognized,
+            _transAccum.toString(),
+          );
+        }
+        _closeRole(AstRole.translated);
+        _maybeEndRound();
         break;
 
       case _evtTtsSentenceStart:
@@ -795,6 +825,106 @@ class AstVolcenginePluginWeb implements AstPlugin {
       // Swallow — playback is best-effort; event consumers still receive
       // ttsAudioChunk for their own handling.
     }
+  }
+
+  // ─── Recognition round state machine ──────────────────────────────────────
+
+  /// Start a new round if none is active. Pass `force=true` to implicitly end
+  /// the previous round first.
+  void _beginRound({bool force = false}) {
+    if (_currentRequestId != null) {
+      if (!force) return;
+      if (_sourceRoleOpen) _closeRole(AstRole.source);
+      if (_translatedRoleOpen) _closeRole(AstRole.translated);
+      _endRound();
+    }
+    _currentRequestId = _newRequestId();
+  }
+
+  void _openRole(AstRole role) {
+    final requestId = _currentRequestId;
+    if (requestId == null) return;
+    if (role == AstRole.source && !_sourceRoleOpen) {
+      _sourceRoleOpen = true;
+      _emit(AstEvent(
+        type: AstEventType.recognitionStart,
+        role: role,
+        requestId: requestId,
+      ));
+    } else if (role == AstRole.translated && !_translatedRoleOpen) {
+      _translatedRoleOpen = true;
+      _emit(AstEvent(
+        type: AstEventType.recognitionStart,
+        role: role,
+        requestId: requestId,
+      ));
+    }
+  }
+
+  void _closeRole(AstRole role) {
+    final requestId = _currentRequestId;
+    if (requestId == null) return;
+    if (role == AstRole.source && _sourceRoleOpen) {
+      _sourceRoleOpen = false;
+      _emit(AstEvent(
+        type: AstEventType.recognitionDone,
+        role: role,
+        requestId: requestId,
+      ));
+    } else if (role == AstRole.translated && _translatedRoleOpen) {
+      _translatedRoleOpen = false;
+      _emit(AstEvent(
+        type: AstEventType.recognitionDone,
+        role: role,
+        requestId: requestId,
+      ));
+    }
+  }
+
+  void _maybeEndRound() {
+    if (_sourceRoleOpen || _translatedRoleOpen) return;
+    if (_currentRequestId == null) return;
+    _endRound();
+  }
+
+  void _endRound() {
+    final requestId = _currentRequestId;
+    if (requestId == null) return;
+    _emit(AstEvent(
+      type: AstEventType.recognitionEnd,
+      requestId: requestId,
+    ));
+    _resetRoundState();
+  }
+
+  void _forceEndRound() {
+    if (_currentRequestId == null) return;
+    if (_sourceRoleOpen) _closeRole(AstRole.source);
+    if (_translatedRoleOpen) _closeRole(AstRole.translated);
+    _endRound();
+  }
+
+  void _emitRoleText(AstRole role, AstEventType type, String text) {
+    final requestId = _currentRequestId;
+    if (requestId == null) return;
+    _emit(AstEvent(
+      type: type,
+      role: role,
+      requestId: requestId,
+      text: text,
+    ));
+  }
+
+  void _resetRoundState() {
+    _currentRequestId = null;
+    _sourceRoleOpen = false;
+    _translatedRoleOpen = false;
+  }
+
+  String _newRequestId() {
+    final ms = DateTime.now().millisecondsSinceEpoch;
+    final r = math.Random().nextInt(1 << 30).toRadixString(36).padLeft(6, '0');
+    return 'ast_volcengine_${ms}_$r';
   }
 
   // ─── Utilities ────────────────────────────────────────────────────────────

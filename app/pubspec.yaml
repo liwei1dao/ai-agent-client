@@ -66,8 +66,8 @@ dependencies:
     path: local_plugins/tts_azure
   llm_openai:
     path: local_plugins/llm_openai
-  sts_doubao:
-    path: local_plugins/sts_doubao
+  sts_volcengine:
+    path: local_plugins/sts_volcengine
   ast_volcengine:
     path: local_plugins/ast_volcengine
   sts_polychat:

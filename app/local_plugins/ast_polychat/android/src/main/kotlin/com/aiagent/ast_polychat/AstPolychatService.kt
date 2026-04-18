@@ -3,16 +3,25 @@ package com.aiagent.ast_polychat
 import android.content.Context
 import android.util.Log
 import com.aiagent.plugin_interface.AstCallback
+import com.aiagent.plugin_interface.AstRole
 import com.aiagent.plugin_interface.NativeAstService
 import com.aiagent.plugin_interface.VoitransWebRtcSession
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.json.JSONObject
+import java.util.concurrent.ThreadLocalRandom
 
 /**
  * PolyChat 平台 AST 服务实现（WebRTC 传输）
  *
- * 通过 VoitransWebRtcSession 建立 WebRTC 连接，
- * 解析 DataChannel 中的 AST 模式事件并映射到 AstCallback。
+ * DataChannel 协议（`trans_original` / `trans_translated`）携带 `done` 标志：
+ *   - `done=false` 中间态（累计快照）→ recognizing
+ *   - `done=true`  本段定稿       → recognized + recognitionDone(role)
+ *
+ * 当 source 与 translated 两个角色都 done 后派发 `recognitionEnd`。
+ * 用户重新说话（`user_speaking`）会强制 close + endRound 上一回合。
  */
 class AstPolychatService(private val context: Context) : NativeAstService {
 
@@ -23,6 +32,11 @@ class AstPolychatService(private val context: Context) : NativeAstService {
     private lateinit var session: VoitransWebRtcSession
     private var callback: AstCallback? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    // ── Recognition round state ──
+    private var currentRequestId: String? = null
+    private var sourceRoleOpen = false
+    private var translatedRoleOpen = false
 
     override fun initialize(configJson: String, context: Context) {
         val cfg = JSONObject(configJson)
@@ -39,6 +53,7 @@ class AstPolychatService(private val context: Context) : NativeAstService {
 
     override fun connect(callback: AstCallback) {
         this.callback = callback
+        resetRoundState()
         session.connect(object : VoitransWebRtcSession.EventListener {
             override fun onConnected() {
                 Log.d(TAG, "Connected")
@@ -51,6 +66,7 @@ class AstPolychatService(private val context: Context) : NativeAstService {
 
             override fun onDisconnected() {
                 Log.d(TAG, "Disconnected")
+                forceEndRound()
                 callback.onDisconnected()
             }
 
@@ -74,6 +90,7 @@ class AstPolychatService(private val context: Context) : NativeAstService {
     }
 
     override fun release() {
+        forceEndRound()
         scope.cancel()
         session.release()
         callback = null
@@ -87,42 +104,151 @@ class AstPolychatService(private val context: Context) : NativeAstService {
 
         when (type) {
             "user_speaking" -> {
-                cb.onSpeechStart()
+                beginRound(cb, force = true)
+                openRole(cb, AstRole.SOURCE)
             }
 
             "trans_original" -> {
+                beginRound(cb)
+                openRole(cb, AstRole.SOURCE)
                 val text = json.optString("text", "")
+                val done = json.optBoolean("done", false)
                 if (text.isNotEmpty()) {
-                    cb.onSourceSubtitle(text)
+                    val rid = currentRequestId ?: return
+                    if (done) {
+                        cb.onRecognized(AstRole.SOURCE, rid, text)
+                        closeRole(cb, AstRole.SOURCE)
+                        maybeEndRound(cb)
+                    } else {
+                        cb.onRecognizing(AstRole.SOURCE, rid, text)
+                    }
                 }
             }
 
             "trans_translated" -> {
+                beginRound(cb)
+                openRole(cb, AstRole.TRANSLATED)
                 val text = json.optString("text", "")
+                val done = json.optBoolean("done", false)
                 if (text.isNotEmpty()) {
-                    cb.onTranslatedSubtitle(text)
+                    val rid = currentRequestId ?: return
+                    if (done) {
+                        cb.onRecognized(AstRole.TRANSLATED, rid, text)
+                        closeRole(cb, AstRole.TRANSLATED)
+                        maybeEndRound(cb)
+                    } else {
+                        cb.onRecognizing(AstRole.TRANSLATED, rid, text)
+                    }
                 }
-            }
-
-            "session_state" -> {
-                val state = json.optString("state", "")
-                cb.onStateChanged(state)
             }
 
             "error" -> {
                 val message = json.optString("message", "Unknown error")
                 val fatal = json.optBoolean("fatal", false)
-                cb.onError(if (fatal) "fatal" else "error", message)
+                if (fatal) {
+                    cb.onError("ast.fatal", message)
+                } else {
+                    cb.onRecognitionError(currentRequestId, null, "ast.error", message)
+                }
             }
 
-            "disconnect_warning" -> {
-                val reason = json.optString("reason", "")
-                Log.w(TAG, "Disconnect warning: $reason")
+            "session_state",
+            "mcp_tool_call",
+            "mcp_tool_result",
+            "disconnect_warning",
+            "user_transcription",
+            "bot_response_start",
+            "bot_response",
+            "ai_speaking",
+            "ai_stopped",
+            "ai_response_done" -> {
+                // Not surfaced through AstCallback.
             }
 
             else -> {
                 Log.d(TAG, "Unknown event: $type")
             }
         }
+    }
+
+    // ── Recognition round state machine ──
+
+    private fun beginRound(cb: AstCallback, force: Boolean = false) {
+        if (currentRequestId != null) {
+            if (!force) return
+            if (sourceRoleOpen) closeRole(cb, AstRole.SOURCE)
+            if (translatedRoleOpen) closeRole(cb, AstRole.TRANSLATED)
+            endRound(cb)
+        }
+        currentRequestId = newRequestId()
+    }
+
+    private fun openRole(cb: AstCallback, role: AstRole) {
+        val rid = currentRequestId ?: return
+        when (role) {
+            AstRole.SOURCE -> {
+                if (!sourceRoleOpen) {
+                    sourceRoleOpen = true
+                    cb.onRecognitionStart(role, rid)
+                }
+            }
+            AstRole.TRANSLATED -> {
+                if (!translatedRoleOpen) {
+                    translatedRoleOpen = true
+                    cb.onRecognitionStart(role, rid)
+                }
+            }
+        }
+    }
+
+    private fun closeRole(cb: AstCallback, role: AstRole) {
+        val rid = currentRequestId ?: return
+        when (role) {
+            AstRole.SOURCE -> {
+                if (sourceRoleOpen) {
+                    sourceRoleOpen = false
+                    cb.onRecognitionDone(role, rid)
+                }
+            }
+            AstRole.TRANSLATED -> {
+                if (translatedRoleOpen) {
+                    translatedRoleOpen = false
+                    cb.onRecognitionDone(role, rid)
+                }
+            }
+        }
+    }
+
+    private fun maybeEndRound(cb: AstCallback) {
+        if (sourceRoleOpen || translatedRoleOpen) return
+        if (currentRequestId == null) return
+        endRound(cb)
+    }
+
+    private fun endRound(cb: AstCallback) {
+        val rid = currentRequestId ?: return
+        cb.onRecognitionEnd(rid)
+        resetRoundState()
+    }
+
+    private fun forceEndRound() {
+        val cb = callback ?: run { resetRoundState(); return }
+        if (currentRequestId == null) return
+        if (sourceRoleOpen) closeRole(cb, AstRole.SOURCE)
+        if (translatedRoleOpen) closeRole(cb, AstRole.TRANSLATED)
+        endRound(cb)
+    }
+
+    private fun resetRoundState() {
+        currentRequestId = null
+        sourceRoleOpen = false
+        translatedRoleOpen = false
+    }
+
+    private fun newRequestId(): String {
+        val ms = System.currentTimeMillis()
+        val rand = ThreadLocalRandom.current().nextInt(1 shl 30)
+            .toString(36).padStart(6, '0')
+        return "ast_polychat_${ms}_$rand"
     }
 }

@@ -49,7 +49,7 @@ dev_dependencies:
 - [ ] `local_plugins/stt_azure/`（Flutter 插件）
 - [ ] `local_plugins/tts_azure/`（Flutter 插件）
 - [ ] `local_plugins/llm_openai/`（纯 Dart 包）
-- [ ] `local_plugins/sts_doubao/`（Flutter 插件）
+- [ ] `local_plugins/sts_volcengine/`（Flutter 插件）
 - [ ] `local_plugins/translation_deepl/`（纯 Dart 包）
 - [ ] `local_plugins/translation_aliyun/`（纯 Dart 包）
 
@@ -207,7 +207,7 @@ dev_dependencies:
     - LLM OpenAI compatible：baseUrl, apiKey, model, temperature, maxTokens
     - LLM Coze：apiKey, botId, baseUrl
     - TTS Azure：subscriptionKey, region, voiceId
-    - STS Doubao：appId, token, voiceType
+    - STS Volcengine：appId, token, voiceType
     - Translation DeepL：apiKey
     - Translation Aliyun：accessKeyId, accessKeySecret
   - 服务名称输入框（用户自命名）

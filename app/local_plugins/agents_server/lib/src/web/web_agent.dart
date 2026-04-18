@@ -103,6 +103,11 @@ class WebConfigParser {
       voiceName: voice,
       extraParams: _toStringMap({
         if (m['systemPrompt'] != null) 'systemPrompt': m['systemPrompt'],
+        // polychat-specific fields forwarded via extraParams so the polychat
+        // web plugin can read them without changing the StsConfig contract.
+        if (m['baseUrl'] != null) 'baseUrl': m['baseUrl'],
+        if (m['appSecret'] != null) 'appSecret': m['appSecret'],
+        if (m['agentId'] != null) 'agentId': m['agentId'],
         ...?(m['extra'] as Map?),
       }),
     );
@@ -115,7 +120,13 @@ class WebConfigParser {
       appId: (m['appId'] as String?) ?? '',
       srcLang: srcLang ?? (m['srcLang'] as String?) ?? 'zh',
       dstLang: dstLang ?? (m['dstLang'] as String?) ?? 'en',
-      extraParams: _toStringMap(m['extra']),
+      extraParams: _toStringMap({
+        // polychat-specific fields forwarded via extraParams (see parseSts).
+        if (m['baseUrl'] != null) 'baseUrl': m['baseUrl'],
+        if (m['appSecret'] != null) 'appSecret': m['appSecret'],
+        if (m['agentId'] != null) 'agentId': m['agentId'],
+        ...?(m['extra'] as Map?),
+      }),
     );
   }
 

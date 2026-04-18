@@ -2,7 +2,7 @@ import 'package:ai_plugin_interface/ai_plugin_interface.dart';
 import 'package:ast_polychat/ast_polychat_web.dart';
 import 'package:ast_volcengine/ast_volcengine.dart';
 import 'package:llm_openai/llm_openai.dart';
-import 'package:sts_doubao/sts_doubao.dart';
+import 'package:sts_volcengine/sts_volcengine.dart';
 import 'package:sts_polychat/sts_polychat_web.dart';
 import 'package:stt_azure/stt_azure.dart';
 import 'package:translation_aliyun/translation_aliyun.dart';
@@ -44,7 +44,7 @@ class WebServiceFactory {
       case 'doubao':
       case 'volcengine':
       case 'bytedance':
-        return StsDoubaoPlugin();
+        return StsVolcenginePlugin();
       case 'polychat':
         return StsPolychatPluginWeb();
       default:

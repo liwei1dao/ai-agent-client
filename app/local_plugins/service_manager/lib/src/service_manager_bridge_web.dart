@@ -6,7 +6,7 @@ import 'package:ast_polychat/ast_polychat_web.dart';
 import 'package:ast_volcengine/ast_volcengine.dart';
 import 'package:llm_openai/llm_openai.dart';
 import 'package:local_db/local_db.dart';
-import 'package:sts_doubao/sts_doubao.dart';
+import 'package:sts_volcengine/sts_volcengine.dart';
 import 'package:sts_polychat/sts_polychat_web.dart';
 import 'package:stt_azure/stt_azure.dart';
 import 'package:translation_aliyun/translation_aliyun.dart';
@@ -329,18 +329,12 @@ class ServiceManagerBridge {
     }
 
     final sub = plugin.eventStream.listen((e) {
+      final role = _mapStsRole(e.role);
       switch (e.type) {
         case ai.StsEventType.connected:
           _events.add(StsTestEvent(
             testId: testId,
             kind: StsTestEventKind.connected,
-          ));
-          break;
-        case ai.StsEventType.sentenceDone:
-          _events.add(StsTestEvent(
-            testId: testId,
-            kind: StsTestEventKind.sentenceDone,
-            text: e.text,
           ));
           break;
         case ai.StsEventType.disconnected:
@@ -349,15 +343,127 @@ class ServiceManagerBridge {
             kind: StsTestEventKind.disconnected,
           ));
           break;
+        case ai.StsEventType.recognitionStart:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.recognitionStart,
+            role: role,
+            requestId: e.requestId,
+          ));
+          break;
+        case ai.StsEventType.recognizing:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.recognizing,
+            role: role,
+            requestId: e.requestId,
+            text: e.text,
+          ));
+          break;
+        case ai.StsEventType.recognized:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.recognized,
+            role: role,
+            requestId: e.requestId,
+            text: e.text,
+          ));
+          break;
+        case ai.StsEventType.recognitionDone:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.recognitionDone,
+            role: role,
+            requestId: e.requestId,
+          ));
+          break;
+        case ai.StsEventType.recognitionEnd:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.recognitionEnd,
+            requestId: e.requestId,
+          ));
+          break;
+        case ai.StsEventType.recognitionError:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.recognitionError,
+            role: role,
+            requestId: e.requestId,
+            errorCode: e.errorCode,
+            errorMessage: e.errorMessage,
+          ));
+          break;
+        case ai.StsEventType.synthesisStart:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.synthesisStart,
+            role: role,
+            requestId: e.requestId,
+          ));
+          break;
+        case ai.StsEventType.synthesizing:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.synthesizing,
+            role: role,
+            requestId: e.requestId,
+          ));
+          break;
+        case ai.StsEventType.synthesized:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.synthesized,
+            role: role,
+            requestId: e.requestId,
+          ));
+          break;
+        case ai.StsEventType.synthesisEnd:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.synthesisEnd,
+            role: role,
+            requestId: e.requestId,
+          ));
+          break;
+        case ai.StsEventType.synthesisError:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.synthesisError,
+            role: role,
+            requestId: e.requestId,
+            errorCode: e.errorCode,
+            errorMessage: e.errorMessage,
+          ));
+          break;
+        case ai.StsEventType.playbackStart:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.playbackStart,
+            role: role,
+            requestId: e.requestId,
+          ));
+          break;
+        case ai.StsEventType.playbackEnd:
+          _events.add(StsTestEvent(
+            testId: testId,
+            kind: StsTestEventKind.playbackEnd,
+            role: role,
+            requestId: e.requestId,
+            interrupted: e.interrupted,
+          ));
+          break;
         case ai.StsEventType.error:
           _events.add(StsTestEvent(
             testId: testId,
             kind: StsTestEventKind.error,
+            requestId: e.requestId,
             errorCode: e.errorCode,
             errorMessage: e.errorMessage,
           ));
           break;
         case ai.StsEventType.audioChunk:
+          // Audio chunks aren't surfaced to test UI — Web plays audio locally.
           break;
       }
     });
@@ -418,19 +524,23 @@ class ServiceManagerBridge {
             kind: AstTestEventKind.connected,
           ));
           break;
-        case ai.AstEventType.sourceSubtitle:
+        case ai.AstEventType.recognizing:
+        case ai.AstEventType.recognized:
+          // Map both partial and final recognition output back to the UI
+          // subtitle stream so the test panel keeps showing accumulating text.
+          final kind = e.role == ai.AstRole.translated
+              ? AstTestEventKind.translatedSubtitle
+              : AstTestEventKind.sourceSubtitle;
           _events.add(AstTestEvent(
             testId: testId,
-            kind: AstTestEventKind.sourceSubtitle,
+            kind: kind,
             text: e.text,
           ));
           break;
-        case ai.AstEventType.translatedSubtitle:
-          _events.add(AstTestEvent(
-            testId: testId,
-            kind: AstTestEventKind.translatedSubtitle,
-            text: e.text,
-          ));
+        case ai.AstEventType.recognitionStart:
+        case ai.AstEventType.recognitionDone:
+        case ai.AstEventType.recognitionEnd:
+          // Lifecycle markers not surfaced to the test UI.
           break;
         case ai.AstEventType.disconnected:
           _events.add(AstTestEvent(
@@ -438,6 +548,7 @@ class ServiceManagerBridge {
             kind: AstTestEventKind.disconnected,
           ));
           break;
+        case ai.AstEventType.recognitionError:
         case ai.AstEventType.error:
           _events.add(AstTestEvent(
             testId: testId,
@@ -445,8 +556,6 @@ class ServiceManagerBridge {
             errorCode: e.errorCode,
             errorMessage: e.errorMessage,
           ));
-          break;
-        case ai.AstEventType.ttsAudioChunk:
           break;
       }
     });
@@ -564,7 +673,7 @@ class ServiceManagerBridge {
       case 'doubao':
       case 'volcengine':
       case 'bytedance':
-        return StsDoubaoPlugin();
+        return StsVolcenginePlugin();
       case 'polychat':
         return StsPolychatPluginWeb();
       default:
@@ -652,6 +761,11 @@ class ServiceManagerBridge {
       extraParams: {
         if (m['systemPrompt'] != null)
           'systemPrompt': m['systemPrompt'].toString(),
+        // polychat-specific fields forwarded via extraParams so the polychat
+        // web plugin can read them without changing the StsConfig contract.
+        if (m['baseUrl'] != null) 'baseUrl': m['baseUrl'].toString(),
+        if (m['appSecret'] != null) 'appSecret': m['appSecret'].toString(),
+        if (m['agentId'] != null) 'agentId': m['agentId'].toString(),
       },
     );
   }
@@ -663,6 +777,12 @@ class ServiceManagerBridge {
       appId: (m['appId'] as String?) ?? '',
       srcLang: (m['srcLang'] as String?) ?? 'zh',
       dstLang: (m['dstLang'] as String?) ?? 'en',
+      extraParams: {
+        // polychat-specific fields forwarded via extraParams (see _parseSts).
+        if (m['baseUrl'] != null) 'baseUrl': m['baseUrl'].toString(),
+        if (m['appSecret'] != null) 'appSecret': m['appSecret'].toString(),
+        if (m['agentId'] != null) 'agentId': m['agentId'].toString(),
+      },
     );
   }
 }
@@ -672,3 +792,9 @@ class _ActiveTest {
   final Object plugin;
   final StreamSubscription subscription;
 }
+
+StsTestRole? _mapStsRole(ai.StsRole? role) => switch (role) {
+      ai.StsRole.user => StsTestRole.user,
+      ai.StsRole.bot => StsTestRole.bot,
+      null => null,
+    };

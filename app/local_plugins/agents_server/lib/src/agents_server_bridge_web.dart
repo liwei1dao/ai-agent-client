@@ -23,16 +23,17 @@ class AgentsServerBridge {
   Stream<AgentEvent> get eventStream => _events.stream;
 
   WebAgent? _createAgentImpl(String type) {
+    // Agent type strings are canonical on both platforms: see
+    // `NativeAgentRegistry.register("sts-chat" | "ast-translate" | ...)` on
+    // Android and `VoitransAgent.type` in lib/core/voitrans_api.dart.
     switch (type) {
       case 'chat':
         return WebChatAgent(_events.add);
-      case 'sts':
-      case 'sts_chat':
+      case 'sts-chat':
         return WebStsChatAgent(_events.add);
       case 'translate':
         return WebTranslateAgent(_events.add);
-      case 'ast':
-      case 'ast_translate':
+      case 'ast-translate':
         return WebAstTranslateAgent(_events.add);
       default:
         return null;

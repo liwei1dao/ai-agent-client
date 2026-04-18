@@ -528,7 +528,7 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
       } else if (_type == 'llm') {
         await _testLlmApi();
       } else if ((_type == 'sts' || _type == 'ast') && _vendor == 'doubao') {
-        await _testStsDoubaoConnection();
+        await _testStsVolcengineConnection();
       } else {
         // MCP / Translation: no network test, just validate fields
         await Future.delayed(const Duration(milliseconds: 200));
@@ -559,7 +559,7 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
   }
 
   /// 连接豆包 STS/AST WebSocket 验证凭证是否有效
-  Future<void> _testStsDoubaoConnection() async {
+  Future<void> _testStsVolcengineConnection() async {
     // AST 服务字段名与 STS 不同
     final appKey = _type == 'ast'
         ? _ctrlFor('appKey').text.trim()

@@ -11,6 +11,7 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.util.Log
 import com.aiagent.plugin_interface.AstCallback
+import com.aiagent.plugin_interface.AstRole
 import com.aiagent.plugin_interface.AudioOutputManager
 import com.aiagent.plugin_interface.NativeAstService
 import kotlinx.coroutines.*
@@ -20,6 +21,7 @@ import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.UUID
+import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.TimeUnit
 
 /**
@@ -95,6 +97,11 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
     private val srcSubtitleAccum = StringBuilder()
     private val transSubtitleAccum = StringBuilder()
 
+    // Recognition round state (mirrors AST 5-piece lifecycle in AstCallback).
+    @Volatile private var currentRequestId: String? = null
+    @Volatile private var sourceRoleOpen = false
+    @Volatile private var translatedRoleOpen = false
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pumpJob: Job? = null
     private var wsReady        = CompletableDeferred<Unit>()
@@ -163,8 +170,8 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                 Log.d(TAG, "SessionStarted — ready, waiting for startAudio()")
 
                 isConnected = true
+                resetRoundState()
                 callback.onConnected()
-                callback.onStateChanged("idle")
 
             } catch (e: CancellationException) {
                 isRunning = false
@@ -189,7 +196,6 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
         AudioOutputManager.applyMode()
         isAudioRunning = true
         startAudioPump()
-        callback?.onStateChanged("listening")
     }
 
     override fun stopAudio() {
@@ -199,7 +205,6 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
         pumpJob = null
         runCatching { audioRecord?.stop() }
         runCatching { audioTrack?.pause(); audioTrack?.flush(); audioTrack?.play() }
-        callback?.onStateChanged("idle")
     }
 
     override fun interrupt() {
@@ -415,6 +420,7 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
             EVT_SESSION_FINISHED -> {
                 Log.d(TAG, "SessionFinished")
                 isConnected = false
+                forceEndRound()
                 callback?.onDisconnected()
             }
 
@@ -429,7 +435,12 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                 // Partial source-language ASR result (real-time preview)
                 if (text.isNotBlank()) {
                     Log.d(TAG, "ASR partial text=\"$text\"")
-                    callback?.onSourceSubtitle(text)
+                    val cb = callback
+                    if (cb != null) {
+                        beginRound(cb)
+                        openRole(cb, AstRole.SOURCE)
+                        emitRoleText(cb, AstRole.SOURCE, isFinal = false, text = text)
+                    }
                 }
                 if (audioData.isNotEmpty()) writeAudio(audioData)
             }
@@ -437,6 +448,11 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
             EVT_SRC_SUBTITLE_START -> {
                 Log.d(TAG, "SourceSubtitleStart")
                 srcSubtitleAccum.clear()
+                val cb = callback
+                if (cb != null) {
+                    beginRound(cb)
+                    openRole(cb, AstRole.SOURCE)
+                }
                 if (audioData.isNotEmpty()) writeAudio(audioData)
             }
 
@@ -446,21 +462,36 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                     srcSubtitleAccum.append(text)
                     val accumulated = srcSubtitleAccum.toString()
                     Log.d(TAG, "SourceSubtitle text=\"$accumulated\"")
-                    callback?.onSourceSubtitle(accumulated)
-                    callback?.onStateChanged("llm")
+                    val cb = callback
+                    if (cb != null) {
+                        beginRound(cb)
+                        openRole(cb, AstRole.SOURCE)
+                        emitRoleText(cb, AstRole.SOURCE, isFinal = false, text = accumulated)
+                    }
                 }
                 if (audioData.isNotEmpty()) writeAudio(audioData)
             }
 
             EVT_SRC_SUBTITLE_END -> {
                 Log.d(TAG, "SourceSubtitleEnd")
-                // 源语言字幕完成 → 结束上一轮翻译、发送用户消息、重置翻译状态
-                callback?.onSpeechStart()
+                val cb = callback
+                if (cb != null) {
+                    if (srcSubtitleAccum.isNotEmpty()) {
+                        emitRoleText(cb, AstRole.SOURCE, isFinal = true, text = srcSubtitleAccum.toString())
+                    }
+                    closeRole(cb, AstRole.SOURCE)
+                    maybeEndRound(cb)
+                }
             }
 
             EVT_TRANS_SUBTITLE_START -> {
                 Log.d(TAG, "TranslationSubtitleStart")
                 transSubtitleAccum.clear()
+                val cb = callback
+                if (cb != null) {
+                    beginRound(cb)
+                    openRole(cb, AstRole.TRANSLATED)
+                }
                 if (audioData.isNotEmpty()) writeAudio(audioData)
             }
 
@@ -470,29 +501,35 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                     transSubtitleAccum.append(text)
                     val accumulated = transSubtitleAccum.toString()
                     Log.d(TAG, "TranslationSubtitle text=\"$accumulated\"")
-                    callback?.onTranslatedSubtitle(accumulated)
-                    callback?.onStateChanged("playing")
+                    val cb = callback
+                    if (cb != null) {
+                        beginRound(cb)
+                        openRole(cb, AstRole.TRANSLATED)
+                        emitRoleText(cb, AstRole.TRANSLATED, isFinal = false, text = accumulated)
+                    }
                 }
-                if (audioData.isNotEmpty()) {
-                    writeAudio(audioData)
-                    callback?.onTtsAudioChunk(audioData)
-                }
+                if (audioData.isNotEmpty()) writeAudio(audioData)
             }
 
             EVT_TRANS_SUBTITLE_END -> {
                 Log.d(TAG, "TranslationSubtitleEnd")
-                callback?.onStateChanged("listening")
+                val cb = callback
+                if (cb != null) {
+                    if (transSubtitleAccum.isNotEmpty()) {
+                        emitRoleText(cb, AstRole.TRANSLATED, isFinal = true, text = transSubtitleAccum.toString())
+                    }
+                    closeRole(cb, AstRole.TRANSLATED)
+                    maybeEndRound(cb)
+                }
             }
 
             EVT_TTS_SENTENCE_START -> {
                 Log.d(TAG, "TTSSentenceStart")
-                callback?.onStateChanged("playing")
                 if (audioData.isNotEmpty()) writeAudio(audioData)
             }
 
             EVT_TTS_ENDED -> {
                 Log.d(TAG, "TTSEnded")
-                callback?.onStateChanged("listening")
             }
 
             EVT_USAGE_RESPONSE -> {
@@ -504,6 +541,96 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                 if (event != 0) Log.d(TAG, "Unhandled event=$event")
             }
         }
+    }
+
+    // ─── Recognition round state machine ──────────────────────────────────────
+
+    private fun beginRound(cb: AstCallback, force: Boolean = false) {
+        if (currentRequestId != null) {
+            if (!force) return
+            if (sourceRoleOpen) closeRole(cb, AstRole.SOURCE)
+            if (translatedRoleOpen) closeRole(cb, AstRole.TRANSLATED)
+            endRound(cb)
+        }
+        currentRequestId = newRequestId()
+    }
+
+    private fun openRole(cb: AstCallback, role: AstRole) {
+        val rid = currentRequestId ?: return
+        when (role) {
+            AstRole.SOURCE -> {
+                if (!sourceRoleOpen) {
+                    sourceRoleOpen = true
+                    cb.onRecognitionStart(role, rid)
+                }
+            }
+            AstRole.TRANSLATED -> {
+                if (!translatedRoleOpen) {
+                    translatedRoleOpen = true
+                    cb.onRecognitionStart(role, rid)
+                }
+            }
+        }
+    }
+
+    private fun closeRole(cb: AstCallback, role: AstRole) {
+        val rid = currentRequestId ?: return
+        when (role) {
+            AstRole.SOURCE -> {
+                if (sourceRoleOpen) {
+                    sourceRoleOpen = false
+                    cb.onRecognitionDone(role, rid)
+                }
+            }
+            AstRole.TRANSLATED -> {
+                if (translatedRoleOpen) {
+                    translatedRoleOpen = false
+                    cb.onRecognitionDone(role, rid)
+                }
+            }
+        }
+    }
+
+    private fun maybeEndRound(cb: AstCallback) {
+        if (sourceRoleOpen || translatedRoleOpen) return
+        if (currentRequestId == null) return
+        endRound(cb)
+    }
+
+    private fun endRound(cb: AstCallback) {
+        val rid = currentRequestId ?: return
+        cb.onRecognitionEnd(rid)
+        resetRoundState()
+    }
+
+    private fun forceEndRound() {
+        val cb = callback ?: run { resetRoundState(); return }
+        if (currentRequestId == null) return
+        if (sourceRoleOpen) closeRole(cb, AstRole.SOURCE)
+        if (translatedRoleOpen) closeRole(cb, AstRole.TRANSLATED)
+        endRound(cb)
+    }
+
+    private fun emitRoleText(cb: AstCallback, role: AstRole, isFinal: Boolean, text: String) {
+        val rid = currentRequestId ?: return
+        if (isFinal) {
+            cb.onRecognized(role, rid, text)
+        } else {
+            cb.onRecognizing(role, rid, text)
+        }
+    }
+
+    private fun resetRoundState() {
+        currentRequestId = null
+        sourceRoleOpen = false
+        translatedRoleOpen = false
+    }
+
+    private fun newRequestId(): String {
+        val ms = System.currentTimeMillis()
+        val rand = ThreadLocalRandom.current().nextInt(1 shl 30)
+            .toString(36).padStart(6, '0')
+        return "ast_volcengine_${ms}_$rand"
     }
 
     // ─── WebSocket Listener ──────────────────────────────────────────────────────

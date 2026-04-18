@@ -5,7 +5,7 @@ import android.content.Context
 /**
  * STS（端到端语音对话）服务原生接口
  *
- * 实现方：sts_doubao 等服务插件
+ * 实现方：sts_volcengine 等服务插件
  * 使用方：agent_sts_chat
  *
  * 职责：WebSocket 连接 + 双向音频流（麦克风 → 服务端 → AudioTrack 播放）

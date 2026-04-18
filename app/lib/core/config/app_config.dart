@@ -33,4 +33,9 @@ class AppConfig {
   String get deeplApiKey => dotenv.env['DEEPL_API_KEY'] ?? '';
   String get aliyunTranslationKey => dotenv.env['ALIYUN_TRANSLATION_KEY'] ?? '';
   String get googleTranslateKey => dotenv.env['GOOGLE_TRANSLATE_KEY'] ?? '';
+
+  // PolyChat（默认平台配置，SharedPreferences 为空时使用）
+  String get polychatBaseUrl => dotenv.env['POLYCHAT_BASE_URL'] ?? '';
+  String get polychatAppId => dotenv.env['POLYCHAT_APP_ID'] ?? '';
+  String get polychatAppSecret => dotenv.env['POLYCHAT_APP_SECRET'] ?? '';
 }

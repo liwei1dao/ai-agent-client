@@ -45,14 +45,39 @@ enum TranslationTestEventKind {
 
 // ── STS 测试事件 ────────────────────────────────────────────────
 
+enum StsTestRole { user, bot }
+
 enum StsTestEventKind {
+  // 连接
   connected,
+  disconnected,
+
+  // 识别生命周期（对应 ai_plugin_interface StsEventType 同名事件）
+  recognitionStart,
+  recognizing,
+  recognized,
+  recognitionDone,
+  recognitionEnd,
+  recognitionError,
+
+  // 合成
+  synthesisStart,
+  synthesizing,
+  synthesized,
+  synthesisEnd,
+  synthesisError,
+
+  // 播报
+  playbackStart,
+  playbackEnd,
+
+  // 兼容：Android 原生 ServiceTestRunner 仍在下发的旧事件，后续迁移后可删除
   sttPartialResult,
   sttFinalResult,
   sentenceDone,
   speechStart,
   stateChanged,
-  disconnected,
+
   error,
 }
 
@@ -157,16 +182,22 @@ final class TranslationTestEvent extends ServiceTestEvent {
 
 final class StsTestEvent extends ServiceTestEvent {
   final StsTestEventKind kind;
+  final StsTestRole? role;
+  final String? requestId;
   final String? text;
   final String? state;
+  final bool interrupted;
   final String? errorCode;
   final String? errorMessage;
 
   const StsTestEvent({
     required super.testId,
     required this.kind,
+    this.role,
+    this.requestId,
     this.text,
     this.state,
+    this.interrupted = false,
     this.errorCode,
     this.errorMessage,
   });
@@ -257,8 +288,11 @@ ServiceTestEvent? parseServiceTestEvent(Map<Object?, Object?> raw) {
       return StsTestEvent(
         testId: testId,
         kind: _parseStsKind(raw['kind'] as String?),
+        role: _parseStsRole(raw['role'] as String?),
+        requestId: raw['requestId'] as String?,
         text: raw['text'] as String?,
         state: raw['state'] as String?,
+        interrupted: raw['interrupted'] as bool? ?? false,
         errorCode: raw['errorCode'] as String?,
         errorMessage: raw['errorMessage'] as String?,
       );
@@ -321,13 +355,32 @@ TranslationTestEventKind _parseTranslationKind(String? s) => switch (s) {
 
 StsTestEventKind _parseStsKind(String? s) => switch (s) {
       'connected' => StsTestEventKind.connected,
+      'disconnected' => StsTestEventKind.disconnected,
+      'recognitionStart' => StsTestEventKind.recognitionStart,
+      'recognizing' => StsTestEventKind.recognizing,
+      'recognized' => StsTestEventKind.recognized,
+      'recognitionDone' => StsTestEventKind.recognitionDone,
+      'recognitionEnd' => StsTestEventKind.recognitionEnd,
+      'recognitionError' => StsTestEventKind.recognitionError,
+      'synthesisStart' => StsTestEventKind.synthesisStart,
+      'synthesizing' => StsTestEventKind.synthesizing,
+      'synthesized' => StsTestEventKind.synthesized,
+      'synthesisEnd' => StsTestEventKind.synthesisEnd,
+      'synthesisError' => StsTestEventKind.synthesisError,
+      'playbackStart' => StsTestEventKind.playbackStart,
+      'playbackEnd' => StsTestEventKind.playbackEnd,
       'sttPartialResult' => StsTestEventKind.sttPartialResult,
       'sttFinalResult' => StsTestEventKind.sttFinalResult,
       'sentenceDone' => StsTestEventKind.sentenceDone,
       'speechStart' => StsTestEventKind.speechStart,
       'stateChanged' => StsTestEventKind.stateChanged,
-      'disconnected' => StsTestEventKind.disconnected,
       _ => StsTestEventKind.error,
+    };
+
+StsTestRole? _parseStsRole(String? s) => switch (s) {
+      'user' => StsTestRole.user,
+      'bot' => StsTestRole.bot,
+      _ => null,
     };
 
 AstTestEventKind _parseAstKind(String? s) => switch (s) {
