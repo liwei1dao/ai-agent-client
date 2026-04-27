@@ -266,6 +266,15 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
 
       final e2eServiceId = agentType == 'ast-translate' ? astId : stsId;
 
+      // 把 Agent 级别的 LLM 偏好（如 enableThinking）合入 LLM 服务的配置 JSON
+      String buildLlmConfigJson(String? serviceId) {
+        final base = svcCfg(serviceId);
+        final map = jsonDecode(base) as Map<String, dynamic>;
+        final v = agentCfg['enableThinking'];
+        if (v != null) map['enableThinking'] = v;
+        return jsonEncode(map);
+      }
+
       // Build E2E config — 从 ServiceConfigDto 读取凭证，注入语言和 agentId
       String buildE2eConfigJson(String? serviceId) {
         final base = svcCfg(serviceId);
@@ -326,7 +335,7 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
           translationConfigJson: svcCfg(translationId),
           sttConfigJson: svcCfg(sttId),
           ttsConfigJson: svcCfg(ttsId),
-          llmConfigJson: svcCfg(llmId),
+          llmConfigJson: buildLlmConfigJson(llmId),
           stsConfigJson: agentType == 'sts-chat' ? buildE2eConfigJson(stsId) : null,
           astConfigJson: agentType == 'ast-translate' ? buildE2eConfigJson(astId) : null,
           extraParams: {
@@ -380,8 +389,8 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
 
       case SttEvent(:final kind, :final text):
         if (kind == SttEventKind.partialResult) {
-          if (state.isEndToEnd && state.inputMode == 'call' && (text ?? '').isNotEmpty) {
-            // 端到端 call 模式：实时更新用户气泡（流式显示识别文字）
+          if (state.inputMode == 'call' && (text ?? '').isNotEmpty) {
+            // call 模式（端到端 / 三段式通用）：实时更新用户气泡
             final msgs = List<ChatMessage>.from(state.messages);
             final existingIdx = msgs.lastIndexWhere(
                 (m) => m.role == 'user' && m.status == 'streaming');
@@ -390,7 +399,9 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
             } else {
               final msgId = state.isTranslateMode
                   ? 'ast_src_${DateTime.now().millisecondsSinceEpoch}'
-                  : 'sts_user_${DateTime.now().millisecondsSinceEpoch}';
+                  : (state.isEndToEnd
+                      ? 'sts_user_${DateTime.now().millisecondsSinceEpoch}'
+                      : 'call_user_${DateTime.now().millisecondsSinceEpoch}');
               msgs.add(ChatMessage(
                 id: msgId,
                 role: 'user',
@@ -401,14 +412,12 @@ class ChatAgentNotifier extends StateNotifier<ChatAgentState> {
             }
             state = state.copyWith(messages: msgs, sttPartial: text ?? '');
           } else {
-            // 非端到端：只更新预览文字
+            // 非 call 模式：只更新预览文字（push-to-talk）
             state = state.copyWith(sttPartial: text ?? '');
           }
         } else if (kind == SttEventKind.finalResult) {
-          // 端到端模式：定稿用户识别文字
-          if (state.isEndToEnd &&
-              state.inputMode == 'call' &&
-              (text ?? '').isNotEmpty) {
+          // call 模式：定稿用户识别文字（端到端 / 三段式通用）
+          if (state.inputMode == 'call' && (text ?? '').isNotEmpty) {
             final msgs = List<ChatMessage>.from(state.messages);
             // 找到正在 streaming 的 user 气泡，标记为 done
             final existingIdx = msgs.lastIndexWhere(

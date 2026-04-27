@@ -60,7 +60,7 @@ List<_ConfigField> _fieldsFor(String type, String vendor) {
       _ConfigField('apiKey', 'API Key *', 'AIza...', obscure: true),
     ];
   }
-  if (vendor == 'doubao') {
+  if (vendor == 'volcengine' && type != 'llm') {
     if (type == 'ast') {
       return const [
         _ConfigField('appKey', 'App Key *', '2316081933'),
@@ -106,7 +106,7 @@ List<_ConfigField> _fieldsFor(String type, String vendor) {
               readonly: true, defaultValue: 'https://api.deepseek.com/v1'),
           _ConfigField('model', '默认 Model', 'deepseek-chat'),
         ];
-      case 'doubao':
+      case 'volcengine':
         return const [
           _ConfigField('apiKey', 'API Key *', 'ARK API Key...', obscure: true),
           _ConfigField('model', '模型 / Endpoint *', 'ep-20241228xxxxxx 或 doubao-pro-32k'),
@@ -170,13 +170,13 @@ const _vendorsByType = <String, List<Map<String, String>>>{
     {'id': 'azure', 'label': 'Azure'},
     {'id': 'aliyun', 'label': '阿里云'},
     {'id': 'google', 'label': 'Google'},
-    {'id': 'doubao', 'label': '豆包'},
+    {'id': 'volcengine', 'label': '火山引擎'},
   ],
   'tts': [
     {'id': 'azure', 'label': 'Azure'},
     {'id': 'aliyun', 'label': '阿里云'},
     {'id': 'google', 'label': 'Google'},
-    {'id': 'doubao', 'label': '豆包'},
+    {'id': 'volcengine', 'label': '火山引擎'},
   ],
   'llm': [
     {'id': 'openai', 'label': 'OpenAI'},
@@ -184,14 +184,14 @@ const _vendorsByType = <String, List<Map<String, String>>>{
     {'id': 'google', 'label': 'Gemini'},
     {'id': 'tongyi', 'label': '通义千问'},
     {'id': 'deepseek', 'label': 'DeepSeek'},
-    {'id': 'doubao', 'label': '火山引擎'},
+    {'id': 'volcengine', 'label': '火山引擎'},
   ],
   'sts': [
-    {'id': 'doubao', 'label': '豆包'},
+    {'id': 'volcengine', 'label': '火山引擎'},
     {'id': 'polychat', 'label': 'PolyChat'},
   ],
   'ast': [
-    {'id': 'doubao', 'label': '火山引擎'},
+    {'id': 'volcengine', 'label': '火山引擎'},
     {'id': 'polychat', 'label': 'PolyChat'},
   ],
   'translation': [
@@ -293,7 +293,7 @@ const _vendorDocs = <String, Map<String, _VendorDoc>>{
       hint: '在 API Keys 页面创建密钥。模型默认 deepseek-chat。',
     ),
   },
-  'doubao': {
+  'volcengine': {
     'llm': _VendorDoc(
       url: 'https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint',
       urlLabel: '火山方舟控制台',
@@ -400,27 +400,11 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
 
   final Set<String> _unlockedReadonly = {};
 
-  /// 火山引擎 LLM 子类型: 'model'（模型推理） | 'bot'（应用接入）
-  String _doubaoSubType = 'model';
-
   bool get _isEditing => widget.initialService != null;
-  bool get _isDoubaoLlm => _type == 'llm' && _vendor == 'doubao';
 
   List<Map<String, String>> get _vendors => _vendorsByType[_type] ?? [];
 
-  List<_ConfigField> get _fields {
-    if (_isDoubaoLlm) {
-      return const [
-        _ConfigField('apiKey', 'API Key *', 'ARK API Key...', obscure: true),
-        _ConfigField('model', 'Endpoint ID *', 'ep-20241228xxxxxx'),
-        _ConfigField('baseUrl', 'Base URL *', 'https://ark.cn-beijing.volces.com/api/v3',
-            readonly: true, defaultValue: 'https://ark.cn-beijing.volces.com/api/v3'),
-        _ConfigField('temperature', 'Temperature', '0.7'),
-        _ConfigField('maxTokens', 'Max Tokens', '2048'),
-      ];
-    }
-    return _fieldsFor(_type, _vendor);
-  }
+  List<_ConfigField> get _fields => _fieldsFor(_type, _vendor);
 
   TextEditingController _ctrlFor(String key) =>
       _controllers.putIfAbsent(key, TextEditingController.new);
@@ -440,8 +424,6 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
           _selectedVoice = v as String?;
         } else if (k == 'model' && _type != 'llm') {
           _selectedModel = v as String?;
-        } else if (k == '_subType') {
-          _doubaoSubType = v.toString();
         } else {
           _ctrlFor(k).text = v.toString();
         }
@@ -465,7 +447,7 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
       _type = t;
       _vendor = (_vendorsByType[t] ?? []).first['id']!;
       _resetTestState();
-      _prefillDefaults();
+      _prefillDefaults(force: true);
     });
   }
 
@@ -474,7 +456,7 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
     setState(() {
       _vendor = v;
       _resetTestState();
-      _prefillDefaults();
+      _prefillDefaults(force: true);
     });
   }
 
@@ -488,15 +470,15 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
     _models = [];
     _selectedModel = null;
     _unlockedReadonly.clear();
-    if (!_isDoubaoLlm) _doubaoSubType = 'model';
   }
 
-  /// Pre-fill readonly fields with their defaultValue if the controller is empty.
-  void _prefillDefaults() {
+  /// Pre-fill readonly fields with their defaultValue. When [force] is true
+  /// (vendor/type switching), overwrite existing text; otherwise keep user input.
+  void _prefillDefaults({bool force = false}) {
     for (final f in _fieldsFor(_type, _vendor)) {
       if (f.readonly && f.defaultValue != null) {
         final ctrl = _ctrlFor(f.key);
-        if (ctrl.text.isEmpty) ctrl.text = f.defaultValue!;
+        if (force || ctrl.text.isEmpty) ctrl.text = f.defaultValue!;
       }
     }
   }
@@ -527,7 +509,7 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
         await _fetchOpenAiModels();
       } else if (_type == 'llm') {
         await _testLlmApi();
-      } else if ((_type == 'sts' || _type == 'ast') && _vendor == 'doubao') {
+      } else if ((_type == 'sts' || _type == 'ast') && _vendor == 'volcengine') {
         await _testStsVolcengineConnection();
       } else {
         // MCP / Translation: no network test, just validate fields
@@ -730,30 +712,16 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
       return;
     }
 
-    // OpenAI-compatible: doubao / tongyi / deepseek / google / others
+    // OpenAI-compatible: volcengine / tongyi / deepseek / google / others
     final String baseUrl;
     final String model;
 
-    if (_isDoubaoLlm) {
-      if (_doubaoSubType == 'bot') {
-        baseUrl = _ctrlFor('baseUrl').text.trim().isNotEmpty
-            ? _ctrlFor('baseUrl').text.trim()
-            : 'https://ark.cn-beijing.volces.com/api/v3/bots';
-        model = _ctrlFor('botId').text.trim();
-      } else {
-        baseUrl = _ctrlFor('baseUrl').text.trim().isNotEmpty
-            ? _ctrlFor('baseUrl').text.trim()
-            : 'https://ark.cn-beijing.volces.com/api/v3';
-        model = _ctrlFor('model').text.trim();
-      }
-    } else {
-      baseUrl = _ctrlFor('baseUrl').text.trim().isNotEmpty
-          ? _ctrlFor('baseUrl').text.trim()
-          : _defaultLlmBaseUrl(_vendor);
-      model = _ctrlFor('model').text.trim().isNotEmpty
-          ? _ctrlFor('model').text.trim()
-          : _defaultLlmModel(_vendor);
-    }
+    baseUrl = _ctrlFor('baseUrl').text.trim().isNotEmpty
+        ? _ctrlFor('baseUrl').text.trim()
+        : _defaultLlmBaseUrl(_vendor);
+    model = _ctrlFor('model').text.trim().isNotEmpty
+        ? _ctrlFor('model').text.trim()
+        : _defaultLlmModel(_vendor);
 
     if (model.isEmpty) throw Exception('请先填写模型名称 / Endpoint ID');
 
@@ -780,7 +748,7 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
         'tongyi' => 'https://dashscope.aliyuncs.com/compatible-mode/v1',
         'deepseek' => 'https://api.deepseek.com/v1',
         'google' => 'https://generativelanguage.googleapis.com/v1beta/openai',
-        'doubao' => 'https://ark.cn-beijing.volces.com/api/v3',
+        'volcengine' => 'https://ark.cn-beijing.volces.com/api/v3',
         _ => 'https://api.openai.com/v1',
       };
 
@@ -1510,7 +1478,6 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
       }
       if (_selectedVoice != null) config['voiceName'] = _selectedVoice;
       if (_selectedModel != null) config['model'] = _selectedModel;
-      if (_isDoubaoLlm) config['_subType'] = _doubaoSubType;
       if (_testOk || _skipTest(_type, _vendor)) config['_tested'] = true;
 
       final notifier = ref.read(serviceLibraryProvider.notifier);

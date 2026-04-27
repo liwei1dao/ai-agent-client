@@ -138,6 +138,13 @@ class LanguageSwitchButton extends StatelessWidget {
 
 // ── Connection Chip ──────────────────────────────────────────────────────────
 
+/// Connection toggle button for E2E (sts-chat / ast-translate) screens.
+///
+/// Visual states:
+///   - `disconnected` → solid primary "连接" button (call to action)
+///   - `connecting`   → disabled chip with spinner
+///   - `connected`    → outlined danger "断开" button (call to action to stop)
+///   - `error`        → solid danger "重连" button
 class ChatConnectionChip extends StatelessWidget {
   const ChatConnectionChip({
     super.key,
@@ -149,62 +156,81 @@ class ChatConnectionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (IconData icon, String label, Color color, Color bg) =
+    final isConnecting = connectionState == ServiceConnectionState.connecting;
+    final isConnected = connectionState == ServiceConnectionState.connected;
+    final isError = connectionState == ServiceConnectionState.error;
+
+    final (IconData icon, String label, Color fg, Color bg, Color? border) =
         switch (connectionState) {
       ServiceConnectionState.connected => (
-        Icons.link,
-        '已连接',
-        const Color(0xFF065F46),
-        const Color(0xFFECFDF5)
+        Icons.power_settings_new,
+        '断开',
+        AppTheme.danger,
+        const Color(0xFFFEF2F2),
+        AppTheme.danger.withValues(alpha: 0.4),
       ),
       ServiceConnectionState.connecting => (
         Icons.sync,
         '连接中',
         const Color(0xFF92400E),
-        const Color(0xFFFEF3C7)
+        const Color(0xFFFEF3C7),
+        null,
       ),
       ServiceConnectionState.error => (
-        Icons.link_off,
-        '连接失败',
+        Icons.refresh,
+        '重连',
+        Colors.white,
         AppTheme.danger,
-        const Color(0xFFFEE2E2)
+        null,
       ),
       ServiceConnectionState.disconnected => (
-        Icons.link_off,
-        '未连接',
-        AppTheme.text2,
-        const Color(0xFFF3F4F6)
+        Icons.play_arrow_rounded,
+        '连接',
+        Colors.white,
+        AppTheme.primary,
+        null,
       ),
     };
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: isConnecting ? null : onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
+          border: border != null ? Border.all(color: border) : null,
+          boxShadow: (isConnected || isConnecting)
+              ? null
+              : [
+                  BoxShadow(
+                    color: (isError ? AppTheme.danger : AppTheme.primary)
+                        .withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (connectionState == ServiceConnectionState.connecting)
+            if (isConnecting)
               SizedBox(
                 width: 12,
                 height: 12,
                 child: CircularProgressIndicator(
                   strokeWidth: 1.5,
-                  color: color,
+                  color: fg,
                 ),
               )
             else
-              Icon(icon, size: 12, color: color),
+              Icon(icon, size: 14, color: fg),
             const SizedBox(width: 4),
             Text(label,
                 style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: color)),
+                    color: fg)),
           ],
         ),
       ),

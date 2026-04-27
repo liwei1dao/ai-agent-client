@@ -76,8 +76,8 @@ class _TranslationPairCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final detected = message.detectedLang ?? srcLang;
-    // 源语言 → 右侧（紫色，类似"我"）；目标语言 → 左侧（白色，类似"对方"）
-    final isRight = detected == srcLang;
+    // 目标语言 → 右侧（紫色，"我方/输出"）；源语言 → 左侧（白色，"对方/输入"）
+    final isRight = detected == dstLang;
     final langName = _langLabel(detected);
 
     return Padding(

@@ -5,12 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:agents_server/agents_server.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:tts_azure/tts_azure.dart';
 import '../../../core/services/config_service.dart';
+import '../../../core/services/log_service.dart';
 import '../../../core/services/voitrans_service.dart' show polychatServiceProvider;
 import '../../../shared/themes/app_theme.dart';
 import '../../agents/providers/agent_list_provider.dart';
+import '../../chat/providers/chat_provider.dart';
 import '../../services/providers/service_library_provider.dart';
+import 'log_viewer_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -26,6 +30,85 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final TextEditingController _vtAppSecretCtrl;
   bool _vtSyncing = false;
   bool _vtInitialized = false;
+
+  // 日志占用大小
+  int _logSize = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshLogSize();
+  }
+
+  Future<void> _refreshLogSize() async {
+    final size = await LogService.instance.totalSize();
+    if (mounted) setState(() => _logSize = size);
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / 1024 / 1024).toStringAsFixed(2)} MB';
+  }
+
+  Future<void> _clearLogs() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清空日志',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        content: const Text('确定要清空所有日志文件和内存历史吗？此操作不可恢复。',
+            style: TextStyle(fontSize: 14)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await LogService.instance.clear();
+      await _refreshLogSize();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('日志已清空'), backgroundColor: Color(0xFF10B981)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('清空失败: $e'),
+            backgroundColor: const Color(0xFFEF4444)),
+      );
+    }
+  }
+
+  Future<void> _exportLogs() async {
+    try {
+      final file = await LogService.instance.exportToFile();
+      if (!mounted) return;
+      // 优先走系统分享；用户可以选择保存到文件、AirDrop、邮件等
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'AI Agent Client 日志',
+        text: '应用日志导出 ${DateTime.now().toIso8601String()}',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('导出失败: $e'),
+            backgroundColor: const Color(0xFFEF4444)),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -72,6 +155,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // Reload agent list and service list after sync
       await ref.read(agentListProvider.notifier).reload();
       await ref.read(serviceLibraryProvider.notifier).reload();
+      // Invalidate any open chat agent state so reopened pages re-init from
+      // the freshly synced config (语言列表 / agentId 等).
+      ref.invalidate(chatAgentProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -237,33 +323,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     try {
-      final dir = await getApplicationDocumentsDirectory();
+      final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/$fileName');
       await file.writeAsString(jsonStr);
 
       if (!mounted) return;
-      final savePath = await FilePicker.platform.saveFile(
-        dialogTitle: '导出配置',
-        fileName: fileName,
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        bytes: file.readAsBytesSync(),
-      );
-
-      if (savePath != null) {
-        final dest = File(savePath);
-        if (!dest.existsSync()) {
-          await file.copy(savePath);
-        }
-      }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(savePath != null ? '导出成功' : '已取消导出'),
-          backgroundColor:
-              savePath != null ? const Color(0xFF10B981) : null,
-        ),
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/json')],
+        subject: 'AI Agent Client 配置',
+        text: '配置导出 ${DateTime.now().toIso8601String()}',
       );
     } catch (e) {
       if (!mounted) return;
@@ -694,6 +762,64 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 trailing: Icon(Icons.chevron_right,
                     color: colors.text2, size: 20),
                 onTap: () => _showImportScopeDialog(context),
+              ),
+            ],
+          ),
+
+          // ── 日志管理 ──
+          const _SectionLabel('日志管理'),
+          _SectionCard(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.description_outlined,
+                    color: AppTheme.primary, size: 20),
+                title: Text('查看日志',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: colors.text1)),
+                subtitle: Text('当前占用 ${_formatSize(_logSize)}',
+                    style: TextStyle(fontSize: 12, color: colors.text2)),
+                trailing: Icon(Icons.chevron_right,
+                    color: colors.text2, size: 20),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const LogViewerScreen()),
+                  );
+                  _refreshLogSize();
+                },
+              ),
+              Divider(height: 1, color: colors.border),
+              ListTile(
+                leading: const Icon(Icons.ios_share,
+                    color: AppTheme.primary, size: 20),
+                title: Text('导出日志',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: colors.text1)),
+                subtitle: Text('合并所有日志文件并分享',
+                    style: TextStyle(fontSize: 12, color: colors.text2)),
+                trailing: Icon(Icons.chevron_right,
+                    color: colors.text2, size: 20),
+                onTap: _exportLogs,
+              ),
+              Divider(height: 1, color: colors.border),
+              ListTile(
+                leading: const Icon(Icons.delete_sweep_outlined,
+                    color: Color(0xFFEF4444), size: 20),
+                title: Text('清空日志',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: colors.text1)),
+                subtitle: Text('删除所有日志文件',
+                    style: TextStyle(fontSize: 12, color: colors.text2)),
+                trailing: Icon(Icons.chevron_right,
+                    color: colors.text2, size: 20),
+                onTap: _clearLogs,
               ),
             ],
           ),

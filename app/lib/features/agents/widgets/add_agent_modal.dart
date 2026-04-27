@@ -36,6 +36,9 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
   // Chat / STS-Chat config
   late final TextEditingController _promptCtrl;
 
+  // LLM 深度思考开关（chat 类型；覆盖 LLM 服务自身配置）
+  bool _enableThinking = false;
+
   // 音频配置（每个 Agent 独立）
   bool _vadEnabled = true;
   int _silenceTimeout = 3;
@@ -85,6 +88,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
       _vadEnabled = cfg['vadEnabled'] as bool? ?? true;
       _silenceTimeout = cfg['silenceTimeout'] as int? ?? 3;
       _speechMinDuration = cfg['speechMinDuration'] as int? ?? 300;
+      _enableThinking = cfg['enableThinking'] as bool? ?? false;
       _promptCtrl = TextEditingController(
           text: cfg['systemPrompt'] as String? ??
               '你是一位专业的 AI 助手，请简洁准确地回答用户问题。');
@@ -325,6 +329,36 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                       hasValue: _llmId != null,
                       isEmpty: services.where((s) => s.type == 'llm').isEmpty,
                       onTap: () => _pickService('llm', _llmId, nullable: false),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.bgColor,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.borderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('深度思考',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.text1)),
+                                SizedBox(height: 2),
+                                Text('开启后模型会先输出推理过程，首字延迟更高（覆盖 LLM 服务配置）',
+                                    style: TextStyle(fontSize: 11, color: AppTheme.text2)),
+                              ],
+                            ),
+                          ),
+                          Switch(
+                            value: _enableThinking,
+                            activeColor: _accentColor,
+                            onChanged: (v) => setState(() => _enableThinking = v),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 14),
                     _label('STT 服务 *（语音输入）'),
@@ -803,6 +837,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
     if (_astId != null) 'astServiceId': _astId,
     if ((_type == 'chat' || _type == 'sts-chat') && _mcpIds.isNotEmpty) 'mcpServiceIds': _mcpIds,
     if (_type == 'chat' || _type == 'sts-chat') 'systemPrompt': _promptCtrl.text.trim(),
+    if (_type == 'chat') 'enableThinking': _enableThinking,
     if (_type == 'translate') ...{
       if (_translationId != null) 'translationServiceId': _translationId,
       'srcLangs': _srcLangs.toList(),
@@ -1004,7 +1039,7 @@ class _ServicePickerSheet extends StatelessWidget {
         'google' => 'Google',
         'azure' => 'Azure',
         'aliyun' => '阿里云',
-        'doubao' => '火山引擎',
+        'volcengine' => '火山引擎',
         'deepseek' => 'DeepSeek',
         'tongyi' => '通义千问',
         'deepl' => 'DeepL',

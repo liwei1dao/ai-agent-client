@@ -15,8 +15,9 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
 class LlmOpenaiPlugin : FlutterPlugin {
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        // 注册所有 OpenAI 兼容的 LLM 厂商（它们共用同一套 HTTP SSE 协议）
-        val vendors = listOf("openai", "doubao", "deepseek", "moonshot", "zhipu", "qwen", "minimax", "baichuan")
+        // 注册 OpenAI 兼容的 LLM 厂商（共用一套 HTTP SSE 协议）。
+        // 火山引擎（volcengine）已拆到 llm_volcengine 插件独立实现，不在此列表。
+        val vendors = listOf("openai", "deepseek", "moonshot", "zhipu", "qwen", "minimax", "baichuan")
         for (vendor in vendors) {
             NativeServiceRegistry.registerLlm(vendor) { LlmOpenaiService() }
         }

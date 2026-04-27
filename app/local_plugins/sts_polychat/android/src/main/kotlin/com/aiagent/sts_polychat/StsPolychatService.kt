@@ -24,7 +24,7 @@ class StsPolychatService(private val context: Context) : NativeStsService {
     private var callback: StsCallback? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    /** 累积的 bot 回复文本（逐字 delta 累加，done 时重置） */
+    /** 已经下发给上层的累积 bot 文本。每轮 bot_response_start 清空。 */
     private val botBuffer = StringBuilder()
 
     override fun initialize(configJson: String, context: Context) {
@@ -113,17 +113,24 @@ class StsPolychatService(private val context: Context) : NativeStsService {
             "bot_response" -> {
                 val text = json.optString("text", "")
                 val done = json.optBoolean("done", false)
+                // 服务端每条 bot_response.text 都是从本轮开头到当前时刻的 **累积快照**
+                // （done=false 的中间帧和 done=true 的终帧都是 cumulative，不是 delta）。
+                // 上层 firstToken 走 `content += textDelta` 按增量拼接，
+                // 因此这里必须计算 "当前快照 - 已下发累积" 的真正增量。
                 if (text.isNotEmpty()) {
-                    if (done) {
-                        // done=true: 服务端发的是完整文本，直接用它覆盖
-                        botBuffer.clear()
-                        cb.onSentenceDone(text)
-                    } else {
-                        // done=false: 逐字 delta，累加后发送累积文本（UI 覆盖显示）
+                    val sent = botBuffer.toString()
+                    val delta = if (text.startsWith(sent)) text.substring(sent.length) else {
+                        // 服务端做了中途改写（极少见）：回退成用整句覆盖本轮——
+                        // 上层没有覆盖语义，只能作为整段下发并吃一次重复；避免丢字。
+                        text
+                    }
+                    if (delta.isNotEmpty()) {
+                        botBuffer.setLength(0)
                         botBuffer.append(text)
-                        cb.onSentenceDone(botBuffer.toString())
+                        cb.onSentenceDone(delta)
                     }
                 }
+                if (done) botBuffer.clear()
             }
 
             "ai_response_done" -> {

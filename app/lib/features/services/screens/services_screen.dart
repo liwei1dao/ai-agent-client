@@ -8,6 +8,7 @@ import 'package:local_db/local_db.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:ai_plugin_interface/ai_plugin_interface.dart';
+import 'package:service_manager/service_manager.dart';
 import 'package:stt_azure/stt_azure.dart';
 import 'package:agents_server/agents_server.dart' hide SttEvent, LlmEvent;
 import 'package:agents_server/agents_server.dart' as rt show SttEvent, LlmEvent;
@@ -291,7 +292,8 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
     'google':    [('apiKey', 'API Key *', true), ('baseUrl', 'Base URL', false), ('model', 'Model', false)],
     'azure':     [('apiKey', 'API Key *', true), ('region', 'Region *', false), ('voiceName', 'Voice Name', false)],
     'aliyun':    [('appKey', 'App Key *', true), ('accessKeyId', 'Access Key ID *', true), ('accessKeySecret', 'Access Key Secret *', true)],
-    'doubao':    [('apiKey', 'API Key', true), ('appId', 'App ID', false), ('accessToken', 'Access Token', true), ('appKey', 'App Key', false), ('model', 'Model / Endpoint', false), ('voiceType', 'Voice Type', false), ('resourceId', 'Resource ID', false)],
+    // volcengine 字段随 type 变化，见 _resolveFields
+    'volcengine': [],
     'deepseek':  [('apiKey', 'API Key *', true), ('baseUrl', 'Base URL', false), ('model', 'Model', false)],
     'tongyi':    [('apiKey', 'API Key *', true), ('baseUrl', 'Base URL', false), ('model', 'Model', false)],
     'deepl':     [('authKey', 'Auth Key *', true)],
@@ -309,7 +311,14 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
 
   void _initCfgCtrls() {
     final cfg = _parseCfg(_svc.configJson);
-    final fields = _vendorFields[_svc.vendor] ?? [];
+    final fields = _resolveFields(_svc.vendor, _svc.type);
+    // 修正遗留的错误 baseUrl（例如火山 LLM 曾被存成 OpenAI 地址）
+    if (_svc.vendor == 'volcengine' && _svc.type == 'llm') {
+      final saved = cfg['baseUrl']?.toString() ?? '';
+      if (!saved.contains('volces.com')) {
+        cfg['baseUrl'] = 'https://ark.cn-beijing.volces.com/api/v3';
+      }
+    }
     _cfgCtrls = {
       for (final (key, _, _) in fields)
         if (cfg[key] != null && cfg[key].toString().isNotEmpty)
@@ -317,6 +326,35 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
         else
           key: TextEditingController(),
     };
+  }
+
+  /// Resolve fields by (vendor, type). volcengine differs by type; others are type-agnostic.
+  static List<(String, String, bool)> _resolveFields(String vendor, String type) {
+    if (vendor == 'volcengine') {
+      return switch (type) {
+        'llm' => const [
+          ('apiKey', 'API Key *', true),
+          ('model', '接入点 ID / Endpoint *', false),
+          ('baseUrl', 'Base URL', false),
+        ],
+        'ast' => const [
+          ('appKey', 'App Key *', false),
+          ('accessKey', 'Access Key *', true),
+          ('resourceId', 'Resource ID *', false),
+        ],
+        'sts' => const [
+          ('appId', 'App ID *', false),
+          ('accessToken', 'Access Token *', true),
+          ('appKey', 'App Key *', false),
+          ('voiceType', '音色 ID', false),
+        ],
+        _ => const [
+          ('appId', 'App ID *', false),
+          ('accessToken', 'Access Token *', true),
+        ],
+      };
+    }
+    return _vendorFields[vendor] ?? const [];
   }
 
   @override
@@ -370,7 +408,7 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
 
   static String _vendorLabel(String vendor) => switch (vendor) {
     'openai' => 'OpenAI', 'anthropic' => 'Anthropic', 'google' => 'Google',
-    'azure' => 'Azure', 'aliyun' => '阿里云', 'doubao' => '火山引擎',
+    'azure' => 'Azure', 'aliyun' => '阿里云', 'volcengine' => '火山引擎',
     'deepseek' => 'DeepSeek', 'tongyi' => '通义千问', 'deepl' => 'DeepL',
     'remote' => '远程 MCP', _ => vendor,
   };
@@ -381,7 +419,7 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
     final sameTypeServices = allServices.where((s) => s.type == _svc.type).toList();
     if (sameTypeServices.isEmpty) sameTypeServices.add(_svc);
 
-    final fields = _vendorFields[_svc.vendor] ?? [];
+    final fields = _resolveFields(_svc.vendor, _svc.type);
     final accentColor = _typeFg(_svc.type);
     final accentBg = _typeBg(_svc.type);
 
@@ -712,7 +750,7 @@ class _ServiceCard extends StatelessWidget {
         'google' => 'Google',
         'azure' => 'Azure',
         'aliyun' => '阿里云',
-        'doubao' => '火山引擎',
+        'volcengine' => '火山引擎',
         'deepseek' => 'DeepSeek',
         'tongyi' => '通义千问',
         'deepl' => 'DeepL',
@@ -1637,6 +1675,11 @@ class _LlmTestCardState extends State<_LlmTestCard> {
   String? _firstTokenTime;
   final _stopwatch = Stopwatch();
 
+  final _bridge = ServiceManagerBridge();
+  StreamSubscription<ServiceTestEvent>? _eventSub;
+  String? _activeTestId;
+  final _streamingBuf = StringBuffer();
+
   @override
   void initState() {
     super.initState();
@@ -1645,121 +1688,124 @@ class _LlmTestCardState extends State<_LlmTestCard> {
 
   @override
   void dispose() {
+    _eventSub?.cancel();
+    if (_activeTestId != null) {
+      _bridge.testLlmCancel(_activeTestId!);
+    }
     _inputCtrl.dispose();
     super.dispose();
   }
 
+  /// 通过 service_manager 原生桥接发起 LLM 测试。
+  /// Flutter 不关心 vendor / baseUrl / model —— 那是底层 LlmXxxService 的事。
   Future<void> _send() async {
     final text = _inputCtrl.text.trim();
-    if (_selected == null || text.isEmpty) return;
+    if (_selected == null || text.isEmpty || _sending) return;
+
+    final testId = 'llm_test_${DateTime.now().microsecondsSinceEpoch}';
+    _activeTestId = testId;
+    _streamingBuf.clear();
+
     setState(() {
       _sending = true;
       _error = null;
+      _tokenCount = null;
+      _firstTokenTime = null;
       _messages.add((role: 'user', text: text));
+      _messages.add((role: 'assistant', text: ''));
       _inputCtrl.clear();
     });
-    _stopwatch.reset();
-    _stopwatch.start();
+    _stopwatch
+      ..reset()
+      ..start();
+
+    await _eventSub?.cancel();
+    _eventSub = _bridge.eventStream.listen((event) {
+      if (event.testId != testId || !mounted) return;
+      if (event is LlmTestEvent) {
+        _handleLlmEvent(event);
+      } else if (event is ServiceTestDoneEvent) {
+        _finishTest();
+      }
+    });
 
     try {
-      final cfg = jsonDecode(_selected!.configJson) as Map<String, dynamic>;
-      final apiKey = cfg['apiKey'] as String? ?? '';
-      final vendor = _selected!.vendor;
-      String result;
-
-      if (vendor == 'anthropic') {
-        final baseUrl = cfg['baseUrl'] as String? ?? 'https://api.anthropic.com';
-        final m = (cfg['model'] as String?)?.isNotEmpty == true
-            ? cfg['model'] as String
-            : 'claude-haiku-4-5-20251001';
-        final resp = await http.post(
-          Uri.parse('$baseUrl/v1/messages'),
-          headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-          },
-          body: jsonEncode({
-            'model': m,
-            'max_tokens': 512,
-            'messages': [{'role': 'user', 'content': text}],
-          }),
-        ).timeout(const Duration(seconds: 30));
-        if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}：${_truncate(resp.body)}');
-        final body = jsonDecode(resp.body) as Map;
-        final content = (body['content'] as List).first as Map;
-        result = content['text'] as String? ?? '';
-        _tokenCount = (body['usage']?['output_tokens'] as int?) ?? result.length ~/ 2;
-      } else {
-        final subType = cfg['_subType'] as String? ?? 'model';
-        final isDoubaoBot = vendor == 'doubao' && subType == 'bot';
-        final String m;
-        if (isDoubaoBot) {
-          m = (cfg['botId'] as String?)?.isNotEmpty == true ? cfg['botId'] as String : '';
-        } else {
-          m = (cfg['model'] as String?)?.isNotEmpty == true
-              ? cfg['model'] as String : _defaultModel(vendor);
-        }
-        if (m.isEmpty) throw Exception('未配置模型名称');
-        final String baseUrl;
-        if ((cfg['baseUrl'] as String?)?.isNotEmpty == true) {
-          baseUrl = cfg['baseUrl'] as String;
-        } else if (isDoubaoBot) {
-          baseUrl = 'https://ark.cn-beijing.volces.com/api/v3/bots';
-        } else {
-          baseUrl = _defaultBaseUrl(vendor);
-        }
-        var normalizedUrl = baseUrl;
-        if (normalizedUrl.endsWith('/')) normalizedUrl = normalizedUrl.substring(0, normalizedUrl.length - 1);
-        if (normalizedUrl.endsWith('/chat/completions')) {
-          normalizedUrl = normalizedUrl.substring(0, normalizedUrl.length - '/chat/completions'.length);
-        }
-        final resp = await http.post(
-          Uri.parse('$normalizedUrl/chat/completions'),
-          headers: { 'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json' },
-          body: jsonEncode({
-            'model': m, 'max_tokens': 512,
-            'messages': [{'role': 'user', 'content': text}],
-          }),
-        ).timeout(const Duration(seconds: 30));
-        if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}：${_truncate(resp.body)}');
-        final body = jsonDecode(resp.body) as Map;
-        final choices = body['choices'] as List;
-        final msg = (choices.first as Map)['message'] as Map;
-        result = msg['content'] as String? ?? '';
-        _tokenCount = (body['usage']?['completion_tokens'] as int?) ?? result.length ~/ 2;
-      }
-
-      _stopwatch.stop();
-      _firstTokenTime = '${(_stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s';
-      if (mounted) setState(() => _messages.add((role: 'assistant', text: result)));
+      await _bridge.testLlmChat(
+        testId: testId,
+        serviceId: _selected!.id,
+        text: text,
+      );
     } catch (e) {
-      _stopwatch.stop();
-      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _sending = false);
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _sending = false;
+      });
+      _eventSub?.cancel();
+      _activeTestId = null;
     }
   }
 
-  String _truncate(String s) {
-    final t = s.trim();
-    return t.length > 200 ? '${t.substring(0, 200)}…' : t;
+  void _handleLlmEvent(LlmTestEvent e) {
+    switch (e.kind) {
+      case LlmTestEventKind.firstToken:
+        if (_firstTokenTime == null) {
+          _firstTokenTime =
+              '${(_stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s';
+        }
+        if ((e.textDelta ?? '').isNotEmpty) {
+          _streamingBuf.write(e.textDelta);
+          _updateStreamingMessage();
+        }
+        break;
+      case LlmTestEventKind.textDelta:
+        if ((e.textDelta ?? '').isNotEmpty) {
+          _streamingBuf.write(e.textDelta);
+          _updateStreamingMessage();
+        }
+        break;
+      case LlmTestEventKind.done:
+        if ((e.fullText ?? '').isNotEmpty &&
+            _streamingBuf.toString() != e.fullText) {
+          _streamingBuf
+            ..clear()
+            ..write(e.fullText);
+          _updateStreamingMessage();
+        }
+        _tokenCount = _streamingBuf.length ~/ 2;
+        _finishTest();
+        break;
+      case LlmTestEventKind.cancelled:
+        _finishTest();
+        break;
+      case LlmTestEventKind.error:
+        if (!mounted) return;
+        setState(() {
+          _error = e.errorMessage ?? e.errorCode ?? 'LLM 测试失败';
+        });
+        _finishTest();
+        break;
+      default:
+        break;
+    }
   }
 
-  String _defaultBaseUrl(String vendor) => switch (vendor) {
-        'deepseek' => 'https://api.deepseek.com/v1',
-        'tongyi' => 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-        'doubao' => 'https://ark.cn-beijing.volces.com/api/v3',
-        'google' => 'https://generativelanguage.googleapis.com/v1beta/openai',
-        _ => 'https://api.openai.com/v1',
-      };
+  void _updateStreamingMessage() {
+    if (!mounted || _messages.isEmpty) return;
+    setState(() {
+      _messages[_messages.length - 1] =
+          (role: 'assistant', text: _streamingBuf.toString());
+    });
+  }
 
-  String _defaultModel(String vendor) => switch (vendor) {
-        'deepseek' => 'deepseek-chat',
-        'tongyi' => 'qwen-max',
-        'google' => 'gemini-2.0-flash',
-        _ => 'gpt-4o',
-      };
+  void _finishTest() {
+    _stopwatch.stop();
+    _eventSub?.cancel();
+    _eventSub = null;
+    _activeTestId = null;
+    if (!mounted) return;
+    setState(() => _sending = false);
+  }
 
   @override
   Widget build(BuildContext context) {

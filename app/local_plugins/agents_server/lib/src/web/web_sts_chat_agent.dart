@@ -36,7 +36,7 @@ class WebStsChatAgent implements WebAgent {
   @override
   Future<void> initialize(WebAgentConfig config) async {
     _config = config;
-    _sts = WebServiceFactory.createSts(config.stsVendor ?? 'doubao');
+    _sts = WebServiceFactory.createSts(config.stsVendor ?? 'volcengine');
     await _sts.initialize(
       WebConfigParser.parseSts(config.stsConfigJson ?? '{}'),
     );

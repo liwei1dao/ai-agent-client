@@ -17,39 +17,48 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
   final _uuid = const Uuid();
 
   Future<void> _load() async {
-    await _migrateVoitransToPolychat();
+    await _migrateLegacyVendors();
     state = await _db.getAllServiceConfigs();
   }
 
   Future<void> reload() => _load();
 
-  /// 旧版数据迁移：vendor='voitrans' → 'polychat'，Agent tag 'voitrans' → 'polychat'
-  Future<void> _migrateVoitransToPolychat() async {
-    // 1. 迁移 ServiceConfig
+  /// 旧版数据迁移：
+  /// - ServiceConfig.vendor: 'voitrans' → 'polychat'；'doubao' → 'volcengine'
+  /// - Agent tags: 'voitrans' → 'polychat'
+  Future<void> _migrateLegacyVendors() async {
     final services = await _db.getAllServiceConfigs();
     for (final s in services) {
+      String? newVendor;
+      String newName = s.name;
       if (s.vendor == 'voitrans') {
+        newVendor = 'polychat';
+        newName = s.name
+            .replaceFirst('VoiTrans', 'PolyChat')
+            .replaceFirst('voitrans', 'polychat');
+      } else if (s.vendor == 'doubao') {
+        newVendor = 'volcengine';
+      }
+      if (newVendor != null) {
         await _db.upsertServiceConfig(ServiceConfigDto(
           id: s.id,
           type: s.type,
-          vendor: 'polychat',
-          name: s.name
-              .replaceFirst('VoiTrans', 'PolyChat')
-              .replaceFirst('voitrans', 'polychat'),
+          vendor: newVendor,
+          name: newName,
           configJson: s.configJson,
           createdAt: s.createdAt,
         ));
       }
     }
 
-    // 2. 迁移 Agent tags
     final agents = await _db.getAllAgents();
     for (final a in agents) {
       try {
         final cfg = jsonDecode(a.configJson) as Map<String, dynamic>;
         final tags = (cfg['tags'] as List?)?.cast<String>() ?? const [];
         if (tags.contains('voitrans')) {
-          final newTags = tags.map((t) => t == 'voitrans' ? 'polychat' : t).toList();
+          final newTags =
+              tags.map((t) => t == 'voitrans' ? 'polychat' : t).toList();
           cfg['tags'] = newTags;
           await _db.upsertAgent(AgentDto(
             id: a.id,
@@ -110,18 +119,24 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
     await _load();
   }
 
-  /// Export all local services as JSON string.
+  /// Export all local services. Includes each service's stable `id` so agents
+  /// that reference it by UUID remain linked after a cross-device import.
   String exportServicesJson() {
-    final list = state.map((s) => {
-      'type': s.type,
-      'vendor': s.vendor,
-      'name': s.name,
-      'config': jsonDecode(s.configJson),
-    }).toList();
+    final list = state
+        .map((s) => {
+              'id': s.id,
+              'type': s.type,
+              'vendor': s.vendor,
+              'name': s.name,
+              'config': jsonDecode(s.configJson),
+            })
+        .toList();
     return jsonEncode({'services': list});
   }
 
   /// Parse import JSON and separate into conflicts and new services.
+  /// Conflicts are detected first by `id` (exact UUID collision) then by
+  /// natural key `(type, vendor, name)` for legacy exports without an id.
   ImportParseResult parseImportJson(String jsonStr) {
     final data = jsonDecode(jsonStr) as Map<String, dynamic>;
     final list = data['services'] as List? ?? [];
@@ -129,6 +144,7 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
     final newItems = <ImportItem>[];
     for (final item in list) {
       final m = item as Map<String, dynamic>;
+      final id = m['id'] as String?;
       final type = m['type'] as String?;
       final vendor = m['vendor'] as String?;
       final name = m['name'] as String?;
@@ -136,10 +152,13 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
       if (type == null || vendor == null || name == null || config == null) {
         continue;
       }
-      final existing = state.where(
-        (s) => s.type == type && s.vendor == vendor && s.name == name,
-      );
+      final existing = id != null
+          ? state.where((s) => s.id == id)
+          : state.where(
+              (s) => s.type == type && s.vendor == vendor && s.name == name,
+            );
       final importItem = ImportItem(
+        id: id,
         type: type,
         vendor: vendor,
         name: name,
@@ -165,7 +184,7 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final item in newItems) {
       final dto = ServiceConfigDto(
-        id: _uuid.v4(),
+        id: item.id ?? _uuid.v4(),
         type: item.type,
         vendor: item.vendor,
         name: item.name,
@@ -196,6 +215,7 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
 }
 
 class ImportItem {
+  final String? id;
   final String type;
   final String vendor;
   final String name;
@@ -203,6 +223,7 @@ class ImportItem {
   final String? existingId;
 
   const ImportItem({
+    this.id,
     required this.type,
     required this.vendor,
     required this.name,

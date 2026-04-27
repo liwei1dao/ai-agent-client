@@ -6,8 +6,10 @@ import com.aiagent.local_db.AppDatabase
 import com.aiagent.local_db.entity.MessageEntity
 import com.aiagent.plugin_interface.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * TranslateAgentSession — 组合式翻译 Agent 原生实现
@@ -28,7 +30,42 @@ class TranslateAgentSession : NativeAgent {
 
     companion object {
         private const val TAG = "TranslateAgentSession"
+
+        /** 合成并发上限（按 §4.1） */
+        private const val MAX_CONCURRENT_SYNTHESIS = 2
+
+        /** 句子终结符（覆盖中英文常见标点）*/
+        private val SENTENCE_TERMINATORS = setOf(
+            '。', '！', '？', '.', '!', '?', '；', ';', '\n',
+        )
+
+        /**
+         * 把整段翻译文本切成多段（按句切）。
+         * 终结符随段保留；末尾未带终结符的剩余文本作为最后一段。
+         */
+        private fun splitSentences(text: String): List<String> {
+            val result = mutableListOf<String>()
+            val buf = StringBuilder()
+            for (c in text) {
+                buf.append(c)
+                if (c in SENTENCE_TERMINATORS) {
+                    val s = buf.toString().trim()
+                    if (s.isNotEmpty()) result.add(s)
+                    buf.clear()
+                }
+            }
+            val tail = buf.toString().trim()
+            if (tail.isNotEmpty()) result.add(tail)
+            return result
+        }
     }
+
+    /** 同 ChatAgentSession：seq 锁定播放顺序，audio 由合成池完成 */
+    private data class TtsSegment(
+        val seq: Int,
+        val text: String,
+        val audio: CompletableDeferred<TtsAudio>,
+    )
 
     override val agentType = "translate"
 
@@ -208,32 +245,10 @@ class TranslateAgentSession : NativeAgent {
 
             if (!isActive || activeRequestId != requestId) return@launch
 
-            // ── TTS 播报翻译结果 ──
+            // ── TTS 播报翻译结果（句切 + 合成池/播放消费者双流水线）──
             if (translatedText.isNotBlank()) {
                 transitionTo(State.TTS)
-                ttsService.speak(requestId, translatedText, object : TtsCallback {
-                    override fun onSynthesisStart() {
-                        eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "synthesisStart"))
-                    }
-                    override fun onSynthesisReady(durationMs: Int) {
-                        eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "synthesisReady", durationMs = durationMs))
-                    }
-                    override fun onPlaybackStart() {
-                        eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "playbackStart"))
-                    }
-                    override fun onPlaybackProgress(progressMs: Int) {
-                        eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "playbackProgress", progressMs = progressMs))
-                    }
-                    override fun onPlaybackDone() {
-                        eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "playbackDone"))
-                    }
-                    override fun onPlaybackInterrupted() {
-                        eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "playbackInterrupted"))
-                    }
-                    override fun onError(code: String, message: String) {
-                        eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "error", errorCode = code, errorMessage = message))
-                    }
-                })
+                runTtsPipeline(requestId, translatedText)
             }
 
             if (isActive && activeRequestId == requestId) {
@@ -243,6 +258,109 @@ class TranslateAgentSession : NativeAgent {
                 }
             }
         }
+    }
+
+    /**
+     * TTS 流水线：把整段翻译切成多句，N 个 worker 并发合成，单消费者按 seq 顺序播放。
+     *
+     * 顺序铁律：playQueue 入队顺序 = 文本顺序；播放消费者按 seq await 各段 audio，
+     * 因此短段先合成完也不会抢先播放。
+     */
+    private suspend fun runTtsPipeline(requestId: String, text: String) = coroutineScope {
+        val sentences = splitSentences(text)
+        if (sentences.isEmpty()) return@coroutineScope
+
+        val synthQueue = Channel<TtsSegment>(Channel.UNLIMITED)
+        val playQueue = Channel<TtsSegment>(Channel.UNLIMITED)
+        val firstSegmentEmitted = AtomicBoolean(false)
+
+        // 合成池
+        val synthWorkers = List(MAX_CONCURRENT_SYNTHESIS) {
+            launch {
+                for (seg in synthQueue) {
+                    if (!isActive || activeRequestId != requestId) {
+                        seg.audio.cancel(CancellationException("session_inactive"))
+                        continue
+                    }
+                    try {
+                        val audio = ttsService.synthesize(requestId, seg.text)
+                        seg.audio.complete(audio)
+                    } catch (e: CancellationException) {
+                        seg.audio.cancel(e)
+                        throw e
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "synthesize seq=${seg.seq} failed: ${e.message}")
+                        seg.audio.completeExceptionally(e)
+                    }
+                }
+            }
+        }
+
+        // 播放消费者
+        val ttsCallback = object : TtsCallback {
+            override fun onSynthesisStart() { /* 由首段触发 */ }
+            override fun onSynthesisReady(durationMs: Int) {
+                eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "synthesisReady", durationMs = durationMs))
+            }
+            override fun onPlaybackStart() { /* 由首段触发 */ }
+            override fun onPlaybackProgress(progressMs: Int) {
+                eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "playbackProgress", progressMs = progressMs))
+            }
+            override fun onPlaybackDone() { /* 段完成不向上派发，整轮结束统一派 */ }
+            override fun onPlaybackInterrupted() {
+                eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "playbackInterrupted"))
+            }
+            override fun onError(code: String, message: String) {
+                eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "error", errorCode = code, errorMessage = message))
+            }
+        }
+        val ttsConsumer = launch {
+            try {
+                for (seg in playQueue) {
+                    if (!isActive || activeRequestId != requestId) break
+                    try {
+                        val audio = seg.audio.await()
+                        eventSink.onTtsEvent(TtsEventData(
+                            config.agentId, requestId,
+                            kind = "synthesisReady",
+                            durationMs = audio.durationMs ?: 0,
+                        ))
+                        ttsService.play(requestId, audio, ttsCallback)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "play seq=${seg.seq} failed: ${e.message}")
+                        eventSink.onTtsEvent(TtsEventData(
+                            config.agentId, requestId,
+                            kind = "error",
+                            errorCode = "tts_segment_failed",
+                            errorMessage = e.message ?: "",
+                        ))
+                    }
+                }
+                if (firstSegmentEmitted.get() && isActive && activeRequestId == requestId) {
+                    eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "playbackDone"))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            }
+        }
+
+        // 入队所有段（先 playQueue 后 synthQueue，锁定播放顺序）
+        sentences.forEachIndexed { i, sentence ->
+            if (firstSegmentEmitted.compareAndSet(false, true)) {
+                eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "synthesisStart"))
+                eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "playbackStart"))
+            }
+            val item = TtsSegment(i, sentence, CompletableDeferred())
+            playQueue.trySend(item)
+            synthQueue.trySend(item)
+        }
+
+        synthQueue.close()
+        synthWorkers.forEach { it.join() }
+        playQueue.close()
+        ttsConsumer.join()
     }
 
     // ─────────────────────────────────────────────────

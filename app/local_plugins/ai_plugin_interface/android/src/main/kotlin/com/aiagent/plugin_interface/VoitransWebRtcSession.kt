@@ -106,6 +106,7 @@ class VoitransWebRtcSession(private val context: Context) {
     // WebRTC
     private var peerConnection: PeerConnection? = null
     private var localAudioTrack: AudioTrack? = null
+    private var localAudioSource: AudioSource? = null
     private var dataChannel: DataChannel? = null
     private var pcId: String? = null
 
@@ -266,14 +267,21 @@ class VoitransWebRtcSession(private val context: Context) {
         // 停 ping 心跳
         stopPingHeartbeat()
 
-        // 关闭 WebRTC 资源
+        // 关闭 WebRTC 资源。dispose 顺序必须严格：
+        //   peerConnection.dispose → audioTrack.dispose → audioSource.dispose
+        // 否则 JavaAudioDeviceModule 共享的 AudioRecord 不会 stop，
+        // 下一次 createAudioSource 会报 "InitRecording called twice without StopRecording"，
+        // 麦克风上行音频彻底失效。仅调 close() 不够，close() 只停 ICE/DTLS。
         try {
             dataChannel?.close()
+            dataChannel?.dispose()
             dataChannel = null
-            localAudioTrack?.setEnabled(false)
-            localAudioTrack = null
-            peerConnection?.close()
+            peerConnection?.dispose()
             peerConnection = null
+            localAudioTrack?.dispose()
+            localAudioTrack = null
+            localAudioSource?.dispose()
+            localAudioSource = null
         } catch (e: Exception) {
             Log.w(TAG, "Release error", e)
         }
@@ -466,9 +474,12 @@ class VoitransWebRtcSession(private val context: Context) {
 
     private fun createLocalAudioTrack() {
         val factory = peerConnectionFactory!!
-        val audioSource = factory.createAudioSource(MediaConstraints())
-        localAudioTrack = factory.createAudioTrack("audio_local", audioSource)
-        localAudioTrack!!.setEnabled(false) // 初始不发送音频
+        val source = factory.createAudioSource(MediaConstraints())
+        localAudioSource = source
+        localAudioTrack = factory.createAudioTrack("audio_local", source)
+        // 与 Web 端（getUserMedia 默认 enabled=true）对齐：协商期间就保持启用。
+        // 上层通过 startAudio/stopAudio 控制麦克风静音状态。
+        localAudioTrack!!.setEnabled(true)
         peerConnection!!.addTrack(localAudioTrack!!)
     }
 

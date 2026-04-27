@@ -1,0 +1,30 @@
+name: llm_volcengine
+description: 火山引擎 Ark LLM plugin（apiKey + 接入点 ID，SSE 流式）
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  ai_plugin_interface:
+    path: ../ai_plugin_interface
+  http: ^1.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.llm_volcengine
+        pluginClass: LlmVolcenginePlugin
+      web:
+        pluginClass: LlmVolcengineWeb
+        fileName: llm_volcengine_web.dart

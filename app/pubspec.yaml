@@ -66,6 +66,8 @@ dependencies:
     path: local_plugins/tts_azure
   llm_openai:
     path: local_plugins/llm_openai
+  llm_volcengine:
+    path: local_plugins/llm_volcengine
   sts_volcengine:
     path: local_plugins/sts_volcengine
   ast_volcengine:
@@ -85,6 +87,10 @@ dependencies:
   file_picker: ^10.3.10
   web: ^1.1.1
   web_socket_channel: ^3.0.3
+
+  # Logging
+  talker_flutter: ^4.7.5
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:

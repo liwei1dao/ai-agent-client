@@ -155,20 +155,12 @@ class PolychatService {
           continue;
       }
 
-      // Agent config：引用共享服务 + 自身 agentId
-      final agentConfigMap = <String, dynamic>{
-        'tags': ['polychat'],
-        'agentId': remote.agentId,
-        serviceIdKey: serviceId,
-      };
-      if (remote.supportedLangs.isNotEmpty) {
-        agentConfigMap['srcLangs'] = remote.supportedLangs;
-        agentConfigMap['dstLangs'] = remote.supportedLangs;
-        agentConfigMap['srcLang'] = remote.supportedLangs.first;
-        agentConfigMap['dstLang'] = remote.supportedLangs.length > 1
-            ? remote.supportedLangs[1]
-            : remote.supportedLangs.first;
-      }
+      // Resolve supported languages. PolyChat 平台 E2E agent (sts-chat /
+      // ast-translate) 通常返回空数组（服务端代为支持全语言），客户端这里给一个
+      // 合理的默认列表以便用户在本地选择。
+      final supported = remote.supportedLangs.isNotEmpty
+          ? remote.supportedLangs
+          : const ['zh', 'en'];
 
       // 查找已有 Agent（通过 agentId 匹配）
       final existingAgent = existingPcAgents.where((a) {
@@ -179,6 +171,31 @@ class PolychatService {
           return false;
         }
       }).toList();
+
+      // 保留用户上次的源/目标语言选择（前提是新支持列表里仍包含）
+      Map<String, dynamic> oldCfg = const {};
+      if (existingAgent.isNotEmpty) {
+        try {
+          oldCfg = jsonDecode(existingAgent.first.configJson)
+              as Map<String, dynamic>;
+        } catch (_) {}
+      }
+      String pickLang(String key, int fallbackIdx) {
+        final old = oldCfg[key] as String?;
+        if (old != null && supported.contains(old)) return old;
+        return supported[fallbackIdx.clamp(0, supported.length - 1)];
+      }
+
+      // Agent config：引用共享服务 + 自身 agentId + 语言列表
+      final agentConfigMap = <String, dynamic>{
+        'tags': ['polychat'],
+        'agentId': remote.agentId,
+        serviceIdKey: serviceId,
+        'srcLangs': supported,
+        'dstLangs': supported,
+        'srcLang': pickLang('srcLang', 0),
+        'dstLang': pickLang('dstLang', supported.length > 1 ? 1 : 0),
+      };
 
       if (existingAgent.isNotEmpty) {
         final ea = existingAgent.first;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/services.dart';
 import 'package:ai_plugin_interface/ai_plugin_interface.dart';
 
@@ -47,8 +48,10 @@ class TtsAzurePluginDart implements TtsPlugin {
     _controller = null;
   }
 
-  /// 设置 iOS 端音频输出模式 (earpiece / speaker / auto)
+  /// 设置 iOS 端音频输出模式 (earpiece / speaker / auto)。
+  /// Android 由 AgentsServer 统一控制 AudioManager，无需插件各自实现。
   static Future<void> setAudioOutputMode(String mode) async {
+    if (!Platform.isIOS) return;
     await _cmd.invokeMethod('setAudioOutputMode', {'mode': mode});
   }
 

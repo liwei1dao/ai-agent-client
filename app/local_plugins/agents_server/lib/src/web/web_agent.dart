@@ -88,7 +88,10 @@ class WebConfigParser {
       temperature: (m['temperature'] as num?)?.toDouble() ?? 0.7,
       maxTokens: (m['maxTokens'] as num?)?.toInt() ?? 2048,
       systemPrompt: m['systemPrompt'] as String?,
-      extraParams: _toStringMap(m['extra']),
+      extraParams: _toStringMap({
+        ...?(m['extra'] as Map?),
+        if (m['enableThinking'] != null) 'enableThinking': m['enableThinking'],
+      }),
     );
   }
 

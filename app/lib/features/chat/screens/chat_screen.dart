@@ -30,11 +30,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _initAgent() async {
-    // E2E agents need microphone permission
     final state = ref.read(chatAgentProvider(widget.agentId));
     if (state.isEndToEnd) {
-      await Permission.microphone.request();
+      final status = await Permission.microphone.request();
       if (!mounted) return;
+      if (!status.isGranted) {
+        // 未授权直接提示用户去设置开权限，不再 init（后面 connect 时 AudioRecord 会 -20 静默失败）
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('需要麦克风权限才能进行语音对话'),
+          action: status.isPermanentlyDenied
+              ? SnackBarAction(label: '去设置', onPressed: openAppSettings)
+              : null,
+        ));
+        return;
+      }
     }
     ref.read(chatAgentProvider(widget.agentId).notifier).init();
   }
@@ -57,14 +66,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  void _toggleConnection() {
+  Future<void> _toggleConnection() async {
     final notifier = ref.read(chatAgentProvider(widget.agentId).notifier);
     final state = ref.read(chatAgentProvider(widget.agentId));
     if (state.connectionState == ServiceConnectionState.connected) {
       notifier.disconnectService();
-    } else {
-      notifier.connectService();
+      return;
     }
+    if (state.isEndToEnd) {
+      final status = await Permission.microphone.request();
+      if (!mounted) return;
+      if (!status.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('需要麦克风权限才能进行语音对话'),
+          action: status.isPermanentlyDenied
+              ? SnackBarAction(label: '去设置', onPressed: openAppSettings)
+              : null,
+        ));
+        return;
+      }
+    }
+    notifier.connectService();
   }
 
   @override

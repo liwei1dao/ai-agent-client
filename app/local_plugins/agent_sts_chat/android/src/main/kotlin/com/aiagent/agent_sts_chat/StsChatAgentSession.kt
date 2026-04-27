@@ -62,7 +62,7 @@ class StsChatAgentSession : NativeAgent {
         this.db = AppDatabase.getInstance(context)
 
         // Create STS service from NativeServiceRegistry
-        stsService = NativeServiceRegistry.createSts(config.stsVendor ?: "doubao")
+        stsService = NativeServiceRegistry.createSts(config.stsVendor ?: "volcengine")
 
         // Initialize STS service with config
         stsService.initialize(config.stsConfigJson ?: "{}", context)
@@ -75,7 +75,7 @@ class StsChatAgentSession : NativeAgent {
         connectJob?.cancel()
 
         // 重建 STS service（上一次 disconnectService 调用了 release）
-        stsService = NativeServiceRegistry.createSts(config.stsVendor ?: "doubao")
+        stsService = NativeServiceRegistry.createSts(config.stsVendor ?: "volcengine")
         stsService.initialize(config.stsConfigJson ?: "{}", appContext)
 
         connectJob = scope.launch {

@@ -41,8 +41,8 @@ class WebServiceFactory {
 
   static StsPlugin createSts(String vendor) {
     switch (vendor) {
-      case 'doubao':
       case 'volcengine':
+      case 'doubao': // legacy alias
       case 'bytedance':
         return StsVolcenginePlugin();
       case 'polychat':
@@ -55,7 +55,7 @@ class WebServiceFactory {
   static AstPlugin createAst(String vendor) {
     switch (vendor) {
       case 'volcengine':
-      case 'doubao':
+      case 'doubao': // legacy alias
       case 'bytedance':
         return AstVolcenginePluginWeb();
       case 'polychat':

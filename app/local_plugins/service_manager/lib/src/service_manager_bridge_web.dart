@@ -5,6 +5,7 @@ import 'package:ai_plugin_interface/ai_plugin_interface.dart' as ai;
 import 'package:ast_polychat/ast_polychat_web.dart';
 import 'package:ast_volcengine/ast_volcengine.dart';
 import 'package:llm_openai/llm_openai.dart';
+import 'package:llm_volcengine/llm_volcengine.dart';
 import 'package:local_db/local_db.dart';
 import 'package:sts_volcengine/sts_volcengine.dart';
 import 'package:sts_polychat/sts_polychat_web.dart';
@@ -663,6 +664,9 @@ class ServiceManagerBridge {
     switch (vendor) {
       case 'openai':
         return LlmOpenaiPlugin();
+      case 'volcengine':
+      case 'doubao': // legacy alias
+        return LlmVolcenginePlugin();
       default:
         throw UnimplementedError('LLM vendor "$vendor" not available on web');
     }
@@ -670,8 +674,8 @@ class ServiceManagerBridge {
 
   ai.StsPlugin _createSts(String vendor) {
     switch (vendor) {
-      case 'doubao':
       case 'volcengine':
+      case 'doubao': // legacy alias
       case 'bytedance':
         return StsVolcenginePlugin();
       case 'polychat':
@@ -684,7 +688,7 @@ class ServiceManagerBridge {
   ai.AstPlugin _createAst(String vendor) {
     switch (vendor) {
       case 'volcengine':
-      case 'doubao':
+      case 'doubao': // legacy alias
       case 'bytedance':
         return AstVolcenginePluginWeb();
       case 'polychat':

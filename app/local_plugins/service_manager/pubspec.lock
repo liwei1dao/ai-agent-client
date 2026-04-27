@@ -172,6 +172,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  llm_volcengine:
+    dependency: "direct main"
+    description:
+      path: "../llm_volcengine"
+      relative: true
+    source: path
+    version: "0.1.0"
   local_db:
     dependency: "direct main"
     description:
@@ -352,17 +359,17 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
-  sts_volcengine:
-    dependency: "direct main"
-    description:
-      path: "../sts_volcengine"
-      relative: true
-    source: path
-    version: "0.1.0"
   sts_polychat:
     dependency: "direct main"
     description:
       path: "../sts_polychat"
+      relative: true
+    source: path
+    version: "0.1.0"
+  sts_volcengine:
+    dependency: "direct main"
+    description:
+      path: "../sts_volcengine"
       relative: true
     source: path
     version: "0.1.0"

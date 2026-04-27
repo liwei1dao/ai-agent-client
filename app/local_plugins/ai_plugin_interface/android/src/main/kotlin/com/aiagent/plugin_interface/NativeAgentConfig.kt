@@ -9,7 +9,7 @@ data class NativeAgentConfig(
     val sttVendor: String?,             // "azure"
     val ttsVendor: String?,             // "azure"
     val llmVendor: String?,             // "openai"
-    val stsVendor: String?,             // "doubao"
+    val stsVendor: String?,             // "volcengine"
     val astVendor: String?,             // "volcengine"
     val translationVendor: String?,     // "deepl" | "aliyun"
     val sttConfigJson: String?,

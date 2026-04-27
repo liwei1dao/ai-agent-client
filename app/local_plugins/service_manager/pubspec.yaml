@@ -17,6 +17,8 @@ dependencies:
     path: ../local_db
   llm_openai:
     path: ../llm_openai
+  llm_volcengine:
+    path: ../llm_volcengine
   stt_azure:
     path: ../stt_azure
   tts_azure:

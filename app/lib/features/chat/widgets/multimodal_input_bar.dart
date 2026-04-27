@@ -46,6 +46,17 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
   int _callSeconds = 0;
 
   @override
+  void initState() {
+    super.initState();
+    // 首次构建若已经是通话模式，直接启动计时器
+    // （E2E 场景下输入栏在 connected 之后才挂载，此时 inputMode 已为 call，
+    //  didUpdateWidget 不会被触发）
+    if (widget.inputMode == 'call') {
+      _startCallTimer();
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant MultimodalInputBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 进入通话模式时启动计时器

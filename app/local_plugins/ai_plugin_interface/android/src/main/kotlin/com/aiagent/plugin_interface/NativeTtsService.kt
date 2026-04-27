@@ -9,6 +9,14 @@ import android.content.Context
  * 使用方：agent_chat, agent_translate 等 Agent 类型插件
  *
  * 职责：文本合成 + 音频播放 + 打断控制
+ *
+ * 双步设计（流水线）：
+ *   - synthesize(text) → TtsAudio：仅做文本→音频字节
+ *   - play(audio)：仅做音频字节→扬声器
+ *   - speak(text)：兼容老用法，等价于 synthesize then play（一段语义文本）
+ *
+ * 上层调度方应使用 synthesize + play 两步，做"边合成边播放"的流水线，
+ * 避免出现"播放完一段后才开始合成下一段"的空白延迟。
  */
 interface NativeTtsService {
 
@@ -20,22 +28,75 @@ interface NativeTtsService {
     fun initialize(configJson: String, context: Context)
 
     /**
-     * 合成并播放文本
+     * 仅合成（不播放）。
      *
-     * 挂起函数：直到播放完成或被打断才返回。
-     * 通过 callback 推送进度事件。
-     *
-     * @param requestId  请求 ID（用于匹配事件）
-     * @param text       要合成的文本
-     * @param callback   播放进度回调
+     * 该方法**必须**支持并发调用——上层为做合成节流（≤2 并发）会同时发起多段合成。
+     * 协程被取消时立即终止网络请求（OkHttp call.cancel）。
      */
-    suspend fun speak(requestId: String, text: String, callback: TtsCallback)
+    suspend fun synthesize(requestId: String, text: String): TtsAudio
 
-    /** 停止当前播放（触发 playbackInterrupted） */
+    /**
+     * 仅播放已合成的音频。
+     *
+     * 串行调用：调用方保证同一时刻只播放一段。
+     * 协程返回时表示播放完成或被打断；中途事件通过 callback 推送。
+     */
+    suspend fun play(requestId: String, audio: TtsAudio, callback: TtsCallback)
+
+    /**
+     * 一站式：合成 + 播放（兼容旧用法）。
+     *
+     * 默认实现 = synthesize + play，事件按 §4.1 顺序闭合。
+     * 单段场景（服务测试 / 翻译整段播报）可继续使用此方法。
+     */
+    suspend fun speak(requestId: String, text: String, callback: TtsCallback) {
+        if (text.isBlank()) return
+        try {
+            callback.onSynthesisStart()
+            val audio = synthesize(requestId, text)
+            callback.onSynthesisReady(audio.durationMs ?: 0)
+            callback.onPlaybackStart()
+            play(requestId, audio, callback)
+            callback.onPlaybackDone()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            callback.onPlaybackInterrupted()
+            throw e
+        } catch (e: Exception) {
+            callback.onError("tts_error", e.message ?: "Unknown error")
+        }
+    }
+
+    /** 停止当前播放（触发 playbackInterrupted）；同时取消所有正在进行的合成请求 */
     fun stop()
 
     /** 释放资源 */
     fun release()
+}
+
+/**
+ * 已合成的音频数据。
+ *
+ * @param data        音频字节（mp3 / pcm / opus 等，由 [format] 指定）
+ * @param format      音频容器格式："mp3" / "pcm16" / "opus" 等；播放方据此选择解码路径
+ * @param durationMs  音频实际时长（毫秒）；不可知时为 null（不要用 0 冒充）
+ */
+data class TtsAudio(
+    val data: ByteArray,
+    val format: String,
+    val durationMs: Int? = null,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is TtsAudio) return false
+        return data.contentEquals(other.data) && format == other.format && durationMs == other.durationMs
+    }
+
+    override fun hashCode(): Int {
+        var result = data.contentHashCode()
+        result = 31 * result + format.hashCode()
+        result = 31 * result + (durationMs ?: 0)
+        return result
+    }
 }
 
 /**
