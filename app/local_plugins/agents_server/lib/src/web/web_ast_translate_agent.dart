@@ -79,6 +79,9 @@ class WebAstTranslateAgent implements WebAgent {
   Future<void> stopListening() async {}
 
   @override
+  Future<void> setOption(String key, String value) async {}
+
+  @override
   Future<void> setInputMode(String mode) async {
     _config.inputMode = mode;
   }
@@ -98,6 +101,10 @@ class WebAstTranslateAgent implements WebAgent {
         _emit(ServiceConnectionStateEvent(
           sessionId: _config.agentId,
           connectionState: ServiceConnectionState.connected,
+        ));
+        _emit(AgentReadyEvent(
+          sessionId: _config.agentId,
+          ready: true,
         ));
         break;
 
@@ -142,6 +149,12 @@ class WebAstTranslateAgent implements WebAgent {
         _emit(ServiceConnectionStateEvent(
           sessionId: _config.agentId,
           connectionState: ServiceConnectionState.error,
+          errorMessage: e.errorMessage,
+        ));
+        _emit(AgentReadyEvent(
+          sessionId: _config.agentId,
+          ready: false,
+          errorCode: e.errorCode ?? 'ast_error',
           errorMessage: e.errorMessage,
         ));
         _emit(AgentErrorEvent(

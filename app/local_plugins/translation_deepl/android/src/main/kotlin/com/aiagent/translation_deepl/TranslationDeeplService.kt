@@ -38,8 +38,9 @@ class TranslationDeeplService : NativeTranslationService {
     ): NativeTranslationResult = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("text", JSONArray().put(text))
-            put("target_lang", targetLang.uppercase())
-            if (sourceLang != null) put("source_lang", sourceLang.uppercase())
+            put("target_lang", toDeeplTarget(targetLang))
+            val src = sourceLang?.let { toDeeplSource(it) }
+            if (!src.isNullOrEmpty()) put("source_lang", src)
         }
 
         val request = Request.Builder()
@@ -67,4 +68,27 @@ class TranslationDeeplService : NativeTranslationService {
     }
 
     override fun release() {}
+
+    /**
+     * canonical（zh-CN / en-US / pt-BR …） → DeepL `target_lang`。
+     */
+    private fun toDeeplTarget(code: String): String {
+        val upper = code.trim().uppercase()
+        return when (upper) {
+            "ZH", "ZH-CN", "ZH-HANS" -> "ZH-HANS"
+            "ZH-TW", "ZH-HK", "ZH-HANT" -> "ZH-HANT"
+            "EN", "EN-US" -> "EN-US"
+            "EN-GB" -> "EN-GB"
+            "PT", "PT-BR" -> "PT-BR"
+            "PT-PT" -> "PT-PT"
+            else -> upper.substringBefore("-")
+        }
+    }
+
+    /** canonical → DeepL `source_lang`：基本上是大写两字。auto 时返回空串。*/
+    private fun toDeeplSource(code: String): String {
+        val upper = code.trim().uppercase()
+        if (upper == "AUTO" || upper.isEmpty()) return ""
+        return upper.substringBefore("-")
+    }
 }

@@ -115,6 +115,10 @@ class AgentsServerBridge {
     await _agents[agentId]?.setInputMode(mode);
   }
 
+  Future<void> setAgentOption(String agentId, String key, String value) async {
+    await _agents[agentId]?.setOption(key, value);
+  }
+
   Future<void> startListening(String agentId) async {
     await _agents[agentId]?.startListening();
   }

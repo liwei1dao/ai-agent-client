@@ -11,6 +11,7 @@ import 'package:sts_volcengine/sts_volcengine.dart';
 import 'package:sts_polychat/sts_polychat_web.dart';
 import 'package:stt_azure/stt_azure.dart';
 import 'package:translation_aliyun/translation_aliyun.dart';
+import 'package:translation_azure/translation_azure.dart';
 import 'package:translation_deepl/translation_deepl.dart';
 import 'package:tts_azure/tts_azure.dart';
 
@@ -268,12 +269,18 @@ class ServiceManagerBridge {
     try {
       final plugin = _createTranslation(cfg.vendor);
       final parsed = _decodeJson(cfg.configJson);
+      // Pass every non-apiKey config field as `extra`, plus any explicit
+      // `extra` map. Lets vendors like Microsoft pick up `region` etc.
+      final extra = <String, String>{
+        for (final e in parsed.entries)
+          if (e.key != 'apiKey' && e.value != null)
+            e.key: e.value.toString(),
+        for (final e in (parsed['extra'] as Map? ?? {}).entries)
+          e.key.toString(): e.value?.toString() ?? '',
+      };
       await plugin.initialize(
         apiKey: (parsed['apiKey'] as String?) ?? '',
-        extra: {
-          for (final e in (parsed['extra'] as Map? ?? {}).entries)
-            e.key.toString(): e.value?.toString() ?? '',
-        },
+        extra: extra,
       );
       final result = await plugin.translate(
         text: text,
@@ -704,6 +711,9 @@ class ServiceManagerBridge {
         return TranslationDeeplPlugin();
       case 'aliyun':
         return TranslationAliyunPlugin();
+      case 'azure':
+      case 'microsoft':
+        return TranslationAzurePlugin();
       default:
         throw UnimplementedError(
             'Translation vendor "$vendor" not available on web');

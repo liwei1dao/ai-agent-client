@@ -37,6 +37,26 @@ interface NativeStsService {
 
     /** 释放所有资源（断开 WebSocket + 关闭音频） */
     fun release()
+
+    // ── 外部音频源 ──────────────────────────────────────────────────
+    //
+    // 与 [startAudio] / [stopAudio]（自家 mic 模式）互斥。
+
+    fun externalAudioCapability(): ExternalAudioCapability =
+        ExternalAudioCapability.UNSUPPORTED
+
+    /**
+     * @param sink TTS 下行字节回写通道（service 把服务端返回的 PCM/OPUS 帧通过 sink 给调用方）
+     */
+    fun startExternalAudio(format: ExternalAudioFormat, sink: ExternalAudioSink) {
+        throw UnsupportedOperationException(
+            "service ${this::class.simpleName} does not support external audio source"
+        )
+    }
+
+    fun pushExternalAudioFrame(frame: ByteArray) {}
+
+    fun stopExternalAudio() {}
 }
 
 /**

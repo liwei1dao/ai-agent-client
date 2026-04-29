@@ -33,8 +33,11 @@ class TranslationDeeplPlugin implements TranslationPlugin {
       },
       body: jsonEncode({
         'text': [text],
-        'target_lang': targetLanguage.toUpperCase(),
-        if (sourceLanguage != null) 'source_lang': sourceLanguage.toUpperCase(),
+        'target_lang': _toDeeplTarget(targetLanguage),
+        if (sourceLanguage != null &&
+            sourceLanguage.isNotEmpty &&
+            _toDeeplSource(sourceLanguage).isNotEmpty)
+          'source_lang': _toDeeplSource(sourceLanguage),
       }),
     );
 
@@ -57,4 +60,40 @@ class TranslationDeeplPlugin implements TranslationPlugin {
 
   @override
   Future<void> dispose() async {}
+
+  /// canonical（zh-CN / en-US / pt-BR …） → DeepL `target_lang`。
+  /// DeepL 接受带地区的形式（EN-US/EN-GB/PT-BR/PT-PT/ZH-HANS/ZH-HANT），
+  /// 其它语种用大写两字（JA/KO/...）。
+  static String _toDeeplTarget(String code) {
+    final upper = code.trim().toUpperCase();
+    switch (upper) {
+      case 'ZH':
+      case 'ZH-CN':
+      case 'ZH-HANS':
+        return 'ZH-HANS';
+      case 'ZH-TW':
+      case 'ZH-HK':
+      case 'ZH-HANT':
+        return 'ZH-HANT';
+      case 'EN':
+      case 'EN-US':
+        return 'EN-US';
+      case 'EN-GB':
+        return 'EN-GB';
+      case 'PT':
+      case 'PT-BR':
+        return 'PT-BR';
+      case 'PT-PT':
+        return 'PT-PT';
+      default:
+        return upper.split('-').first;
+    }
+  }
+
+  /// canonical → DeepL `source_lang`：基本上是大写两字。
+  static String _toDeeplSource(String code) {
+    final upper = code.trim().toUpperCase();
+    if (upper == 'AUTO') return ''; // DeepL 不传 source_lang 即自动检测
+    return upper.split('-').first;
+  }
 }

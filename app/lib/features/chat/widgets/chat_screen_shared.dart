@@ -1,40 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agents_server/agents_server.dart';
+import '../../../core/services/locale_service.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../../agents/widgets/add_agent_modal.dart';
 import '../../agents/providers/agent_list_provider.dart';
-import '../providers/chat_provider.dart';
+import '../providers/agent_screen_provider.dart';
 import '../screens/agent_log_screen.dart';
 
 // ── Language helpers ──────────────────────────────────────────────────────────
+//
+// 所有语言码使用 canonical（zh-CN / en-US / ja-JP / ...），见 [LocaleService]。
+// 旧码透过 [LocaleService.toCanonical] 在数据加载时归一化，UI 这里只展示。
 
-const supportedLangs = [
-  ('zh', '中文'),
-  ('en', 'English'),
-  ('ja', '日本語'),
-  ('ko', '한국어'),
-  ('fr', 'Français'),
-  ('de', 'Deutsch'),
-  ('es', 'Español'),
-  ('ru', 'Русский'),
-  ('ar', 'العربية'),
-  ('pt', 'Português'),
-];
+final List<(String, String)> supportedLangs = LocaleService.allCodes
+    .map((c) => (c, LocaleService.langNames[c] ?? c))
+    .toList();
 
-String langName(String code) => switch (code) {
-      'zh' => '中文',
-      'en' => 'English',
-      'ja' => '日本語',
-      'ko' => '한국어',
-      'fr' => 'Français',
-      'de' => 'Deutsch',
-      'es' => 'Español',
-      'ru' => 'Русский',
-      'ar' => 'العربية',
-      'pt' => 'Português',
-      _ => code,
-    };
+String langName(String code) =>
+    LocaleService.langNames[code] ??
+    LocaleService.langNames[LocaleService.toCanonical(code)] ??
+    code;
 
 // ── Status helpers ───────────────────────────────────────────────────────────
 
@@ -421,6 +407,9 @@ class TranslateLanguageBar extends StatelessWidget {
     required this.onSrcTap,
     required this.onDstTap,
     required this.onSwap,
+    this.bidirectionalAvailable = false,
+    this.bidirectional = false,
+    this.onBidirectionalChanged,
   });
   final String srcLang;
   final String dstLang;
@@ -429,6 +418,11 @@ class TranslateLanguageBar extends StatelessWidget {
   final VoidCallback onSrcTap;
   final VoidCallback onDstTap;
   final VoidCallback onSwap;
+
+  /// 是否暴露互译开关（仅当 STT 厂商支持语言识别时为 true）
+  final bool bidirectionalAvailable;
+  final bool bidirectional;
+  final ValueChanged<bool>? onBidirectionalChanged;
 
   String _supportedHint(List<String> codes) {
     return codes.map((c) => langName(c)).join(' / ');
@@ -455,7 +449,37 @@ class TranslateLanguageBar extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (bidirectionalAvailable)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    const Icon(Icons.translate,
+                        size: 14, color: AppTheme.text2),
+                    const SizedBox(width: 4),
+                    const Text('互译',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.text2,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      height: 18,
+                      child: Switch(
+                        value: bidirectional,
+                        onChanged: onBidirectionalChanged,
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Row(
           children: [
             // Source language
             Expanded(
@@ -548,6 +572,8 @@ class TranslateLanguageBar extends StatelessWidget {
                 ),
               ),
             ),
+          ],
+        ),
           ],
         ),
       ),
@@ -868,7 +894,7 @@ void showAgentMenu(
               );
               if (confirm == true) {
                 await ref
-                    .read(chatAgentProvider(agentId).notifier)
+                    .read(agentScreenProvider(agentId).notifier)
                     .clearHistory();
               }
             },

@@ -5,6 +5,10 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.util.Log
 import com.aiagent.plugin_interface.AudioOutputManager
+import com.aiagent.plugin_interface.ExternalAudioCapability
+import com.aiagent.plugin_interface.ExternalAudioFormat
+import com.aiagent.plugin_interface.ExternalAudioFrame
+import com.aiagent.plugin_interface.ExternalAudioSink
 import com.aiagent.plugin_interface.NativeTtsService
 import com.aiagent.plugin_interface.TtsAudio
 import com.aiagent.plugin_interface.TtsCallback
@@ -35,6 +39,11 @@ class TtsAzureService(private val appContext: Context) : NativeTtsService {
 
     companion object {
         private const val TAG = "TtsAzureService"
+
+        /** 外部音频协商格式：PCM_S16LE / 16kHz / mono / 20ms = 640 bytes / frame */
+        private const val EXT_SAMPLE_RATE = 16000
+        private const val EXT_FRAME_MS = 20
+        private const val EXT_FRAME_BYTES = EXT_SAMPLE_RATE * 2 * EXT_FRAME_MS / 1000  // 640
     }
 
     private val client = OkHttpClient()
@@ -49,6 +58,10 @@ class TtsAzureService(private val appContext: Context) : NativeTtsService {
     private var apiKey: String = ""
     private var region: String = ""
     private var voiceName: String = "zh-CN-XiaoxiaoNeural"
+
+    /** 外部音频模式：合成走 raw PCM，play 把 PCM 切帧回灌 sink。与本地播放互斥。 */
+    @Volatile private var externalMode = false
+    @Volatile private var externalSink: ExternalAudioSink? = null
 
     // ─────────────────────────────────────────────────
     // NativeTtsService 接口实现
@@ -71,11 +84,16 @@ class TtsAzureService(private val appContext: Context) : NativeTtsService {
         val ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='zh-CN'>" +
                 "<voice name='$voiceName'>${escapeXml(text)}</voice></speak>"
 
+        // 外部模式拿原始 PCM（无 RIFF header），便于切帧灌入 sink；
+        // 本地播放走 mp3 由 MediaPlayer 解码。
+        val outputFormat = if (externalMode) "raw-16khz-16bit-mono-pcm"
+            else "audio-16khz-128kbitrate-mono-mp3"
+
         val request = Request.Builder()
             .url("https://$region.tts.speech.microsoft.com/cognitiveservices/v1")
             .post(ssml.toRequestBody("application/ssml+xml".toMediaType()))
             .header("Ocp-Apim-Subscription-Key", apiKey)
-            .header("X-Microsoft-OutputFormat", "audio-16khz-128kbitrate-mono-mp3")
+            .header("X-Microsoft-OutputFormat", outputFormat)
             .build()
 
         val call = client.newCall(request)
@@ -106,7 +124,12 @@ class TtsAzureService(private val appContext: Context) : NativeTtsService {
                     }
                 })
             }
-            TtsAudio(data = bytes, format = "mp3", durationMs = null)
+            val format = if (externalMode) "pcm16" else "mp3"
+            val durationMs = if (externalMode) {
+                // PCM_S16LE 16kHz mono: 32 bytes per ms
+                (bytes.size / 32)
+            } else null
+            TtsAudio(data = bytes, format = format, durationMs = durationMs)
         } finally {
             activeCalls.remove(call)
         }
@@ -114,6 +137,12 @@ class TtsAzureService(private val appContext: Context) : NativeTtsService {
 
     override suspend fun play(requestId: String, audio: TtsAudio, callback: TtsCallback) {
         if (audio.data.isEmpty()) return
+
+        // 外部模式：切帧灌入 sink，不走 MediaPlayer。
+        if (externalMode) {
+            playToExternalSink(audio, callback)
+            return
+        }
 
         val tmpFile = withContext(Dispatchers.IO) {
             File.createTempFile("tts_", ".${audio.format}", appContext.cacheDir)
@@ -173,6 +202,100 @@ class TtsAzureService(private val appContext: Context) : NativeTtsService {
 
     override fun release() {
         stop()
+        externalMode = false
+        externalSink = null
+    }
+
+    // ─────────────────────────────────────────────────
+    // 外部音频源（通话翻译等场景）
+    // ─────────────────────────────────────────────────
+
+    override fun externalAudioCapability(): ExternalAudioCapability =
+        ExternalAudioCapability(
+            acceptsOpus = false,
+            acceptsPcm = true,
+            preferredSampleRate = EXT_SAMPLE_RATE,
+            preferredChannels = 1,
+            preferredFrameMs = EXT_FRAME_MS,
+        )
+
+    override fun startExternalAudio(format: ExternalAudioFormat, sink: ExternalAudioSink) {
+        if (format.codec != ExternalAudioFormat.Codec.PCM_S16LE) {
+            throw IllegalArgumentException(
+                "tts_azure accepts only PCM_S16LE (got ${format.codec})")
+        }
+        if (format.sampleRate != EXT_SAMPLE_RATE || format.channels != 1) {
+            throw IllegalArgumentException(
+                "tts_azure requires ${EXT_SAMPLE_RATE}Hz mono " +
+                    "(got ${format.sampleRate}Hz/${format.channels}ch)")
+        }
+        externalSink = sink
+        externalMode = true
+        Log.d(TAG, "startExternalAudio: PCM_S16LE ${format.sampleRate}Hz mono ${format.frameMs}ms")
+    }
+
+    override fun stopExternalAudio() {
+        if (!externalMode) return
+        externalMode = false
+        externalSink = null
+        Log.d(TAG, "stopExternalAudio")
+    }
+
+    /**
+     * 外部模式下的播放：把 PCM 字节按 20ms 一帧切片送入 sink，**不再做 frame 间 delay**。
+     *
+     * 历史：之前每帧 delay(20ms) 模拟实时节奏，理由是"让设备端缓冲压力小"。
+     * 但 Azure TTS 是**整段返回**（不是流式合成）的 PCM —— 这种 delay 只起一个负作用：
+     * 把段末 [ExternalAudioFrame.isFinal] = true 的到达时间往后拖整整 (帧数 × 20ms)。
+     * 下游 (runtime / 编排器) 必须等 isFinal 才能触发整段下发（杰理通话翻译），延迟随译文
+     * 长度线性累加，对方耳机听到的声音会越积越晚。
+     *
+     * 现在：分片协议形态保留（与 STS/AST 流式服务一致：多帧 + 末帧 isFinal=true），但本服务
+     * 的整段 PCM 已经在内存里，没必要按"实时速率"喂——直接连续推完。
+     * STS/AST 路径不受影响，那边的节奏是 websocket 自身控制的，本就不依赖此 delay。
+     */
+    private suspend fun playToExternalSink(audio: TtsAudio, callback: TtsCallback) {
+        val sink = externalSink ?: run {
+            callback.onError("tts_no_sink", "external mode active but sink is null")
+            return
+        }
+        if (audio.format != "pcm16") {
+            callback.onError("tts_format", "external mode requires pcm16 (got ${audio.format})")
+            return
+        }
+        val data = audio.data
+        val total = data.size
+        val done = CompletableDeferred<Unit>()
+        playbackDeferred = done
+
+        try {
+            withContext(Dispatchers.IO) {
+                var offset = 0
+                while (offset < total) {
+                    if (!isActive) break
+                    val chunkLen = minOf(EXT_FRAME_BYTES, total - offset)
+                    val chunk = data.copyOfRange(offset, offset + chunkLen)
+                    val isLast = offset + chunkLen >= total
+                    sink.onTtsFrame(
+                        ExternalAudioFrame(
+                            codec = ExternalAudioFormat.Codec.PCM_S16LE,
+                            sampleRate = EXT_SAMPLE_RATE,
+                            channels = 1,
+                            bytes = chunk,
+                            isFinal = isLast,
+                        )
+                    )
+                    offset += chunkLen
+                }
+                done.complete(Unit)
+            }
+            done.await()
+        } catch (e: CancellationException) {
+            callback.onPlaybackInterrupted()
+            throw e
+        } finally {
+            playbackDeferred = null
+        }
     }
 
     private fun escapeXml(s: String): String =

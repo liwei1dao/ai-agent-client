@@ -4,6 +4,7 @@ import 'package:local_db/local_db.dart';
 import 'package:uuid/uuid.dart';
 import '../voitrans_api.dart';
 import 'config_service.dart';
+import 'locale_service.dart';
 
 final polychatServiceProvider = Provider((ref) => PolychatService());
 
@@ -157,10 +158,12 @@ class PolychatService {
 
       // Resolve supported languages. PolyChat 平台 E2E agent (sts-chat /
       // ast-translate) 通常返回空数组（服务端代为支持全语言），客户端这里给一个
-      // 合理的默认列表以便用户在本地选择。
-      final supported = remote.supportedLangs.isNotEmpty
-          ? remote.supportedLangs
-          : const ['zh', 'en'];
+      // 合理的默认列表以便用户在本地选择。一律转为 canonical（zh-CN / en-US）。
+      final supported = LocaleService.toCanonicalAll(
+        remote.supportedLangs.isNotEmpty
+            ? remote.supportedLangs
+            : const ['zh-CN', 'en-US'],
+      );
 
       // 查找已有 Agent（通过 agentId 匹配）
       final existingAgent = existingPcAgents.where((a) {
@@ -181,8 +184,8 @@ class PolychatService {
         } catch (_) {}
       }
       String pickLang(String key, int fallbackIdx) {
-        final old = oldCfg[key] as String?;
-        if (old != null && supported.contains(old)) return old;
+        final old = LocaleService.toCanonical(oldCfg[key] as String?);
+        if (supported.contains(old)) return old;
         return supported[fallbackIdx.clamp(0, supported.length - 1)];
       }
 

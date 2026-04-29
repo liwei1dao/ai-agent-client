@@ -4,7 +4,7 @@ import 'package:uuid/uuid.dart';
 import 'package:agents_server/agents_server.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../shared/themes/app_theme.dart';
-import '../providers/chat_provider.dart';
+import '../providers/agent_screen_provider.dart';
 import '../widgets/chat_screen_shared.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/multimodal_input_bar.dart';
@@ -30,7 +30,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _initAgent() async {
-    final state = ref.read(chatAgentProvider(widget.agentId));
+    final state = ref.read(agentScreenProvider(widget.agentId));
     if (state.isEndToEnd) {
       final status = await Permission.microphone.request();
       if (!mounted) return;
@@ -45,7 +45,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         return;
       }
     }
-    ref.read(chatAgentProvider(widget.agentId).notifier).init();
+    ref.read(agentScreenProvider(widget.agentId).notifier).init();
   }
 
   @override
@@ -67,8 +67,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _toggleConnection() async {
-    final notifier = ref.read(chatAgentProvider(widget.agentId).notifier);
-    final state = ref.read(chatAgentProvider(widget.agentId));
+    final notifier = ref.read(agentScreenProvider(widget.agentId).notifier);
+    final state = ref.read(agentScreenProvider(widget.agentId));
     if (state.connectionState == ServiceConnectionState.connected) {
       notifier.disconnectService();
       return;
@@ -91,11 +91,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(chatAgentProvider(widget.agentId));
+    final state = ref.watch(agentScreenProvider(widget.agentId));
     final isE2E = state.isEndToEnd;
 
     ref.listen(
-        chatAgentProvider(widget.agentId).select((s) => s.messages.length),
+        agentScreenProvider(widget.agentId).select((s) => s.messages.length),
         (_, __) => _scrollToBottom());
 
     final isPlaying = state.sessionState == AgentSessionState.playing ||
@@ -212,7 +212,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         currentLang: state.srcLang,
                         supported: state.srcLangs,
                         onSelect: (code) => ref
-                            .read(chatAgentProvider(widget.agentId).notifier)
+                            .read(agentScreenProvider(widget.agentId).notifier)
                             .setConversationLang(code),
                       ),
                     ),
@@ -256,23 +256,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               isEndToEnd: isE2E,
               connectionState: state.connectionState,
               onModeChanged: (mode) => ref
-                  .read(chatAgentProvider(widget.agentId).notifier)
+                  .read(agentScreenProvider(widget.agentId).notifier)
                   .setInputMode(mode),
               onTextSubmit: (text) {
                 final requestId = _uuid.v4();
                 ref
-                    .read(chatAgentProvider(widget.agentId).notifier)
+                    .read(agentScreenProvider(widget.agentId).notifier)
                     .sendText(requestId, text);
                 _scrollToBottom();
               },
               onVoiceStart: () => ref
-                  .read(chatAgentProvider(widget.agentId).notifier)
+                  .read(agentScreenProvider(widget.agentId).notifier)
                   .startListening(),
               onVoiceEnd: () => ref
-                  .read(chatAgentProvider(widget.agentId).notifier)
+                  .read(agentScreenProvider(widget.agentId).notifier)
                   .stopListening(),
               onVoiceCancel: () => ref
-                  .read(chatAgentProvider(widget.agentId).notifier)
+                  .read(agentScreenProvider(widget.agentId).notifier)
                   .cancelListening(),
             ),
           ],

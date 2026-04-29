@@ -13,6 +13,9 @@ class SttAzurePluginDart implements SttPlugin {
   StreamSubscription? _nativeSub;
 
   @override
+  bool get supportsLanguageDetection => false;
+
+  @override
   Future<void> initialize(SttConfig config) async {
     _controller ??= StreamController<SttEvent>.broadcast();
     _nativeSub ??= _evt.receiveBroadcastStream().listen(_onNativeEvent);
@@ -52,6 +55,7 @@ class SttAzurePluginDart implements SttPlugin {
     final map = raw as Map<Object?, Object?>;
     final kind = map['kind'] as String?;
     final text = map['text'] as String?;
+    final detectedLang = map['detectedLang'] as String?;
     final errorCode = map['errorCode'] as String?;
     final errorMessage = map['errorMessage'] as String?;
 
@@ -69,6 +73,7 @@ class SttAzurePluginDart implements SttPlugin {
       type: eventType,
       text: text,
       isFinal: kind == 'finalResult',
+      detectedLang: detectedLang,
       errorCode: errorCode,
       errorMessage: errorMessage,
     ));

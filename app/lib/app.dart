@@ -5,9 +5,13 @@ import 'package:agents_server/agents_server.dart';
 import 'package:tts_azure/tts_azure.dart';
 
 import 'core/services/config_service.dart';
+import 'core/services/device_service.dart';
 import 'features/agents/screens/agent_panel_screen.dart';
+import 'features/call_translate/screens/call_translate_screen.dart';
 import 'features/chat/screens/chat_screen.dart';
 import 'features/chat/screens/translate_screen.dart';
+import 'features/devices/screens/device_screen.dart';
+import 'features/home/screens/home_screen.dart';
 import 'features/services/screens/services_screen.dart';
 import 'features/settings/screens/settings_screen.dart';
 import 'shared/themes/app_theme.dart';
@@ -21,7 +25,7 @@ final _router = GoRouter(
         StatefulShellBranch(routes: [
           GoRoute(
             path: '/',
-            builder: (_, __) => const AgentPanelScreen(),
+            builder: (_, __) => const HomeScreen(),
             routes: [
               GoRoute(
                 path: 'agent/:id/chat',
@@ -33,7 +37,21 @@ final _router = GoRouter(
                 builder: (_, state) =>
                     TranslateScreen(agentId: state.pathParameters['id']!),
               ),
+              GoRoute(
+                path: 'devices',
+                builder: (_, __) => const DeviceScreen(),
+              ),
+              GoRoute(
+                path: 'call-translate',
+                builder: (_, __) => const CallTranslateScreen(),
+              ),
             ],
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/agents',
+            builder: (_, __) => const AgentPanelScreen(),
           ),
         ]),
         StatefulShellBranch(routes: [
@@ -73,6 +91,10 @@ class _AppState extends ConsumerState<App> {
   Widget build(BuildContext context) {
     final appConfig = ref.watch(configServiceProvider);
     _syncAudioOutputMode(appConfig.audioOutputMode);
+    // 触发 DeviceManager 初始化（注册厂商 + 跟随配置切换 vendor）。
+    ref.watch(deviceManagerProvider);
+    // 自动重连守护：监听远端断开 → 退避重连 lastDeviceId。
+    ref.watch(deviceAutoReconnectProvider);
 
     return MaterialApp.router(
       title: 'AI Agents',
@@ -89,6 +111,7 @@ class _ShellScaffold extends StatelessWidget {
   final StatefulNavigationShell shell;
 
   static const _items = [
+    (Icons.home_outlined, Icons.home),
     (Icons.smart_toy_outlined, Icons.smart_toy),
     (Icons.grid_view_outlined, Icons.grid_view),
     (Icons.tune_outlined, Icons.tune),

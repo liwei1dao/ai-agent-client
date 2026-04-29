@@ -4,6 +4,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart' as env;
 
+/// 杰理设备链接方式偏好（仅 Android）。
+///
+/// 与 `BluetoothConstant.PROTOCOL_TYPE_*` 对应：
+/// - [auto]：不下发 connectWay，沿用扫描结果（设备广播声明的偏好）；
+/// - [ble]：强制 BLE（PROTOCOL_TYPE_BLE = 0）；
+/// - [spp]：强制 SPP/EDR（PROTOCOL_TYPE_SPP = 1）。
+enum JieliConnectWay {
+  auto,
+  ble,
+  spp;
+
+  /// 对应的 SDK 协议类型整型；[auto] 返回 null（不下发）。
+  int? get protocolTypeValue => switch (this) {
+        JieliConnectWay.auto => null,
+        JieliConnectWay.ble => 0,
+        JieliConnectWay.spp => 1,
+      };
+
+  String get persistKey => name; // 'auto' / 'ble' / 'spp'
+
+  static JieliConnectWay fromKey(String? key) => switch (key) {
+        'ble' => JieliConnectWay.ble,
+        'spp' => JieliConnectWay.spp,
+        _ => JieliConnectWay.auto,
+      };
+}
+
 /// 音频播报输出模式
 enum AudioOutputMode {
   /// 听筒
@@ -39,6 +66,16 @@ class AppConfig {
     this.historyMessageCount = 20,
     this.polychat = const PolychatConfig(),
     this.audioOutputMode = AudioOutputMode.auto,
+    this.deviceVendor,
+    this.jieliConnectWay = JieliConnectWay.auto,
+    this.defaultChatAgentId,
+    this.defaultTranslateAgentId,
+    this.defaultCallUplinkAgentId,
+    this.defaultCallDownlinkAgentId,
+    this.defaultCallUserLanguage,
+    this.defaultCallPeerLanguage,
+    this.lastDeviceId,
+    this.lastDeviceName,
   });
 
   final ThemeMode themeMode;
@@ -46,19 +83,89 @@ class AppConfig {
   final PolychatConfig polychat;
   final AudioOutputMode audioOutputMode;
 
+  /// 当前选择的设备厂商 key（与 DevicePlugin.vendorKey 一致）；未选为 null。
+  final String? deviceVendor;
+
+  /// 杰理设备链接方式偏好（仅在 [deviceVendor] == 'jieli' 时生效）。
+  final JieliConnectWay jieliConnectWay;
+
+  /// 设备唤醒后默认启动的聊天 agent id。
+  final String? defaultChatAgentId;
+
+  /// 设备翻译键默认启动的翻译 agent id。
+  final String? defaultTranslateAgentId;
+
+  /// 通话翻译默认 agent（uplink = 用户说→对方听）。
+  final String? defaultCallUplinkAgentId;
+
+  /// 通话翻译默认 agent（downlink = 对方说→用户听）。
+  final String? defaultCallDownlinkAgentId;
+
+  /// 通话翻译默认用户侧语言（IETF BCP-47 / ISO-639）。
+  final String? defaultCallUserLanguage;
+
+  /// 通话翻译默认对方侧语言。
+  final String? defaultCallPeerLanguage;
+
+  /// 上次成功连接过的设备 deviceId（用于自动重连）。
+  final String? lastDeviceId;
+
+  /// 上次成功连接过的设备显示名（重连时回填到 connect options.extra.name）。
+  final String? lastDeviceName;
+
   AppConfig copyWith({
     ThemeMode? themeMode,
     int? historyMessageCount,
     PolychatConfig? polychat,
     AudioOutputMode? audioOutputMode,
+    Object? deviceVendor = _unset,
+    JieliConnectWay? jieliConnectWay,
+    Object? defaultChatAgentId = _unset,
+    Object? defaultTranslateAgentId = _unset,
+    Object? defaultCallUplinkAgentId = _unset,
+    Object? defaultCallDownlinkAgentId = _unset,
+    Object? defaultCallUserLanguage = _unset,
+    Object? defaultCallPeerLanguage = _unset,
+    Object? lastDeviceId = _unset,
+    Object? lastDeviceName = _unset,
   }) =>
       AppConfig(
         themeMode: themeMode ?? this.themeMode,
         historyMessageCount: historyMessageCount ?? this.historyMessageCount,
         polychat: polychat ?? this.polychat,
         audioOutputMode: audioOutputMode ?? this.audioOutputMode,
+        deviceVendor: identical(deviceVendor, _unset)
+            ? this.deviceVendor
+            : deviceVendor as String?,
+        jieliConnectWay: jieliConnectWay ?? this.jieliConnectWay,
+        defaultChatAgentId: identical(defaultChatAgentId, _unset)
+            ? this.defaultChatAgentId
+            : defaultChatAgentId as String?,
+        defaultTranslateAgentId: identical(defaultTranslateAgentId, _unset)
+            ? this.defaultTranslateAgentId
+            : defaultTranslateAgentId as String?,
+        defaultCallUplinkAgentId: identical(defaultCallUplinkAgentId, _unset)
+            ? this.defaultCallUplinkAgentId
+            : defaultCallUplinkAgentId as String?,
+        defaultCallDownlinkAgentId: identical(defaultCallDownlinkAgentId, _unset)
+            ? this.defaultCallDownlinkAgentId
+            : defaultCallDownlinkAgentId as String?,
+        defaultCallUserLanguage: identical(defaultCallUserLanguage, _unset)
+            ? this.defaultCallUserLanguage
+            : defaultCallUserLanguage as String?,
+        defaultCallPeerLanguage: identical(defaultCallPeerLanguage, _unset)
+            ? this.defaultCallPeerLanguage
+            : defaultCallPeerLanguage as String?,
+        lastDeviceId: identical(lastDeviceId, _unset)
+            ? this.lastDeviceId
+            : lastDeviceId as String?,
+        lastDeviceName: identical(lastDeviceName, _unset)
+            ? this.lastDeviceName
+            : lastDeviceName as String?,
       );
 }
+
+const Object _unset = Object();
 
 final configServiceProvider =
     StateNotifierProvider<ConfigService, AppConfig>((ref) {
@@ -99,7 +206,100 @@ class ConfigService extends StateNotifier<AppConfig> {
             envCfg.polychatAppSecret,
       ),
       audioOutputMode: audioOutputMode,
+      deviceVendor: prefs.getString('device_vendor'),
+      jieliConnectWay:
+          JieliConnectWay.fromKey(prefs.getString('jieli_connect_way')),
+      defaultChatAgentId: prefs.getString('default_chat_agent_id'),
+      defaultTranslateAgentId: prefs.getString('default_translate_agent_id'),
+      defaultCallUplinkAgentId: prefs.getString('default_call_uplink_agent_id'),
+      defaultCallDownlinkAgentId:
+          prefs.getString('default_call_downlink_agent_id'),
+      defaultCallUserLanguage: prefs.getString('default_call_user_language'),
+      defaultCallPeerLanguage: prefs.getString('default_call_peer_language'),
+      lastDeviceId: prefs.getString('last_device_id'),
+      lastDeviceName: prefs.getString('last_device_name'),
     );
+  }
+
+  Future<void> setLastDevice({String? id, String? name}) async {
+    state = state.copyWith(lastDeviceId: id, lastDeviceName: name);
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null) {
+      await prefs.remove('last_device_id');
+    } else {
+      await prefs.setString('last_device_id', id);
+    }
+    if (name == null) {
+      await prefs.remove('last_device_name');
+    } else {
+      await prefs.setString('last_device_name', name);
+    }
+  }
+
+  Future<void> setDeviceVendor(String? vendor) async {
+    state = state.copyWith(deviceVendor: vendor);
+    final prefs = await SharedPreferences.getInstance();
+    if (vendor == null) {
+      await prefs.remove('device_vendor');
+    } else {
+      await prefs.setString('device_vendor', vendor);
+    }
+  }
+
+  Future<void> setJieliConnectWay(JieliConnectWay way) async {
+    state = state.copyWith(jieliConnectWay: way);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('jieli_connect_way', way.persistKey);
+  }
+
+  Future<void> setDefaultChatAgentId(String? id) async {
+    state = state.copyWith(defaultChatAgentId: id);
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null) {
+      await prefs.remove('default_chat_agent_id');
+    } else {
+      await prefs.setString('default_chat_agent_id', id);
+    }
+  }
+
+  Future<void> setDefaultTranslateAgentId(String? id) async {
+    state = state.copyWith(defaultTranslateAgentId: id);
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null) {
+      await prefs.remove('default_translate_agent_id');
+    } else {
+      await prefs.setString('default_translate_agent_id', id);
+    }
+  }
+
+  Future<void> setDefaultCallUplinkAgentId(String? id) =>
+      _setOptionalString('default_call_uplink_agent_id', id, (v) =>
+          state.copyWith(defaultCallUplinkAgentId: v));
+
+  Future<void> setDefaultCallDownlinkAgentId(String? id) =>
+      _setOptionalString('default_call_downlink_agent_id', id, (v) =>
+          state.copyWith(defaultCallDownlinkAgentId: v));
+
+  Future<void> setDefaultCallUserLanguage(String? lang) =>
+      _setOptionalString('default_call_user_language', lang, (v) =>
+          state.copyWith(defaultCallUserLanguage: v));
+
+  Future<void> setDefaultCallPeerLanguage(String? lang) =>
+      _setOptionalString('default_call_peer_language', lang, (v) =>
+          state.copyWith(defaultCallPeerLanguage: v));
+
+  Future<void> _setOptionalString(
+    String key,
+    String? value,
+    AppConfig Function(String?) apply,
+  ) async {
+    state = apply(value);
+    final prefs = await SharedPreferences.getInstance();
+    if (value == null || value.isEmpty) {
+      await prefs.remove(key);
+    } else {
+      await prefs.setString(key, value);
+    }
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {

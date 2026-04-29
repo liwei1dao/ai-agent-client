@@ -17,6 +17,10 @@ import android.content.Context
  *
  * 上层调度方应使用 synthesize + play 两步，做"边合成边播放"的流水线，
  * 避免出现"播放完一段后才开始合成下一段"的空白延迟。
+ *
+ * **强约束**：新增 TTS 厂商实现**必须**支持外部音频 sink（参见下方"外部音频源"小节），
+ * 否则将无法用于通话翻译 / 面对面翻译等需要把 TTS PCM 回灌到耳机的复合场景。默认实现
+ * 抛 UnsupportedOperationException 仅作为编译兜底，运行期触达即视为接口未实现完整。
  */
 interface NativeTtsService {
 
@@ -71,6 +75,31 @@ interface NativeTtsService {
 
     /** 释放资源 */
     fun release()
+
+    // ── 外部音频源 ──────────────────────────────────────────────────
+    //
+    // 与本地扬声器播放互斥。通话翻译场景：调用方先协商输出格式，再启动外部模式
+    // （绑定 sink），后续 [play] 不再走 AudioTrack/MediaPlayer，而是把合成出来的
+    // PCM 帧通过 [ExternalAudioSink.onTtsFrame] 回写给调用方（编排器再灌回耳机）。
+
+    fun externalAudioCapability(): ExternalAudioCapability =
+        ExternalAudioCapability.UNSUPPORTED
+
+    /**
+     * 启动外部音频输出模式。
+     *
+     * @param format 协商好的输出格式（必须落在 [externalAudioCapability] 内）
+     * @param sink   PCM 帧回写通道；本服务在此模式下会把 [play] 的音频字节切帧后写入 sink
+     * @throws UnsupportedOperationException 默认不支持。
+     */
+    fun startExternalAudio(format: ExternalAudioFormat, sink: ExternalAudioSink) {
+        throw UnsupportedOperationException(
+            "tts service ${this::class.simpleName} does not support external audio sink"
+        )
+    }
+
+    /** 停止外部音频输出模式（恢复本地扬声器）。 */
+    fun stopExternalAudio() {}
 }
 
 /**

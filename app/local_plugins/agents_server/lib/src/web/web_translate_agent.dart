@@ -27,6 +27,15 @@ class WebTranslateAgent implements WebAgent {
   String? _srcLang;
   String _dstLang = 'en';
 
+  /// 互译开关：开启后语音通道按 detectedLang 决定方向。
+  bool _bidirectional = false;
+
+  /// 文本输入方向（语音输入在 bidirectional 开启时由 detectedLang 覆盖）。
+  String _direction = directionSrcToDst;
+
+  static const directionSrcToDst = 'src_to_dst';
+  static const directionDstToSrc = 'dst_to_src';
+
   void _setState(AgentSessionState s, {String? requestId}) {
     _state = s;
     _emit(stateEvent(_config.agentId, s, requestId: requestId));
@@ -38,6 +47,8 @@ class WebTranslateAgent implements WebAgent {
     _inputMode = config.inputMode;
     _srcLang = config.extraParams['srcLang'];
     _dstLang = config.extraParams['dstLang'] ?? 'en';
+    _bidirectional = config.extraParams['bidirectional'] == 'true';
+    _direction = config.extraParams['direction'] ?? directionSrcToDst;
 
     _stt = WebServiceFactory.createStt(config.sttVendor ?? 'azure');
     _translation = WebServiceFactory.createTranslation(
@@ -66,14 +77,49 @@ class WebTranslateAgent implements WebAgent {
   }
 
   @override
-  Future<void> connectService() async {}
+  Future<void> connectService() async {
+    // 三段式 agent 无远端长连接：服务在 initialize 阶段已就位，立即上报 ready。
+    _emit(AgentReadyEvent(sessionId: _config.agentId, ready: true));
+  }
 
   @override
   Future<void> disconnectService() async {}
 
   @override
   Future<void> sendText(String requestId, String text) =>
-      _runPipeline(requestId, text);
+      _runPipeline(requestId, text, _resolveDirection(null));
+
+  @override
+  Future<void> setOption(String key, String value) async {
+    switch (key) {
+      case 'bidirectional':
+        _bidirectional = value == 'true';
+        break;
+      case 'direction':
+        _direction =
+            value == directionDstToSrc ? directionDstToSrc : directionSrcToDst;
+        break;
+    }
+  }
+
+  /// Resolve translation direction for this turn.
+  /// - bidirectional off: always [_direction] (UI-controlled).
+  /// - bidirectional on + detectedLang: pick by language base match (e.g., "en" vs "zh").
+  /// - bidirectional on + no detectedLang: fall back to [_direction] (text input case).
+  String _resolveDirection(String? detectedLang) {
+    if (!_bidirectional || detectedLang == null || detectedLang.isEmpty) {
+      return _direction;
+    }
+    final det = _langBase(detectedLang);
+    final src = _langBase(_srcLang ?? '');
+    final dst = _langBase(_dstLang);
+    if (det == dst && det != src) return directionDstToSrc;
+    if (det == src) return directionSrcToDst;
+    return _direction;
+  }
+
+  static String _langBase(String code) =>
+      code.split(RegExp('[-_]')).first.toLowerCase();
 
   @override
   Future<void> startListening() async {
@@ -153,9 +199,10 @@ class WebTranslateAgent implements WebAgent {
           requestId: rid,
           kind: SttEventKind.finalResult,
           text: e.text,
+          detectedLang: e.detectedLang,
         ));
         if (_inputMode == 'call' && (e.text ?? '').isNotEmpty) {
-          _runPipeline(rid, e.text!);
+          _runPipeline(rid, e.text!, _resolveDirection(e.detectedLang));
         }
         break;
       case ai.SttEventType.listeningStopped:
@@ -199,7 +246,11 @@ class WebTranslateAgent implements WebAgent {
     ));
   }
 
-  Future<void> _runPipeline(String requestId, String text) async {
+  Future<void> _runPipeline(
+    String requestId,
+    String text,
+    String dir,
+  ) async {
     _gate.start(requestId);
     _setState(AgentSessionState.llm, requestId: requestId);
     _emit(LlmEvent(
@@ -209,12 +260,17 @@ class WebTranslateAgent implements WebAgent {
       textDelta: '',
     ));
 
+    final sourceForCall =
+        dir == directionDstToSrc ? _dstLang : _srcLang;
+    final targetForCall =
+        dir == directionDstToSrc ? (_srcLang ?? _dstLang) : _dstLang;
+
     ai.TranslationResult result;
     try {
       result = await _translation.translate(
         text: text,
-        targetLanguage: _dstLang,
-        sourceLanguage: _srcLang,
+        targetLanguage: targetForCall,
+        sourceLanguage: sourceForCall,
       );
     } catch (e) {
       _emit(LlmEvent(

@@ -46,6 +46,7 @@ class SttEvent {
     required this.type,
     this.text,
     this.isFinal = false,
+    this.detectedLang,
     this.errorCode,
     this.errorMessage,
   });
@@ -58,6 +59,10 @@ class SttEvent {
   /// 是否为最终结果
   final bool isFinal;
 
+  /// 检测到的语言（BCP-47，如 "en-US"）。仅当厂商声明
+  /// [SttPlugin.supportsLanguageDetection] = true 时有值。
+  final String? detectedLang;
+
   /// 错误码（error 时有值）
   final String? errorCode;
 
@@ -69,6 +74,11 @@ class SttEvent {
 abstract class SttPlugin {
   /// 初始化（加载 SDK、申请权限等）
   Future<void> initialize(SttConfig config);
+
+  /// 是否支持语言识别（自动检测说话者语言）。默认 false。
+  /// 上层据此决定是否暴露"互译"开关：开关开启后，[SttEvent.detectedLang]
+  /// 用于动态判定翻译方向。
+  bool get supportsLanguageDetection => false;
 
   /// 开始监听（打开麦克风）
   Future<void> startListening();

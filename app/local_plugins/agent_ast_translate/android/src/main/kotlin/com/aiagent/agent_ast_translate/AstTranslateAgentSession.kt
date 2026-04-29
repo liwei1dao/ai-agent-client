@@ -82,6 +82,11 @@ class AstTranslateAgentSession : NativeAgent {
                 Log.e(TAG, "AST connect failed: ${e.message}")
                 transitionTo(State.ERROR)
                 eventSink.onError(config.agentId, "ast_connect_error", e.message ?: "Unknown error", null)
+                eventSink.onAgentReady(
+                    config.agentId, ready = false,
+                    errorCode = "ast_connect_error",
+                    errorMessage = e.message ?: "Unknown error",
+                )
             }
         }
     }
@@ -112,7 +117,11 @@ class AstTranslateAgentSession : NativeAgent {
         Log.d(TAG, "setInputMode: $mode")
         inputMode = mode
         when (mode) {
-            "call" -> astService.startAudio()
+            // call 模式 = external audio：PCM 由 CallTranslationSession 通过
+            // startExternalAudio + pushExternalAudioFrame 喂进来，**绝不能**在这里
+            // 调 startAudio()，否则会进入 self-mic 模式与 external audio 互斥，
+            // 后续 startExternalAudio 抛 "external audio cannot mix with self-mic"。
+            "call" -> { /* no-op: 等 CallTranslationSession 调 startExternalAudio */ }
             "short_voice" -> { /* 按住说话，由 UI 调用 startListening/stopListening */ }
             else -> astService.stopAudio()
         }
@@ -130,6 +139,25 @@ class AstTranslateAgentSession : NativeAgent {
     }
 
     // ─────────────────────────────────────────────────
+    // 外部音频源（通话翻译等场景）—— 透传到底层 NativeAstService
+    // ─────────────────────────────────────────────────
+
+    override fun externalAudioCapability(): ExternalAudioCapability =
+        astService.externalAudioCapability()
+
+    override fun startExternalAudio(format: ExternalAudioFormat, sink: ExternalAudioSink) {
+        astService.startExternalAudio(format, sink)
+    }
+
+    override fun pushExternalAudioFrame(frame: ByteArray) {
+        astService.pushExternalAudioFrame(frame)
+    }
+
+    override fun stopExternalAudio() {
+        astService.stopExternalAudio()
+    }
+
+    // ─────────────────────────────────────────────────
     // AST 回调 → AgentEventSink 事件转换
     // ─────────────────────────────────────────────────
 
@@ -137,10 +165,10 @@ class AstTranslateAgentSession : NativeAgent {
         override fun onConnected() {
             transitionTo(State.CONNECTED)
             eventSink.onConnectionStateChanged(config.agentId, "connected")
+            eventSink.onAgentReady(config.agentId, ready = true)
             Log.d(TAG, "AST connected, inputMode=$inputMode")
-            if (inputMode == "call") {
-                astService.startAudio()
-            }
+            // call 模式下 CallTranslationSession 会随后调 startExternalAudio 把
+            // 耳机解码出来的 PCM 喂进来，这里不要触发 self-mic 路径。
         }
 
         override fun onDisconnected() {
@@ -229,6 +257,7 @@ class AstTranslateAgentSession : NativeAgent {
             transitionTo(State.ERROR)
             eventSink.onConnectionStateChanged(config.agentId, "error", message)
             eventSink.onError(config.agentId, code, message, null)
+            eventSink.onAgentReady(config.agentId, ready = false, errorCode = code, errorMessage = message)
         }
     }
 

@@ -51,6 +51,7 @@ final class SttEvent extends AgentEvent {
   final String requestId;
   final SttEventKind kind;
   final String? text;
+  final String? detectedLang;
   final String? errorCode;
   final String? errorMessage;
 
@@ -59,6 +60,7 @@ final class SttEvent extends AgentEvent {
     required this.requestId,
     required this.kind,
     this.text,
+    this.detectedLang,
     this.errorCode,
     this.errorMessage,
   });
@@ -154,6 +156,24 @@ final class ServiceConnectionStateEvent extends AgentEvent {
   });
 }
 
+/// Agent 就绪/失败统一回调（替代旧的"等 connected"协议）。
+///
+/// connectService 后必然派发恰好一次：
+///  - ready=true  : 三段式 = 服务初始化完成；端到端 = 链路 connected
+///  - ready=false : errorCode/errorMessage 必填，调用方据此终止
+final class AgentReadyEvent extends AgentEvent {
+  final bool ready;
+  final String? errorCode;
+  final String? errorMessage;
+
+  const AgentReadyEvent({
+    required super.sessionId,
+    required this.ready,
+    this.errorCode,
+    this.errorMessage,
+  });
+}
+
 // ─────────────────────────────────────────────────
 // 解析工厂
 // ─────────────────────────────────────────────────
@@ -169,6 +189,7 @@ AgentEvent? parseAgentEvent(Map<Object?, Object?> raw) {
         requestId: raw['requestId'] as String? ?? '',
         kind: _parseSttKind(raw['kind'] as String?),
         text: raw['text'] as String?,
+        detectedLang: raw['detectedLang'] as String?,
         errorCode: raw['errorCode'] as String?,
         errorMessage: raw['errorMessage'] as String?,
       );
@@ -214,6 +235,13 @@ AgentEvent? parseAgentEvent(Map<Object?, Object?> raw) {
       return ServiceConnectionStateEvent(
         sessionId: sessionId,
         connectionState: _parseServiceConnectionState(raw['state'] as String?),
+        errorMessage: raw['errorMessage'] as String?,
+      );
+    case 'agentReady':
+      return AgentReadyEvent(
+        sessionId: sessionId,
+        ready: raw['ready'] as bool? ?? false,
+        errorCode: raw['errorCode'] as String?,
         errorMessage: raw['errorMessage'] as String?,
       );
     default:

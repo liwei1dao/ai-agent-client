@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:local_db/local_db.dart';
 
 import '../../../shared/themes/app_theme.dart';
-import '../../chat/providers/chat_provider.dart' show ChatMessage;
+import '../../chat/providers/agent_screen_provider.dart' show AgentMessage;
 import '../../chat/widgets/chat_screen_shared.dart'
     show statusColor, statusLabel;
 import '../../chat/widgets/message_bubble.dart';
@@ -44,7 +44,7 @@ class _StsTestPanelState extends State<StsTestPanel> {
   Timer? _connTimer;
 
   // ── Transcript ────────────────────────────────────────────────────────────
-  final List<ChatMessage> _messages = [];
+  final List<AgentMessage> _messages = [];
   String _currentAssistantId = '';
 
   // ── Logs ──────────────────────────────────────────────────────────────────
@@ -278,7 +278,7 @@ class _StsTestPanelState extends State<StsTestPanel> {
     );
     if (idx == -1) {
       _messages.add(
-        ChatMessage(
+        AgentMessage(
           id: 'u_${DateTime.now().microsecondsSinceEpoch}',
           role: 'user',
           content: text,
@@ -299,7 +299,7 @@ class _StsTestPanelState extends State<StsTestPanel> {
       _messages[idx].status = 'done';
     } else {
       _messages.add(
-        ChatMessage(
+        AgentMessage(
           id: 'u_${DateTime.now().microsecondsSinceEpoch}',
           role: 'user',
           content: text,
@@ -313,7 +313,7 @@ class _StsTestPanelState extends State<StsTestPanel> {
     if (_currentAssistantId.isEmpty) {
       _currentAssistantId = 'a_${DateTime.now().microsecondsSinceEpoch}';
       _messages.add(
-        ChatMessage(
+        AgentMessage(
           id: _currentAssistantId,
           role: 'assistant',
           content: delta,
@@ -329,7 +329,7 @@ class _StsTestPanelState extends State<StsTestPanel> {
   void _finalizeAssistant(String full) {
     if (_currentAssistantId.isEmpty) {
       _messages.add(
-        ChatMessage(
+        AgentMessage(
           id: 'a_${DateTime.now().microsecondsSinceEpoch}',
           role: 'assistant',
           content: full,

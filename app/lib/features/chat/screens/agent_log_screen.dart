@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/themes/app_theme.dart';
-import '../providers/chat_provider.dart';
+import '../providers/agent_screen_provider.dart';
 
 class AgentLogScreen extends ConsumerWidget {
   const AgentLogScreen({super.key, required this.agentId});
@@ -10,8 +10,8 @@ class AgentLogScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final logs = ref.watch(chatAgentProvider(agentId).select((s) => s.logs));
-    final agentName = ref.watch(chatAgentProvider(agentId).select((s) => s.agentName));
+    final logs = ref.watch(agentScreenProvider(agentId).select((s) => s.logs));
+    final agentName = ref.watch(agentScreenProvider(agentId).select((s) => s.agentName));
     final colors = context.appColors;
 
     return Scaffold(

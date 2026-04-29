@@ -70,8 +70,8 @@ class TranslationAliyunService : NativeTranslationService {
         NativeTranslationResult(
             sourceText = text,
             translatedText = translated,
-            sourceLanguage = sourceLang ?: "auto",
-            targetLanguage = targetLang,
+            sourceLanguage = toAliyunLang(sourceLang) ?: "auto",
+            targetLanguage = toAliyunLang(targetLang) ?: targetLang,
         )
     }
 
@@ -90,11 +90,22 @@ class TranslationAliyunService : NativeTranslationService {
             "SignatureVersion" to "1.0",
             "Timestamp" to sdf.format(Date()),
             "Format" to "JSON",
-            "SourceLanguage" to (sourceLang ?: "auto"),
-            "TargetLanguage" to targetLang,
+            "SourceLanguage" to (toAliyunLang(sourceLang) ?: "auto"),
+            "TargetLanguage" to (toAliyunLang(targetLang) ?: targetLang),
             "SourceText" to text,
             "Scene" to "general",
         )
+    }
+
+    /** canonical → 阿里云机器翻译语言码（ISO 639-1 短码 + zh/zh-tw 等中文变体）。*/
+    private fun toAliyunLang(code: String?): String? {
+        if (code.isNullOrBlank()) return null
+        return when (code.trim().uppercase()) {
+            "AUTO" -> "auto"
+            "ZH", "ZH-CN", "ZH-HANS" -> "zh"
+            "ZH-TW", "ZH-HK", "ZH-HANT" -> "zh-tw"
+            else -> code.substringBefore("-").lowercase()
+        }
     }
 
     private fun sign(params: Map<String, String>): String {

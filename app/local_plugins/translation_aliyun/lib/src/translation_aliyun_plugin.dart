@@ -47,8 +47,8 @@ class TranslationAliyunPlugin implements TranslationPlugin {
     return TranslationResult(
       sourceText: text,
       translatedText: translated,
-      sourceLanguage: sourceLanguage ?? 'auto',
-      targetLanguage: targetLanguage,
+      sourceLanguage: _toAliyunLang(sourceLanguage) ?? 'auto',
+      targetLanguage: _toAliyunLang(targetLanguage)!,
     );
   }
 
@@ -70,11 +70,31 @@ class TranslationAliyunPlugin implements TranslationPlugin {
       'SignatureVersion': '1.0',
       'Timestamp': _formatTimestamp(now),
       'Format': 'JSON',
-      'SourceLanguage': sourceLanguage ?? 'auto',
-      'TargetLanguage': targetLanguage,
+      'SourceLanguage': _toAliyunLang(sourceLanguage) ?? 'auto',
+      'TargetLanguage': _toAliyunLang(targetLanguage)!,
       'SourceText': text,
       'Scene': 'general',
     };
+  }
+
+  /// canonical → 阿里云机器翻译语言码（ISO 639-1 短码 + 部分中文变体）。
+  static String? _toAliyunLang(String? code) {
+    if (code == null || code.isEmpty) return null;
+    final upper = code.trim().toUpperCase();
+    switch (upper) {
+      case 'AUTO':
+        return 'auto';
+      case 'ZH':
+      case 'ZH-CN':
+      case 'ZH-HANS':
+        return 'zh';
+      case 'ZH-TW':
+      case 'ZH-HK':
+      case 'ZH-HANT':
+        return 'zh-tw';
+      default:
+        return upper.split('-').first.toLowerCase();
+    }
   }
 
   String _sign(Map<String, String> params) {

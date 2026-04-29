@@ -4,7 +4,7 @@ import 'package:uuid/uuid.dart';
 import 'package:agents_server/agents_server.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../shared/themes/app_theme.dart';
-import '../providers/chat_provider.dart';
+import '../providers/agent_screen_provider.dart';
 import '../widgets/chat_screen_shared.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/multimodal_input_bar.dart';
@@ -30,12 +30,12 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
   }
 
   Future<void> _initAgent() async {
-    final state = ref.read(chatAgentProvider(widget.agentId));
+    final state = ref.read(agentScreenProvider(widget.agentId));
     if (state.isEndToEnd) {
       await Permission.microphone.request();
       if (!mounted) return;
     }
-    ref.read(chatAgentProvider(widget.agentId).notifier).init();
+    ref.read(agentScreenProvider(widget.agentId).notifier).init();
   }
 
   @override
@@ -56,9 +56,17 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
     });
   }
 
+  /// 输入框上显示的方向 chip：只展示"当前正在输入"的那一种语言（短）。
+  /// 点击 chip 在 src ↔ dst 之间切换。
+  String _directionLabel(AgentScreenState s) {
+    final activeLang =
+        s.translateDirection == 'dst_to_src' ? s.dstLang : s.srcLang;
+    return langName(activeLang);
+  }
+
   void _toggleConnection() {
-    final notifier = ref.read(chatAgentProvider(widget.agentId).notifier);
-    final state = ref.read(chatAgentProvider(widget.agentId));
+    final notifier = ref.read(agentScreenProvider(widget.agentId).notifier);
+    final state = ref.read(agentScreenProvider(widget.agentId));
     if (state.connectionState == ServiceConnectionState.connected) {
       notifier.disconnectService();
     } else {
@@ -68,11 +76,11 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(chatAgentProvider(widget.agentId));
+    final state = ref.watch(agentScreenProvider(widget.agentId));
     final isE2E = state.isEndToEnd;
 
     ref.listen(
-        chatAgentProvider(widget.agentId).select((s) => s.messages.length),
+        agentScreenProvider(widget.agentId).select((s) => s.messages.length),
         (_, __) => _scrollToBottom());
 
     final isPlaying = state.sessionState == AgentSessionState.playing ||
@@ -189,13 +197,20 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
             dstLang: state.dstLang,
             srcLangs: state.srcLangs,
             dstLangs: state.dstLangs,
+            bidirectionalAvailable:
+                state.agentType == 'translate' &&
+                    state.sttSupportsLanguageDetection,
+            bidirectional: state.bidirectional,
+            onBidirectionalChanged: (v) => ref
+                .read(agentScreenProvider(widget.agentId).notifier)
+                .setBidirectional(v),
             onSrcTap: () => showLangPicker(
               context,
               isSource: true,
               currentLang: state.srcLang,
               supported: state.srcLangs,
               onSelect: (code) => ref
-                  .read(chatAgentProvider(widget.agentId).notifier)
+                  .read(agentScreenProvider(widget.agentId).notifier)
                   .setSrcLang(code),
             ),
             onDstTap: () => showLangPicker(
@@ -204,11 +219,11 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
               currentLang: state.dstLang,
               supported: state.dstLangs,
               onSelect: (code) => ref
-                  .read(chatAgentProvider(widget.agentId).notifier)
+                  .read(agentScreenProvider(widget.agentId).notifier)
                   .setDstLang(code),
             ),
             onSwap: () => ref
-                .read(chatAgentProvider(widget.agentId).notifier)
+                .read(agentScreenProvider(widget.agentId).notifier)
                 .swapLanguages(),
           ),
 
@@ -231,6 +246,11 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
                       isTranslateMode: true,
                       srcLang: state.srcLang,
                       dstLang: state.dstLang,
+                      // 三段式 translate：己方说源语言（srcLang）→ 右侧；
+                      // ast-translate：己方读译文（dstLang）→ 右侧。
+                      selfLang: state.agentType == 'translate'
+                          ? state.srcLang
+                          : state.dstLang,
                     ),
                   ),
           ),
@@ -246,24 +266,30 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
               sessionState: state.sessionState,
               isEndToEnd: isE2E,
               connectionState: state.connectionState,
+              translateDirectionLabel: state.agentType == 'translate'
+                  ? _directionLabel(state)
+                  : null,
+              onTranslateDirectionToggle: () => ref
+                  .read(agentScreenProvider(widget.agentId).notifier)
+                  .toggleTranslateDirection(),
               onModeChanged: (mode) => ref
-                  .read(chatAgentProvider(widget.agentId).notifier)
+                  .read(agentScreenProvider(widget.agentId).notifier)
                   .setInputMode(mode),
               onTextSubmit: (text) {
                 final requestId = _uuid.v4();
                 ref
-                    .read(chatAgentProvider(widget.agentId).notifier)
+                    .read(agentScreenProvider(widget.agentId).notifier)
                     .sendText(requestId, text);
                 _scrollToBottom();
               },
               onVoiceStart: () => ref
-                  .read(chatAgentProvider(widget.agentId).notifier)
+                  .read(agentScreenProvider(widget.agentId).notifier)
                   .startListening(),
               onVoiceEnd: () => ref
-                  .read(chatAgentProvider(widget.agentId).notifier)
+                  .read(agentScreenProvider(widget.agentId).notifier)
                   .stopListening(),
               onVoiceCancel: () => ref
-                  .read(chatAgentProvider(widget.agentId).notifier)
+                  .read(agentScreenProvider(widget.agentId).notifier)
                   .cancelListening(),
             ),
           ],

@@ -95,6 +95,14 @@ class AgentsServerBridge {
         'mode': mode,
       });
 
+  /// 通用 KV 配置（如翻译 agent 的 bidirectional / direction）
+  Future<void> setAgentOption(String agentId, String key, String value) =>
+      _commandChannel.invokeMethod('setAgentOption', {
+        'agentId': agentId,
+        'key': key,
+        'value': value,
+      });
+
   /// 开始语音监听
   Future<void> startListening(String agentId) =>
       _commandChannel.invokeMethod('startListening', {'agentId': agentId});

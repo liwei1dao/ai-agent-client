@@ -134,6 +134,13 @@ List<_ConfigField> _fieldsFor(String type, String vendor) {
       _ConfigField('apiKey', 'Auth Key *', 'xxxxxxxx-xxxx-...', obscure: true),
     ];
   }
+  if (vendor == 'azure' && type == 'translation') {
+    return const [
+      _ConfigField('apiKey', 'Subscription Key *', 'xxxxxxxxxxxxxxxxxxxxxxxx', obscure: true),
+      _ConfigField('region', 'Region（节点）*', 'eastus / eastasia / global',
+          defaultValue: 'global'),
+    ];
+  }
   if (type == 'mcp') {
     return const [
       _ConfigField('url', '服务地址 *', 'https://your-mcp-server.com/sse'),
@@ -198,6 +205,7 @@ const _vendorsByType = <String, List<Map<String, String>>>{
     {'id': 'deepl', 'label': 'DeepL'},
     {'id': 'aliyun', 'label': '阿里云'},
     {'id': 'google', 'label': 'Google'},
+    {'id': 'azure', 'label': '微软翻译 (Azure)'},
   ],
   'mcp': [
     {'id': 'remote', 'label': '远程 MCP'},
@@ -224,6 +232,11 @@ const _vendorDocs = <String, Map<String, _VendorDoc>>{
       url: 'https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices',
       urlLabel: 'Azure 语音服务控制台',
       hint: '与 STT 共用同一个语音资源。填写 API Key 和 Region 后测试连接，可选择音色。',
+    ),
+    'translation': _VendorDoc(
+      url: 'https://portal.azure.com/#create/Microsoft.CognitiveServicesTextTranslation',
+      urlLabel: 'Azure 翻译服务控制台',
+      hint: '在 Azure Portal 创建"翻译（Translator）"资源，"密钥和终结点"页获取 Key 与 Region（如 eastus / eastasia）；多区资源请填实际节点，不要用 global。',
     ),
   },
   'openai': {

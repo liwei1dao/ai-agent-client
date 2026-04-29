@@ -100,6 +100,7 @@ class AgentsServerService : Service(), AgentEventSink {
             "requestId" to event.requestId,
             "kind" to event.kind,
             "text" to event.text,
+            "detectedLang" to event.detectedLang,
             "errorCode" to event.errorCode,
             "errorMessage" to event.errorMessage,
         ))
@@ -160,6 +161,16 @@ class AgentsServerService : Service(), AgentEventSink {
             "type" to "connectionState",
             "sessionId" to sessionId,
             "state" to state,
+            "errorMessage" to errorMessage,
+        ))
+    }
+
+    override fun onAgentReady(sessionId: String, ready: Boolean, errorCode: String?, errorMessage: String?) {
+        pushEvent(mapOf(
+            "type" to "agentReady",
+            "sessionId" to sessionId,
+            "ready" to ready,
+            "errorCode" to errorCode,
             "errorMessage" to errorMessage,
         ))
     }

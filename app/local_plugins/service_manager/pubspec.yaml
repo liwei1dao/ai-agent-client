@@ -35,6 +35,8 @@ dependencies:
     path: ../translation_deepl
   translation_aliyun:
     path: ../translation_aliyun
+  translation_azure:
+    path: ../translation_azure
 
 dev_dependencies:
   flutter_test:

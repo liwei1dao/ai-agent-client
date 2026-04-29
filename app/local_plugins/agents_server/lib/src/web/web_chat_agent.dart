@@ -62,7 +62,10 @@ class WebChatAgent implements WebAgent {
   }
 
   @override
-  Future<void> connectService() async {}
+  Future<void> connectService() async {
+    // 三段式 agent 无远端长连接：服务在 initialize 阶段已就位，立即上报 ready。
+    _emit(AgentReadyEvent(sessionId: _config.agentId, ready: true));
+  }
 
   @override
   Future<void> disconnectService() async {}
@@ -79,6 +82,9 @@ class WebChatAgent implements WebAgent {
 
   @override
   Future<void> stopListening() async => _stt.stopListening();
+
+  @override
+  Future<void> setOption(String key, String value) async {}
 
   @override
   Future<void> setInputMode(String mode) async {

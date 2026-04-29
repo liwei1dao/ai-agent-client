@@ -345,6 +345,27 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.12"
+  device_jieli:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/device_jieli"
+      relative: true
+    source: path
+    version: "0.0.1"
+  device_manager:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/device_manager"
+      relative: true
+    source: path
+    version: "0.1.0"
+  device_plugin_interface:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/device_plugin_interface"
+      relative: true
+    source: path
+    version: "0.1.0"
   fake_async:
     dependency: transitive
     description:
@@ -1062,10 +1083,24 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.2"
+  translate_server:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/translate_server"
+      relative: true
+    source: path
+    version: "0.1.0"
   translation_aliyun:
     dependency: "direct main"
     description:
       path: "local_plugins/translation_aliyun"
+      relative: true
+    source: path
+    version: "0.1.0"
+  translation_azure:
+    dependency: "direct main"
+    description:
+      path: "local_plugins/translation_azure"
       relative: true
     source: path
     version: "0.1.0"

@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:local_db/local_db.dart';
 
 import '../../../shared/themes/app_theme.dart';
-import '../../chat/providers/chat_provider.dart' show ChatMessage;
+import '../../chat/providers/agent_screen_provider.dart' show AgentMessage;
 import '../../chat/widgets/chat_screen_shared.dart'
     show statusColor, statusLabel;
 import '../../chat/widgets/message_bubble.dart';
@@ -59,7 +59,7 @@ class _AstTestPanelState extends State<AstTestPanel> {
   Timer? _connTimer;
 
   // ── Transcript ────────────────────────────────────────────────────────────
-  final List<ChatMessage> _messages = [];
+  final List<AgentMessage> _messages = [];
 
   // ── Logs ──────────────────────────────────────────────────────────────────
   final List<String> _logs = [];
@@ -289,7 +289,7 @@ class _AstTestPanelState extends State<AstTestPanel> {
     );
     if (idx == -1) {
       _messages.add(
-        ChatMessage(
+        AgentMessage(
           id: 's_${DateTime.now().microsecondsSinceEpoch}',
           role: 'user',
           content: text,
@@ -312,7 +312,7 @@ class _AstTestPanelState extends State<AstTestPanel> {
       _messages[idx].status = 'pending';
     } else {
       _messages.add(
-        ChatMessage(
+        AgentMessage(
           id: 's_${DateTime.now().microsecondsSinceEpoch}',
           role: 'user',
           content: text,

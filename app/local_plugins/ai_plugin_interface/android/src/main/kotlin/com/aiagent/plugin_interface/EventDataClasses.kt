@@ -8,6 +8,7 @@ data class SttEventData(
     val requestId: String,
     val kind: String,           // listeningStarted, vadSpeechStart, vadSpeechEnd, partialResult, finalResult, listeningStopped, error
     val text: String? = null,
+    val detectedLang: String? = null,  // BCP-47 语言码（厂商支持语言检测时填）
     val errorCode: String? = null,
     val errorMessage: String? = null,
 )

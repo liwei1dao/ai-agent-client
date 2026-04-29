@@ -1,21 +1,15 @@
 import 'package:flutter/material.dart';
+import '../../../core/services/locale_service.dart';
 import '../../../shared/themes/app_theme.dart';
-import '../providers/chat_provider.dart';
+import '../providers/agent_screen_provider.dart';
 
-/// 语言代码 → 显示名称
-String _langLabel(String? code) => switch (code) {
-      'zh' => '中文',
-      'en' => 'English',
-      'ja' => '日本語',
-      'ko' => '한국어',
-      'fr' => 'Français',
-      'de' => 'Deutsch',
-      'es' => 'Español',
-      'ru' => 'Русский',
-      'ar' => 'العربية',
-      'pt' => 'Português',
-      _ => code ?? '',
-    };
+/// 语言代码 → 显示名称（canonical 优先，其次 [LocaleService.toCanonical] 兜底）。
+String _langLabel(String? code) {
+  if (code == null || code.isEmpty) return '';
+  return LocaleService.langNames[code] ??
+      LocaleService.langNames[LocaleService.toCanonical(code)] ??
+      code;
+}
 
 /// Renders a single chat message bubble.
 ///
@@ -27,14 +21,21 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     this.agentName = 'AI',
     this.isTranslateMode = false,
-    this.srcLang = 'zh',
-    this.dstLang = 'en',
+    this.srcLang = 'zh-CN',
+    this.dstLang = 'en-US',
+    this.selfLang,
   });
-  final ChatMessage message;
+  final AgentMessage message;
   final String agentName;
   final bool isTranslateMode;
   final String srcLang;
   final String dstLang;
+
+  /// "己方"语言（决定翻译卡片放右侧还是左侧）。
+  /// - 三段式 translate：通常 = srcLang（己方说源语言）
+  /// - ast-translate：通常 = dstLang（己方读译文）
+  /// 为 null 时回退到 dstLang，保持旧 AST 行为。
+  final String? selfLang;
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +45,7 @@ class MessageBubble extends StatelessWidget {
         message: message,
         srcLang: srcLang,
         dstLang: dstLang,
+        selfLang: selfLang ?? dstLang,
       );
     }
 
@@ -68,16 +70,19 @@ class _TranslationPairCard extends StatelessWidget {
     required this.message,
     required this.srcLang,
     required this.dstLang,
+    required this.selfLang,
   });
-  final ChatMessage message;
+  final AgentMessage message;
   final String srcLang;
   final String dstLang;
+  final String selfLang;
 
   @override
   Widget build(BuildContext context) {
-    final detected = message.detectedLang ?? srcLang;
-    // 目标语言 → 右侧（紫色，"我方/输出"）；源语言 → 左侧（白色，"对方/输入"）
-    final isRight = detected == dstLang;
+    final detected = LocaleService.toCanonical(message.detectedLang ?? srcLang);
+    final self = LocaleService.toCanonical(selfLang);
+    // 内容语言 == 己方语言 → 右侧（紫色，己方）；否则 → 左侧（白色，对方）
+    final isRight = detected == self;
     final langName = _langLabel(detected);
 
     return Padding(
@@ -167,7 +172,7 @@ class _TranslationStreamingCard extends StatelessWidget {
     required this.message,
     required this.dstLang,
   });
-  final ChatMessage message;
+  final AgentMessage message;
   final String dstLang;
 
   @override
@@ -258,7 +263,7 @@ class _TranslationStreamingCard extends StatelessWidget {
 
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({required this.message, required this.agentName});
-  final ChatMessage message;
+  final AgentMessage message;
   final String agentName;
 
   @override

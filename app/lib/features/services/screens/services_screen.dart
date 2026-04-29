@@ -12,6 +12,7 @@ import 'package:service_manager/service_manager.dart';
 import 'package:stt_azure/stt_azure.dart';
 import 'package:agents_server/agents_server.dart' hide SttEvent, LlmEvent;
 import 'package:agents_server/agents_server.dart' as rt show SttEvent, LlmEvent;
+import '../../../core/services/locale_service.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../providers/service_library_provider.dart';
 import '../widgets/add_service_modal.dart';
@@ -330,6 +331,12 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
 
   /// Resolve fields by (vendor, type). volcengine differs by type; others are type-agnostic.
   static List<(String, String, bool)> _resolveFields(String vendor, String type) {
+    if (vendor == 'azure' && type == 'translation') {
+      return const [
+        ('apiKey', 'Subscription Key *', true),
+        ('region', 'Region（节点）*', false),
+      ];
+    }
     if (vendor == 'volcengine') {
       return switch (type) {
         'llm' => const [
@@ -1981,13 +1988,16 @@ class _TranslationTestCard extends StatefulWidget {
 class _TranslationTestCardState extends State<_TranslationTestCard> {
   ServiceConfigDto? _selected;
   final _inputCtrl = TextEditingController(text: 'Hello, how are you?');
-  String _srcLang = 'EN';
-  String _dstLang = 'ZH';
+  String _srcLang = 'en-US';
+  String _dstLang = 'zh-CN';
   bool _translating = false;
   String _result = '';
   String? _error;
 
-  static const _langs = ['ZH', 'EN', 'JA', 'KO', 'FR', 'DE', 'ES', 'RU', 'AR'];
+  static const _langs = <String>[
+    'zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'fr-FR',
+    'de-DE', 'es-ES', 'ru-RU', 'ar-SA', 'pt-BR',
+  ];
 
   @override
   void initState() {
@@ -2001,6 +2011,30 @@ class _TranslationTestCardState extends State<_TranslationTestCard> {
     super.dispose();
   }
 
+  /// canonical → DeepL 用语言码（target 用 BCP-47 大写形式如 EN-US/PT-BR/ZH-HANS；
+  /// source 用两字形式如 EN/ZH）
+  static String _toDeeplTarget(String canon) => switch (canon) {
+    'zh-CN' => 'ZH-HANS',
+    'zh-TW' => 'ZH-HANT',
+    'en-US' => 'EN-US',
+    'en-GB' => 'EN-GB',
+    'pt-BR' => 'PT-BR',
+    'pt-PT' => 'PT-PT',
+    _ => canon.split('-').first.toUpperCase(),
+  };
+
+  static String _toDeeplSource(String canon) =>
+      canon.split('-').first.toUpperCase();
+
+  /// canonical → Azure Translator BCP-47（zh-CN → zh-Hans 等）。
+  static String _toAzureLang(String canon) => switch (canon) {
+    'zh-CN' => 'zh-Hans',
+    'zh-TW' => 'zh-Hant',
+    'pt-BR' => 'pt',
+    'pt-PT' => 'pt-pt',
+    _ => canon.split('-').first.toLowerCase(),
+  };
+
   Future<void> _translate() async {
     if (_selected == null || _inputCtrl.text.trim().isEmpty) return;
     setState(() { _translating = true; _result = ''; _error = null; });
@@ -2008,6 +2042,10 @@ class _TranslationTestCardState extends State<_TranslationTestCard> {
     try {
       final cfg = jsonDecode(_selected!.configJson) as Map<String, dynamic>;
       final vendor = _selected!.vendor;
+
+      // 测试卡片传 canonical 即可，各服务内部自己映射到厂商方言。
+      final srcCanon = LocaleService.toCanonical(_srcLang);
+      final dstCanon = LocaleService.toCanonical(_dstLang);
 
       if (vendor == 'deepl') {
         final authKey = cfg['apiKey'] as String? ?? '';
@@ -2020,13 +2058,45 @@ class _TranslationTestCardState extends State<_TranslationTestCard> {
           headers: {'Authorization': 'DeepL-Auth-Key $authKey', 'Content-Type': 'application/json'},
           body: jsonEncode({
             'text': [_inputCtrl.text.trim()],
-            'source_lang': _srcLang == 'ZH' ? 'ZH' : _srcLang,
-            'target_lang': _dstLang == 'ZH' ? 'ZH-HANS' : _dstLang,
+            'source_lang': _toDeeplSource(srcCanon),
+            'target_lang': _toDeeplTarget(dstCanon),
           }),
         ).timeout(const Duration(seconds: 15));
         if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
         final body = jsonDecode(resp.body) as Map;
         final translations = body['translations'] as List;
+        setState(() => _result = (translations.first as Map)['text'] as String? ?? '');
+      } else if (vendor == 'azure' || vendor == 'microsoft') {
+        final apiKey = (cfg['apiKey'] as String?) ?? '';
+        if (apiKey.isEmpty) throw Exception('apiKey 未配置');
+        final region = ((cfg['region'] as String?) ?? '').trim();
+        // Azure 服务自身已支持 canonical → BCP-47 映射，但测试卡片直连 HTTP，
+        // 这里也保留同样的转换逻辑，避免 400035。
+        final uri = Uri.parse('https://api.cognitive.microsofttranslator.com/translate')
+            .replace(queryParameters: {
+          'api-version': '3.0',
+          'to': _toAzureLang(dstCanon),
+          if (srcCanon.isNotEmpty && srcCanon != 'auto')
+            'from': _toAzureLang(srcCanon),
+        });
+        final resp = await http.post(
+          uri,
+          headers: {
+            'Ocp-Apim-Subscription-Key': apiKey,
+            if (region.isNotEmpty) 'Ocp-Apim-Subscription-Region': region,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode([
+            {'Text': _inputCtrl.text.trim()},
+          ]),
+        ).timeout(const Duration(seconds: 15));
+        if (resp.statusCode != 200) {
+          throw Exception('HTTP ${resp.statusCode} ${resp.body}');
+        }
+        final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List;
+        if (list.isEmpty) throw Exception('空响应');
+        final translations = (list.first as Map)['translations'] as List;
+        if (translations.isEmpty) throw Exception('translations 为空');
         setState(() => _result = (translations.first as Map)['text'] as String? ?? '');
       } else {
         // Other vendors — placeholder
@@ -2254,7 +2324,7 @@ class _TranslationTestCardState extends State<_TranslationTestCard> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final lang in ['ZH', 'EN', 'JA', 'KO', 'FR', 'DE', 'ES', 'RU', 'AR', 'PT'])
+              for (final lang in _langs)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(

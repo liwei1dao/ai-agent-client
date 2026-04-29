@@ -17,6 +17,8 @@ class MultimodalInputBar extends StatefulWidget {
     this.isEndToEnd = false,
     this.connectionState = ServiceConnectionState.disconnected,
     this.sessionState = AgentSessionState.idle,
+    this.translateDirectionLabel,
+    this.onTranslateDirectionToggle,
   });
 
   /// 'text' | 'short_voice' | 'call'
@@ -31,6 +33,10 @@ class MultimodalInputBar extends StatefulWidget {
   final VoidCallback? onVoiceCancel;
   final VoidCallback? onCallToggle;
   final String partialText;
+
+  /// 翻译模式下文本输入方向标签（如 "中文 → English"）；非 null 即显示切换按钮。
+  final String? translateDirectionLabel;
+  final VoidCallback? onTranslateDirectionToggle;
 
   @override
   State<MultimodalInputBar> createState() => _MultimodalInputBarState();
@@ -118,6 +124,7 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
   // ── Text mode ──────────────────────────────────────────────────────────────
 
   Widget _buildTextBar() {
+    final dirLabel = widget.translateDirectionLabel;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       child: Row(
@@ -137,17 +144,49 @@ class _MultimodalInputBarState extends State<MultimodalInputBar> {
               ),
               child: Row(
                 children: [
+                  if (dirLabel != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6, right: 2),
+                      child: GestureDetector(
+                        onTap: widget.onTranslateDirectionToggle,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                dirLabel,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 3),
+                              const Icon(Icons.swap_horiz,
+                                  size: 13, color: AppTheme.primary),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   Expanded(
                     child: TextField(
                       controller: _textCtrl,
-                      decoration: const InputDecoration(
-                        hintText: '继续提问...',
-                        hintStyle: TextStyle(color: AppTheme.text2, fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: dirLabel == null ? '继续提问...' : '输入文本...',
+                        hintStyle: const TextStyle(
+                            color: AppTheme.text2, fontSize: 13),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 0),
                         isDense: true,
                       ),
                       style: const TextStyle(fontSize: 13, color: AppTheme.text1),

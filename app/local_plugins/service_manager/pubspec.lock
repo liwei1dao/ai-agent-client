@@ -403,6 +403,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  translation_azure:
+    dependency: "direct main"
+    description:
+      path: "../translation_azure"
+      relative: true
+    source: path
+    version: "0.1.0"
   translation_deepl:
     dependency: "direct main"
     description:

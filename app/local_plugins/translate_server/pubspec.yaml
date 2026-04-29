@@ -1,0 +1,25 @@
+name: translate_server
+description: Composite translation orchestrator (call / face-to-face / audio). Native-driven; Dart side is a thin facade.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+  flutter: ">=3.3.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  device_plugin_interface:
+    path: ../device_plugin_interface
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.translate_server
+        pluginClass: TranslateServerPlugin

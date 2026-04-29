@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_db/local_db.dart';
+import '../../../core/services/locale_service.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../providers/agent_list_provider.dart';
 import '../../services/providers/service_library_provider.dart';
@@ -50,14 +51,9 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
 
   bool get _isEditing => widget.agent != null;
 
-  // Language codes & display names
-  static const _langCodes = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru', 'ar', 'pt'];
-  static const _langNames = {
-    'auto': '自动检测',
-    'zh': '中文 (ZH)', 'en': 'English (EN)', 'ja': '日语 (JA)', 'ko': '韩语 (KO)',
-    'fr': '法语 (FR)', 'de': '德语 (DE)', 'es': '西班牙语 (ES)',
-    'ru': '俄语 (RU)', 'ar': '阿拉伯语 (AR)', 'pt': '葡萄牙语 (PT)',
-  };
+  // Language codes & display names — 一律 canonical（zh-CN / en-US / ...）
+  static const _langCodes = LocaleService.allCodes;
+  static const _langNames = LocaleService.langNames;
   // Type-specific accent colors
   static const _typeColors = {
     'chat':          (Color(0xFF6C63FF), Color(0xFFEEF0FF), Color(0xFF4A42D9)),
@@ -92,20 +88,30 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
       _promptCtrl = TextEditingController(
           text: cfg['systemPrompt'] as String? ??
               '你是一位专业的 AI 助手，请简洁准确地回答用户问题。');
-      // Backward compat: migrate single srcLang/dstLang → sets
+      // Backward compat: migrate single srcLang/dstLang → sets，并把旧短码归一到 canonical
       final srcList = cfg['srcLangs'] as List?;
       final dstList = cfg['dstLangs'] as List?;
       if (srcList != null) {
-        _srcLangs = Set<String>.from(srcList);
+        _srcLangs = srcList
+            .cast<String>()
+            .map(LocaleService.toCanonical)
+            .toSet();
       } else {
         final old = cfg['srcLang'] as String?;
-        _srcLangs = old != null ? {old} : {'zh', 'en'};
+        _srcLangs = old != null
+            ? {LocaleService.toCanonical(old)}
+            : {'zh-CN', 'en-US'};
       }
       if (dstList != null) {
-        _dstLangs = Set<String>.from(dstList);
+        _dstLangs = dstList
+            .cast<String>()
+            .map(LocaleService.toCanonical)
+            .toSet();
       } else {
         final old = cfg['dstLang'] as String?;
-        _dstLangs = old != null ? {old} : {'en'};
+        _dstLangs = old != null
+            ? {LocaleService.toCanonical(old)}
+            : {'en-US'};
       }
     } else {
       _nameCtrl = TextEditingController();
@@ -113,8 +119,8 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
       _tags = [];
       _mcpIds = [];
       _promptCtrl = TextEditingController(text: '你是一位专业的 AI 助手，请简洁准确地回答用户问题。');
-      _srcLangs = {'auto', 'zh', 'en'};
-      _dstLangs = {'en'};
+      _srcLangs = {'auto', 'zh-CN', 'en-US'};
+      _dstLangs = {'en-US'};
     }
   }
 

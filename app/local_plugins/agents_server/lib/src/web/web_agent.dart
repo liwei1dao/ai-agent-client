@@ -51,6 +51,11 @@ abstract class WebAgent {
   Future<void> startListening();
   Future<void> stopListening();
   Future<void> setInputMode(String mode);
+
+  /// Generic KV option setter — see `NativeAgent.setOption` for keys.
+  /// Default: ignore unknown keys.
+  Future<void> setOption(String key, String value) async {}
+
   Future<void> interrupt();
   Future<void> release();
 }

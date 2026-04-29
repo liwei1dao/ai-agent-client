@@ -1,0 +1,23 @@
+name: device_plugin_interface
+description: Abstract contracts for hardware device plugins (BLE / RCSP / vendor SDK).
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+  flutter: ">=3.3.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.device_plugin_interface
+        pluginClass: DevicePluginInterfacePlugin

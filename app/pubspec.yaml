@@ -80,6 +80,20 @@ dependencies:
     path: local_plugins/translation_deepl
   translation_aliyun:
     path: local_plugins/translation_aliyun
+  translation_azure:
+    path: local_plugins/translation_azure
+
+  # Device layer (hardware vendor SDK plugins)
+  device_plugin_interface:
+    path: local_plugins/device_plugin_interface
+  device_manager:
+    path: local_plugins/device_manager
+  device_jieli:
+    path: local_plugins/device_jieli
+
+  # Composite scenarios (call / face-to-face / audio translation)
+  translate_server:
+    path: local_plugins/translate_server
 
   # Data layer
   local_db:

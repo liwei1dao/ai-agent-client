@@ -31,6 +31,9 @@ class TranslateAgentSession : NativeAgent {
     companion object {
         private const val TAG = "TranslateAgentSession"
 
+        const val DIRECTION_SRC_TO_DST = "src_to_dst"
+        const val DIRECTION_DST_TO_SRC = "dst_to_src"
+
         /** 合成并发上限（按 §4.1） */
         private const val MAX_CONCURRENT_SYNTHESIS = 2
 
@@ -89,6 +92,30 @@ class TranslateAgentSession : NativeAgent {
     private var srcLang: String? = null
     private var dstLang: String = "en"
 
+    /**
+     * 通话翻译等外部音频源场景下为 true：STT 已通过 [startExternalAudio] 进入
+     * `externalMode`，由 [pushExternalAudioFrame] 持续灌入 PCM。此时**不得**走
+     * self-mic 路径再调 `sttService.startListening` —— 否则会触发 `stt_busy`。
+     */
+    @Volatile
+    private var externalAudioActive: Boolean = false
+
+    /** 互译开关：开启后 STT finalResult 的 detectedLang 决定翻译方向。 */
+    @Volatile
+    private var bidirectional: Boolean = false
+
+    /** 文本输入方向（语音输入在 bidirectional 开启时由 detectedLang 覆盖）。 */
+    @Volatile
+    private var direction: String = DIRECTION_SRC_TO_DST
+
+    /**
+     * 最近一次 STT finalResult 的 detectedLang。
+     * push-to-talk 路径下，sendText 在 listeningStopped 之后被调用，
+     * 这里保存的语种用于 sendText 的方向解算（一次性，消费后清空）。
+     */
+    @Volatile
+    private var lastSttDetectedLang: String? = null
+
     // ─────────────────────────────────────────────────
     // NativeAgent 接口实现
     // ─────────────────────────────────────────────────
@@ -102,6 +129,8 @@ class TranslateAgentSession : NativeAgent {
         // 从 extraParams 获取翻译语言对
         this.srcLang = config.extraParams["srcLang"]  // null 表示自动检测
         this.dstLang = config.extraParams["dstLang"] ?: "en"
+        this.bidirectional = config.extraParams["bidirectional"] == "true"
+        this.direction = config.extraParams["direction"] ?: DIRECTION_SRC_TO_DST
 
         // Create service instances from NativeServiceRegistry
         sttService = NativeServiceRegistry.createStt(config.sttVendor ?: "azure")
@@ -118,11 +147,67 @@ class TranslateAgentSession : NativeAgent {
                 "srcLang=$srcLang dstLang=$dstLang")
     }
 
-    override fun sendText(requestId: String, text: String) {
-        onUserInput(requestId, text)
+    override fun connectService() {
+        // 三段式 agent 无远端长连接：服务在 initialize 阶段已就位，立即上报 ready。
+        eventSink.onAgentReady(config.agentId, ready = true)
     }
 
+    override fun sendText(requestId: String, text: String) {
+        // push-to-talk 场景：finalResult 已先到达 native 并把 detectedLang 存入
+        // [lastSttDetectedLang]，这里一次性消费用于方向解算；纯文本输入时为 null，
+        // resolveDirection 会回退到 UI direction。
+        val det = lastSttDetectedLang
+        lastSttDetectedLang = null
+        onUserInput(requestId, text, resolveDirection(det))
+    }
+
+    override fun setOption(key: String, value: String) {
+        when (key) {
+            "bidirectional" -> {
+                bidirectional = value == "true"
+                Log.d(TAG, "setOption bidirectional=$bidirectional")
+            }
+            "direction" -> {
+                direction = if (value == DIRECTION_DST_TO_SRC) DIRECTION_DST_TO_SRC else DIRECTION_SRC_TO_DST
+                Log.d(TAG, "setOption direction=$direction")
+            }
+            else -> Log.d(TAG, "setOption ignored: $key=$value")
+        }
+    }
+
+    /**
+     * 决定本次翻译的方向。
+     * - 互译关闭：恒按 [direction]（来自 UI 显式切换）。
+     * - 互译开启 + 有 detectedLang：按 detectedLang 与 srcLang/dstLang 的语言段比较选向。
+     * - 互译开启 + 无 detectedLang：仍按 [direction]（兜底，例如文本输入）。
+     */
+    private fun resolveDirection(detectedLang: String?): String {
+        if (!bidirectional || detectedLang.isNullOrBlank()) {
+            Log.d(TAG, "resolveDirection: bidirectional=$bidirectional " +
+                "detectedLang=$detectedLang → fallback direction=$direction")
+            return direction
+        }
+        val src = srcLang ?: ""
+        val dst = dstLang
+        val det = detectedLang.langBase()
+        val resolved = when {
+            det == dst.langBase() && det != src.langBase() -> DIRECTION_DST_TO_SRC
+            det == src.langBase() -> DIRECTION_SRC_TO_DST
+            else -> direction
+        }
+        Log.d(TAG, "resolveDirection: detectedLang=$detectedLang " +
+            "src=$srcLang dst=$dstLang → $resolved")
+        return resolved
+    }
+
+    private fun String.langBase(): String =
+        substringBefore('-').substringBefore('_').lowercase()
+
     override fun startListening() {
+        if (externalAudioActive) {
+            Log.d(TAG, "startListening skipped: external audio active")
+            return
+        }
         transitionTo(State.LISTENING)
         sttService.startListening(sttCallback)
     }
@@ -136,6 +221,9 @@ class TranslateAgentSession : NativeAgent {
         inputMode = mode
         when (mode) {
             "call" -> {
+                // 外部音频源场景下：STT 已在 externalMode，识别由 push 帧驱动，
+                // 切勿再走 self-mic 路径 —— 否则触发 stt_busy。
+                if (externalAudioActive) return
                 ttsService.stop()
                 cancelActiveJob("mode_switch_call")
                 startContinuousListening()
@@ -161,13 +249,61 @@ class TranslateAgentSession : NativeAgent {
     }
 
     // ─────────────────────────────────────────────────
+    // 外部音频源（通话翻译等场景）—— 转发给 sttService + ttsService
+    //
+    // 协议：上行 PCM 由调用方推进 STT；TTS 不再走本地扬声器，而是把合成 PCM
+    // 切帧回灌 sink，由调用方（编排器）灌回耳机。识别 finalResult 在
+    // inputMode=="call" 路径下自动驱动翻译 + TTS 管线。
+    // ─────────────────────────────────────────────────
+
+    override fun externalAudioCapability(): ExternalAudioCapability {
+        val s = sttService.externalAudioCapability()
+        val t = ttsService.externalAudioCapability()
+        return ExternalAudioCapability(
+            acceptsOpus = s.acceptsOpus && t.acceptsOpus,
+            acceptsPcm = s.acceptsPcm && t.acceptsPcm,
+            preferredSampleRate = s.preferredSampleRate,
+            preferredChannels = s.preferredChannels,
+            preferredFrameMs = s.preferredFrameMs,
+        )
+    }
+
+    override fun startExternalAudio(format: ExternalAudioFormat, sink: ExternalAudioSink) {
+        // 进入 call 模式：finalResult 自动触发 translate→TTS（与 self-mic call 路径相同）
+        inputMode = "call"
+        externalAudioActive = true
+        ttsService.startExternalAudio(format, sink)
+        sttService.startExternalAudio(format, sttCallback)
+    }
+
+    override fun pushExternalAudioFrame(frame: ByteArray) {
+        sttService.pushExternalAudioFrame(frame)
+    }
+
+    override fun stopExternalAudio() {
+        externalAudioActive = false
+        sttService.stopExternalAudio()
+        ttsService.stop()
+        ttsService.stopExternalAudio()
+        cancelActiveJob("external_audio_stop")
+        transitionTo(State.IDLE)
+    }
+
+    // ─────────────────────────────────────────────────
     // 核心：用户输入触发 Translation→TTS 管线
     // ─────────────────────────────────────────────────
 
-    private fun onUserInput(requestId: String, text: String) {
+    private fun onUserInput(requestId: String, text: String, dir: String) {
         val previousId = activeRequestId
         cancelActiveJob("new_input")
         activeRequestId = requestId
+
+        // 按本次方向解算源/目标语言（srcLang 可能为 null：交给翻译服务自动检测）
+        val (sourceForCall, targetForCall) = if (dir == DIRECTION_DST_TO_SRC) {
+            dstLang to (srcLang ?: dstLang)
+        } else {
+            (srcLang) to dstLang
+        }
 
         activeJob = scope.launch {
             // Mark previous assistant message as cancelled
@@ -216,8 +352,8 @@ class TranslateAgentSession : NativeAgent {
             val translationResult = try {
                 translationService.translate(
                     text = text,
-                    targetLang = dstLang,
-                    sourceLang = srcLang,
+                    targetLang = targetForCall,
+                    sourceLang = sourceForCall,
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -374,12 +510,32 @@ class TranslateAgentSession : NativeAgent {
         override fun onPartialResult(text: String) {
             eventSink.onSttEvent(SttEventData(config.agentId, requestId = "", kind = "partialResult", text = text))
         }
+        override fun onPartialResult(text: String, detectedLang: String?) {
+            eventSink.onSttEvent(SttEventData(
+                config.agentId, requestId = "", kind = "partialResult",
+                text = text, detectedLang = detectedLang,
+            ))
+        }
         override fun onFinalResult(text: String) {
+            // 厂商未提供 detectedLang 时进入此路径
+            handleFinal(text, detectedLang = null)
+        }
+        override fun onFinalResult(text: String, detectedLang: String?) {
+            handleFinal(text, detectedLang)
+        }
+
+        private fun handleFinal(text: String, detectedLang: String?) {
+            // 暂存供 push-to-talk 路径下的 sendText 消费（call 模式直接走下面分支也用到）
+            lastSttDetectedLang = detectedLang
             val reqId = UUID.randomUUID().toString()
-            eventSink.onSttEvent(SttEventData(config.agentId, requestId = reqId, kind = "finalResult", text = text))
-            // call 模式：自动触发翻译管线
+            eventSink.onSttEvent(SttEventData(
+                config.agentId, requestId = reqId, kind = "finalResult",
+                text = text, detectedLang = detectedLang,
+            ))
+            // call 模式：自动触发翻译管线，方向按 bidirectional + detectedLang 解算
             if (inputMode == "call") {
-                onUserInput(reqId, text)
+                lastSttDetectedLang = null  // 由 onUserInput 直接消费 detectedLang
+                onUserInput(reqId, text, resolveDirection(detectedLang))
             }
         }
         override fun onVadSpeechStart() {
@@ -424,6 +580,11 @@ class TranslateAgentSession : NativeAgent {
     }
 
     private fun startContinuousListening() {
+        if (externalAudioActive) {
+            Log.d(TAG, "startContinuousListening skipped: external audio active")
+            transitionTo(State.LISTENING)
+            return
+        }
         Log.d(TAG, "startContinuousListening")
         transitionTo(State.LISTENING)
         sttService.startListening(sttCallback)

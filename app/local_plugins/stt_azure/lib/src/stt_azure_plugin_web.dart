@@ -18,6 +18,9 @@ class SttAzurePluginDart implements SttPlugin {
   bool _listening = false;
 
   @override
+  bool get supportsLanguageDetection => false;
+
+  @override
   Future<void> initialize(SttConfig config) async {
     _controller ??= StreamController<SttEvent>.broadcast();
 

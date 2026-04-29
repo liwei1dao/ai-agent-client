@@ -1,0 +1,80 @@
+group = "com.jielihome.jielihome"
+version = "1.0-SNAPSHOT"
+
+buildscript {
+    ext.kotlin_version = "2.1.0"
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.7.3")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        flatDir {
+            dirs "libs"
+        }
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+android {
+    namespace = "com.jielihome.jielihome"
+
+    compileSdk = 36
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+        test.java.srcDirs += "src/test/kotlin"
+    }
+
+    defaultConfig {
+        minSdk = 21
+    }
+
+    dependencies {
+        // The JieLi AARs are compile-only here. The host app must redeclare them
+        // as runtime dependencies in its own build.gradle (see example/android/app).
+        compileOnly fileTree(dir: 'libs', include: ['*.aar', '*.jar'])
+        // device_plugin_interface 提供 DeviceCallTranslationPort 等通用接口，
+        // 让 JieliCallTranslationPort 可以无 vendor 耦合地被 translate_server 消费。
+        implementation project(':device_plugin_interface')
+        implementation "com.squareup.okhttp3:okhttp:4.12.0"
+        implementation "com.google.code.gson:gson:2.10.1"
+        implementation "androidx.core:core-ktx:1.13.1"
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+
+        testImplementation("org.jetbrains.kotlin:kotlin-test")
+        testImplementation("org.mockito:mockito-core:5.0.0")
+    }
+
+    testOptions {
+        unitTests.all {
+            useJUnitPlatform()
+
+            testLogging {
+               events "passed", "skipped", "failed", "standardOut", "standardError"
+               outputs.upToDateWhen {false}
+               showStandardStreams = true
+            }
+        }
+    }
+}

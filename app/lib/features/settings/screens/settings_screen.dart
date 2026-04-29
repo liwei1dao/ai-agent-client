@@ -5,14 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:agents_server/agents_server.dart';
+import 'package:go_router/go_router.dart';
+import 'package:local_db/local_db.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:tts_azure/tts_azure.dart';
 import '../../../core/services/config_service.dart';
+import '../../../core/services/device_service.dart';
 import '../../../core/services/log_service.dart';
 import '../../../core/services/voitrans_service.dart' show polychatServiceProvider;
 import '../../../shared/themes/app_theme.dart';
 import '../../agents/providers/agent_list_provider.dart';
-import '../../chat/providers/chat_provider.dart';
+import '../../chat/providers/agent_screen_provider.dart';
 import '../../services/providers/service_library_provider.dart';
 import 'log_viewer_screen.dart';
 
@@ -157,7 +160,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await ref.read(serviceLibraryProvider.notifier).reload();
       // Invalidate any open chat agent state so reopened pages re-init from
       // the freshly synced config (语言列表 / agentId 等).
-      ref.invalidate(chatAgentProvider);
+      ref.invalidate(agentScreenProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -656,6 +659,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
 
+          // ── 设备 ──
+          const _SectionLabel('设备'),
+          _DeviceSection(),
+
           // ── PolyChat 平台 ──
           const _SectionLabel('PolyChat 平台'),
           _SectionCard(
@@ -934,6 +941,305 @@ class _ThemePill extends StatelessWidget {
       style: const ButtonStyle(
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+}
+
+// ── 设备区块（厂商选择 + 默认 chat/translate agent） ──
+class _DeviceSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.appColors;
+    final config = ref.watch(configServiceProvider);
+    final agents = ref.watch(agentListProvider);
+    final vendors = buildVendorOptions();
+
+    final chatAgents =
+        agents.where((a) => a.type == 'chat' || a.type == 'sts-chat').toList();
+    final translateAgents = agents
+        .where((a) => a.type == 'translate' || a.type == 'ast-translate')
+        .toList();
+
+    return _SectionCard(
+      children: [
+        // 设备厂商（标题在上，下拉框单独占一行，避免横向挤压）
+        Padding(
+          padding:
+              const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('设备厂商',
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: colors.text1)),
+              const SizedBox(height: 2),
+              Text('切换厂商会断开当前设备',
+                  style:
+                      TextStyle(fontSize: 11, color: colors.text2)),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: DropdownButtonFormField<String?>(
+                  value: config.deviceVendor,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide:
+                          BorderSide(color: colors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide:
+                          BorderSide(color: colors.border),
+                    ),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('未选择'),
+                    ),
+                    ...vendors.map(
+                      (v) => DropdownMenuItem<String?>(
+                        value: v.key,
+                        enabled: v.available,
+                        child: Text(
+                          v.available
+                              ? v.label
+                              : '${v.label}（敬请期待）',
+                          style: TextStyle(
+                            color: v.available ? null : colors.text2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    ref
+                        .read(configServiceProvider.notifier)
+                        .setDeviceVendor(v);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        Divider(height: 1, color: colors.border),
+
+        // 杰理链接方式（仅杰理厂商可见）
+        if (config.deviceVendor == 'jieli') ...[
+          _JieliConnectWayTile(current: config.jieliConnectWay),
+          Divider(height: 1, color: colors.border),
+        ],
+
+        // 默认聊天 agent
+        _AgentPickerTile(
+          icon: Icons.chat_bubble_outline,
+          title: '默认聊天 Agent',
+          subtitle: '设备唤醒（PTT / 语音唤醒）后自动启动',
+          options: chatAgents,
+          currentId: config.defaultChatAgentId,
+          onChanged: (id) => ref
+              .read(configServiceProvider.notifier)
+              .setDefaultChatAgentId(id),
+        ),
+        Divider(height: 1, color: colors.border),
+
+        // 默认翻译 agent
+        _AgentPickerTile(
+          icon: Icons.translate_outlined,
+          title: '默认翻译 Agent',
+          subtitle: '设备翻译键触发后自动启动',
+          options: translateAgents,
+          currentId: config.defaultTranslateAgentId,
+          onChanged: (id) => ref
+              .read(configServiceProvider.notifier)
+              .setDefaultTranslateAgentId(id),
+        ),
+        Divider(height: 1, color: colors.border),
+
+        // 进入设备管理页
+        ListTile(
+          leading: const Icon(Icons.bluetooth_searching,
+              color: AppTheme.primary, size: 20),
+          title: Text('设备扫描与连接',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: colors.text1)),
+          subtitle: Text(config.deviceVendor == null
+              ? '请先选择厂商'
+              : '扫描可用耳机并建立连接',
+              style: TextStyle(fontSize: 12, color: colors.text2)),
+          trailing:
+              Icon(Icons.chevron_right, color: colors.text2, size: 20),
+          enabled: config.deviceVendor != null,
+          onTap: config.deviceVendor == null
+              ? null
+              : () => GoRouter.of(context).go('/devices'),
+        ),
+      ],
+    );
+  }
+}
+
+class _AgentPickerTile extends StatelessWidget {
+  const _AgentPickerTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.options,
+    required this.currentId,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<AgentDto> options;
+  final String? currentId;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final exists = options.any((a) => a.id == currentId);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: AppTheme.primary, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: colors.text1)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: TextStyle(
+                            fontSize: 11, color: colors.text2)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: DropdownButtonFormField<String?>(
+              value: exists ? currentId : null,
+              isExpanded: true,
+              hint: Text(options.isEmpty ? '无可选 Agent' : '未选择'),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: colors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: colors.border),
+                ),
+              ),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('未选择'),
+                ),
+                ...options.map(
+                  (a) => DropdownMenuItem<String?>(
+                    value: a.id,
+                    child: Text(a.name,
+                        style: TextStyle(color: colors.text1)),
+                  ),
+                ),
+              ],
+              onChanged: options.isEmpty ? null : onChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 杰理设备链接方式选择（仅 Android 杰理生效）。
+class _JieliConnectWayTile extends ConsumerWidget {
+  const _JieliConnectWayTile({required this.current});
+
+  final JieliConnectWay current;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.appColors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bluetooth_connected,
+                  color: AppTheme.primary, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('链接方式（杰理）',
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: colors.text1)),
+                    const SizedBox(height: 2),
+                    Text('自动按设备广播；BLE / SPP 强制下次连接走该协议',
+                        style:
+                            TextStyle(fontSize: 11, color: colors.text2)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<JieliConnectWay>(
+            segments: const [
+              ButtonSegment(
+                value: JieliConnectWay.auto,
+                label: Text('自动'),
+              ),
+              ButtonSegment(
+                value: JieliConnectWay.ble,
+                label: Text('BLE'),
+              ),
+              ButtonSegment(
+                value: JieliConnectWay.spp,
+                label: Text('SPP'),
+              ),
+            ],
+            selected: {current},
+            onSelectionChanged: (s) {
+              ref
+                  .read(configServiceProvider.notifier)
+                  .setJieliConnectWay(s.first);
+            },
+          ),
+        ],
       ),
     );
   }

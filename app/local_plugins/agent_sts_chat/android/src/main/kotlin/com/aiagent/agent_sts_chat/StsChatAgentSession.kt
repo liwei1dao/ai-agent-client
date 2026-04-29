@@ -87,6 +87,11 @@ class StsChatAgentSession : NativeAgent {
                 Log.e(TAG, "STS connect failed: ${e.message}")
                 transitionTo(State.ERROR)
                 eventSink.onError(config.agentId, "sts_connect_error", e.message ?: "Unknown error", null)
+                eventSink.onAgentReady(
+                    config.agentId, ready = false,
+                    errorCode = "sts_connect_error",
+                    errorMessage = e.message ?: "Unknown error",
+                )
             }
         }
     }
@@ -151,6 +156,7 @@ class StsChatAgentSession : NativeAgent {
         override fun onConnected() {
             transitionTo(State.CONNECTED)
             eventSink.onConnectionStateChanged(config.agentId, "connected")
+            eventSink.onAgentReady(config.agentId, ready = true)
             Log.d(TAG, "WebSocket connected, inputMode=$inputMode")
             // 如果用户已切换到 call 模式但连接还没好，现在自动启动音频
             if (inputMode == "call") {
@@ -234,6 +240,7 @@ class StsChatAgentSession : NativeAgent {
             transitionTo(State.ERROR)
             eventSink.onConnectionStateChanged(config.agentId, "error", message)
             eventSink.onError(config.agentId, code, message, null)
+            eventSink.onAgentReady(config.agentId, ready = false, errorCode = code, errorMessage = message)
         }
 
         override fun onSpeechStart() {

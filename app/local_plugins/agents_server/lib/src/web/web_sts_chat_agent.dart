@@ -78,6 +78,9 @@ class WebStsChatAgent implements WebAgent {
   Future<void> stopListening() async {}
 
   @override
+  Future<void> setOption(String key, String value) async {}
+
+  @override
   Future<void> setInputMode(String mode) async {
     _config.inputMode = mode;
     // STS plugin manages mic lifecycle on web via startCall; no extra hooks.
@@ -108,6 +111,10 @@ class WebStsChatAgent implements WebAgent {
           sessionId: _config.agentId,
           connectionState: ServiceConnectionState.connected,
         ));
+        _emit(AgentReadyEvent(
+          sessionId: _config.agentId,
+          ready: true,
+        ));
         break;
 
       case ai.StsEventType.disconnected:
@@ -123,6 +130,12 @@ class WebStsChatAgent implements WebAgent {
         _emit(ServiceConnectionStateEvent(
           sessionId: _config.agentId,
           connectionState: ServiceConnectionState.error,
+          errorMessage: e.errorMessage,
+        ));
+        _emit(AgentReadyEvent(
+          sessionId: _config.agentId,
+          ready: false,
+          errorCode: e.errorCode ?? 'sts_error',
           errorMessage: e.errorMessage,
         ));
         _emit(AgentErrorEvent(

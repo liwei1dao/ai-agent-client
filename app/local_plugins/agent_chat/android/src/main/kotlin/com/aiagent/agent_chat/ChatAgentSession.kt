@@ -80,6 +80,14 @@ class ChatAgentSession : NativeAgent {
 
     private var inputMode: String = "text"
 
+    /**
+     * 通话翻译等外部音频源场景下为 true：STT 已通过 [startExternalAudio] 进入
+     * `externalMode`，由 [pushExternalAudioFrame] 持续灌入 PCM。此时**不得**走
+     * self-mic 路径再调 `sttService.startListening` —— 否则会触发 `stt_busy`。
+     */
+    @Volatile
+    private var externalAudioActive: Boolean = false
+
     // ─────────────────────────────────────────────────
     // NativeAgent 接口实现
     // ─────────────────────────────────────────────────
@@ -103,11 +111,20 @@ class ChatAgentSession : NativeAgent {
         Log.d(TAG, "initialized: agentId=${config.agentId} stt=${config.sttVendor} llm=${config.llmVendor} tts=${config.ttsVendor}")
     }
 
+    override fun connectService() {
+        // 三段式 agent 无远端长连接：服务在 initialize 阶段已就位，立即上报 ready。
+        eventSink.onAgentReady(config.agentId, ready = true)
+    }
+
     override fun sendText(requestId: String, text: String) {
         onUserInput(requestId, text)
     }
 
     override fun startListening() {
+        if (externalAudioActive) {
+            Log.d(TAG, "startListening skipped: external audio active")
+            return
+        }
         transitionTo(State.LISTENING)
         sttService.startListening(sttCallback)
     }
@@ -121,6 +138,9 @@ class ChatAgentSession : NativeAgent {
         inputMode = mode
         when (mode) {
             "call" -> {
+                // 外部音频源场景下：STT 已在 externalMode，识别由 push 帧驱动，
+                // 切勿再走 self-mic 路径 —— 否则触发 stt_busy。
+                if (externalAudioActive) return
                 llmService.cancel()
                 ttsService.stop()
                 cancelActiveJob("mode_switch_call")
@@ -144,6 +164,47 @@ class ChatAgentSession : NativeAgent {
         scope.cancel()
         sttService.release()
         ttsService.release()
+    }
+
+    // ─────────────────────────────────────────────────
+    // 外部音频源（通话翻译等场景）—— 转发给 sttService + ttsService
+    //
+    // 协议：上行 PCM 由调用方推进 STT；TTS 不再走本地扬声器，而是把合成 PCM
+    // 切帧回灌 sink。识别 finalResult 在 inputMode=="call" 路径下自动驱动
+    // LLM + TTS 管线。
+    // ─────────────────────────────────────────────────
+
+    override fun externalAudioCapability(): ExternalAudioCapability {
+        val s = sttService.externalAudioCapability()
+        val t = ttsService.externalAudioCapability()
+        return ExternalAudioCapability(
+            acceptsOpus = s.acceptsOpus && t.acceptsOpus,
+            acceptsPcm = s.acceptsPcm && t.acceptsPcm,
+            preferredSampleRate = s.preferredSampleRate,
+            preferredChannels = s.preferredChannels,
+            preferredFrameMs = s.preferredFrameMs,
+        )
+    }
+
+    override fun startExternalAudio(format: ExternalAudioFormat, sink: ExternalAudioSink) {
+        inputMode = "call"
+        externalAudioActive = true
+        ttsService.startExternalAudio(format, sink)
+        sttService.startExternalAudio(format, sttCallback)
+    }
+
+    override fun pushExternalAudioFrame(frame: ByteArray) {
+        sttService.pushExternalAudioFrame(frame)
+    }
+
+    override fun stopExternalAudio() {
+        externalAudioActive = false
+        sttService.stopExternalAudio()
+        llmService.cancel()
+        ttsService.stop()
+        ttsService.stopExternalAudio()
+        cancelActiveJob("external_audio_stop")
+        transitionTo(State.IDLE)
     }
 
     // ─────────────────────────────────────────────────
@@ -445,6 +506,11 @@ class ChatAgentSession : NativeAgent {
     }
 
     private fun startContinuousListening() {
+        if (externalAudioActive) {
+            Log.d(TAG, "startContinuousListening skipped: external audio active")
+            transitionTo(State.LISTENING)
+            return
+        }
         Log.d(TAG, "startContinuousListening")
         transitionTo(State.LISTENING)
         sttService.startListening(sttCallback)

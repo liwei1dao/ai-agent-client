@@ -13,6 +13,10 @@ import android.util.Log
 import com.aiagent.plugin_interface.AstCallback
 import com.aiagent.plugin_interface.AstRole
 import com.aiagent.plugin_interface.AudioOutputManager
+import com.aiagent.plugin_interface.ExternalAudioCapability
+import com.aiagent.plugin_interface.ExternalAudioFormat
+import com.aiagent.plugin_interface.ExternalAudioFrame
+import com.aiagent.plugin_interface.ExternalAudioSink
 import com.aiagent.plugin_interface.NativeAstService
 import kotlinx.coroutines.*
 import okhttp3.*
@@ -87,6 +91,8 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
     @Volatile private var isRunning      = false
     @Volatile private var isConnected    = false
     @Volatile private var isAudioRunning = false
+    @Volatile private var externalMode   = false
+    @Volatile private var externalSink: ExternalAudioSink? = null
     @Volatile private var remoteSessionId: String = ""
     @Volatile private var connectId: String = ""
     @Volatile private var srcLang: String = "zh"
@@ -146,8 +152,12 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
 
                 Log.d(TAG, "connect(): appKey=$appKey resourceId=$resourceId srcLang=$srcLang dstLang=$dstLang")
 
-                setupAudioRecord()
-                setupAudioTrack()
+                // 注意：connect() 阶段**不**碰本地音频硬件。
+                // setupAudioRecord / setupAudioTrack 会触发
+                // AudioManager.MODE_IN_COMMUNICATION + clearCommunicationDevice，
+                // 把系统蓝牙 SCO 通道抢走，与 call-translation external audio 模式
+                // 下 jieli RCSP MODE_CALL_TRANSLATION 互斥；耳机推不上 OPUS 翻译帧。
+                // 因此把硬件初始化推迟到 startAudio()（仅 self-mic 模式调用）。
 
                 wsReady        = CompletableDeferred()
                 sessionStarted = CompletableDeferred()
@@ -191,7 +201,16 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
             Log.d(TAG, "startAudio: skip (connected=$isConnected, audioRunning=$isAudioRunning)")
             return
         }
+        if (externalMode) {
+            Log.w(TAG, "startAudio: skip (externalMode active — call startExternalAudio path)")
+            return
+        }
         Log.d(TAG, "startAudio()")
+        // self-mic 模式所需的硬件资源：本地 AudioRecord + AEC/NS + AudioTrack。
+        // 仅在 startAudio() 这里 lazy 创建，避免在 external-audio 模式下错误地
+        // 抢占系统蓝牙 SCO（参见 connect() 注释）。
+        if (audioRecord == null) setupAudioRecord()
+        if (audioTrack == null) setupAudioTrack()
         // 确保音频输出路由在开始音频前是正确的
         AudioOutputManager.applyMode()
         isAudioRunning = true
@@ -215,6 +234,7 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
     override fun release() {
         Log.d(TAG, "release()")
         stopAudio()
+        stopExternalAudio()
         isRunning = false
         isConnected = false
         try { sendProto(buildTranslateRequest(EVT_FINISH_SESSION)) } catch (_: Exception) {}
@@ -231,6 +251,72 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
         ns  = null
         callback?.onDisconnected()
         callback = null
+    }
+
+    // ─── 外部音频源（通话翻译等场景） ─────────────────────────────────────
+    //
+    // 与 startAudio()/stopAudio() 互斥：通话翻译走 RCSP OPUS → device_jieli native
+    // 解码为 PCM → 编排器 push 进来；service 把服务端 TTS PCM 通过 sink 回写，
+    // 编排器再调 device 端口灌回耳机。
+
+    override fun externalAudioCapability(): ExternalAudioCapability =
+        ExternalAudioCapability(
+            acceptsOpus = false,
+            acceptsPcm = true,
+            preferredSampleRate = MIC_SAMPLE_RATE,
+            preferredChannels = 1,
+            preferredFrameMs = 20,
+        )
+
+    override fun startExternalAudio(format: ExternalAudioFormat, sink: ExternalAudioSink) {
+        if (format.codec != ExternalAudioFormat.Codec.PCM_S16LE) {
+            throw IllegalArgumentException(
+                "ast_volcengine accepts only PCM_S16LE (got ${format.codec}); " +
+                    "device side must decode OPUS first")
+        }
+        if (format.sampleRate != MIC_SAMPLE_RATE || format.channels != 1) {
+            throw IllegalArgumentException(
+                "ast_volcengine requires ${MIC_SAMPLE_RATE}Hz mono " +
+                    "(got ${format.sampleRate}Hz/${format.channels}ch)")
+        }
+        if (!isConnected) {
+            throw IllegalStateException(
+                "ast_volcengine not connected; call connect() first")
+        }
+        if (isAudioRunning) {
+            throw IllegalStateException(
+                "external audio cannot mix with self-mic mode (stopAudio first)")
+        }
+        if (externalMode) {
+            Log.d(TAG, "startExternalAudio: already active, replacing sink")
+        }
+        externalSink = sink
+        externalMode = true
+        Log.d(TAG, "startExternalAudio: PCM_S16LE ${format.sampleRate}Hz mono ${format.frameMs}ms")
+    }
+
+    override fun pushExternalAudioFrame(frame: ByteArray) {
+        if (!externalMode || !isConnected || frame.isEmpty()) return
+        // 调试：周期性打一次 push 统计，确认 frames 真的发出去了。
+        externalPushCount++
+        val now = System.currentTimeMillis()
+        if (now - externalPushReportMs >= 1000L) {
+            Log.d(TAG, "pushExternalAudioFrame stats (last 1s): count=$externalPushCount bytes=${frame.size}")
+            externalPushCount = 0
+            externalPushReportMs = now
+        }
+        // 直接走 protobuf TaskRequest；与 startAudioPump 内同样的封包路径。
+        sendProto(buildAudioFrame(frame))
+    }
+
+    @Volatile private var externalPushCount = 0L
+    @Volatile private var externalPushReportMs = 0L
+
+    override fun stopExternalAudio() {
+        if (!externalMode) return
+        externalMode = false
+        externalSink = null
+        Log.d(TAG, "stopExternalAudio")
     }
 
     // ─── Protobuf Encoding ───────────────────────────────────────────────────────
@@ -409,6 +495,10 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
         val statusCode = fieldLong(metaFields, 3).toInt()
         val message    = fieldStr(metaFields, 4)
 
+        // 一旦本地主动关掉了 WS（webSocket == null），服务端可能仍在发尾包 /
+        // 重复 SessionFailed 帧——全部丢弃，避免日志刷屏 + 反复回调上层。
+        if (webSocket == null) return
+
         Log.d(TAG, "RX event=$event status=$statusCode text=\"${text.take(60)}\" audioLen=${audioData.size}")
 
         when (event) {
@@ -427,7 +517,13 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
             EVT_SESSION_FAILED -> {
                 val err = "SessionFailed status=$statusCode msg=$message"
                 Log.e(TAG, err)
+                isConnected = false
                 runCatching { sessionStarted.completeExceptionally(Exception(err)) }
+                // 立刻关 WS 并把引用置 null —— 后续重复 SessionFailed 帧会被
+                // handleResponse 入口的 `webSocket == null` 守卫挡掉，避免刷屏
+                // 和反复回调 onError。
+                runCatching { webSocket?.close(1000, "session_failed") }
+                webSocket = null
                 callback?.onError("ast_session_failed", err)
             }
 
@@ -709,10 +805,22 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
     }
 
     private fun writeAudio(data: ByteArray) {
-        if (data.isNotEmpty()) {
-            val amplified = amplifyPcm(data)
-            audioTrack?.write(amplified, 0, amplified.size)
+        if (data.isEmpty()) return
+        // 外部音频模式：不放本地扬声器，回写给 sink，由编排器决定下游去向（如灌回耳机）。
+        // 注：外部模式下不应用软件增益——耳机端通常自带输出增益，避免重复放大产生 clipping。
+        if (externalMode) {
+            externalSink?.onTtsFrame(
+                ExternalAudioFrame(
+                    codec = ExternalAudioFormat.Codec.PCM_S16LE,
+                    sampleRate = TTS_SAMPLE_RATE,
+                    channels = 1,
+                    bytes = data,
+                )
+            )
+            return
         }
+        val amplified = amplifyPcm(data)
+        audioTrack?.write(amplified, 0, amplified.size)
     }
 
     // ─── Hardware Init ────────────────────────────────────────────────────────────

@@ -99,6 +99,13 @@ class AgentsServerPlugin : FlutterPlugin {
                     svc!!.getAgent(agentId)?.setInputMode(call.argument<String>("mode")!!)
                     result.success(null)
                 }
+                "setAgentOption" -> {
+                    val agentId = call.argument<String>("agentId")!!
+                    val key = call.argument<String>("key")!!
+                    val value = call.argument<String>("value") ?: ""
+                    svc!!.getAgent(agentId)?.setOption(key, value)
+                    result.success(null)
+                }
                 "startListening" -> {
                     svc!!.getAgent(call.argument<String>("agentId")!!)?.startListening()
                     result.success(null)
