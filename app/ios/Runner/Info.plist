@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Ai Agent Client</string>
+	<string>云衍测试平台</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -53,9 +53,9 @@
 	</array>
 	<!-- 麦克风权限 -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>AI Agent 需要麦克风权限用于语音识别</string>
+	<string>云衍测试平台 需要麦克风权限用于语音识别</string>
 	<!-- 语音识别权限（SFSpeechRecognizer） -->
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>AI Agent 需要语音识别权限</string>
+	<string>云衍测试平台 需要语音识别权限</string>
 </dict>
 </plist>

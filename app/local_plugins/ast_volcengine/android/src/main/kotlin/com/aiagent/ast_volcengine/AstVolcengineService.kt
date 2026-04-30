@@ -268,6 +268,17 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
         // 仅在 startAudio() 这里 lazy 创建，避免在 external-audio 模式下错误地
         // 抢占系统蓝牙 SCO（参见 connect() 注释）。
         if (audioRecord == null) setupAudioRecord()
+        // 二次检查：setupAudioRecord 可能因权限缺失 / mic 被占用而失败并把字段置回 null。
+        val ar = audioRecord
+        if (ar == null || ar.state != AudioRecord.STATE_INITIALIZED) {
+            val msg = "AudioRecord 未初始化（权限缺失或麦克风被占用）"
+            Log.e(TAG, "startAudio: $msg")
+            // 回收掉残废对象，避免后续 isAudioRunning 检查跳过 setup。
+            runCatching { ar?.release() }
+            audioRecord = null
+            callback?.onError("audio_busy", msg)
+            return
+        }
         if (audioTrack == null) setupAudioTrack()
         // 确保音频输出路由在开始音频前是正确的
         AudioOutputManager.applyMode()
@@ -1004,12 +1015,15 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
             MIC_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT, bufSize,
         )
-        audioRecord = ar
         // 1=STATE_INITIALIZED 即就绪；0=STATE_UNINITIALIZED 表示构造失败（权限 / 被占用）。
         val arState = ar.state
         if (arState != AudioRecord.STATE_INITIALIZED) {
-            Log.e(TAG, "AudioRecord NOT initialized (state=$arState) — RECORD_AUDIO 权限缺失或麦克风被占用")
+            Log.e(TAG, "AudioRecord NOT initialized (state=$arState) — RECORD_AUDIO 权限缺失或麦克风被占用，已回收残废对象")
+            runCatching { ar.release() }
+            audioRecord = null
+            return
         }
+        audioRecord = ar
         val sid = ar.audioSessionId
         if (AcousticEchoCanceler.isAvailable()) aec = AcousticEchoCanceler.create(sid)?.also { it.enabled = true }
         if (NoiseSuppressor.isAvailable())      ns  = NoiseSuppressor.create(sid)?.also { it.enabled = true }

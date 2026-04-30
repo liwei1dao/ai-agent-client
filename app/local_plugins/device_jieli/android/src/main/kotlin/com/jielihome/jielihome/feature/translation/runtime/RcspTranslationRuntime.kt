@@ -142,15 +142,19 @@ class RcspTranslationRuntime(
         /**
          * 周期性 flush 间隔：每隔此毫秒数巡检一次 buffer，**只要非空就 flush**。
          *
-         * 设计理由：
-         *   - 火山 AST 等端到端服务的段尾事件（TTS_ENDED / TRANS_SUBTITLE_END）颗粒度
-         *     不可靠——有时根本不发，有时延迟数秒，无法据此驱动 flush。
-         *   - 字节累计阈值（"buffer 攒满 N 秒"）也不行：短句永远凑不够字节就卡死。
-         *   - 唯一可靠的是**纯时间驱动**：每秒切一次 buffer，已收到的 PCM 立即编码下发；
-         *     OPUS 流可以多段连续拼接，对方耳机听感连续，最大延迟 ≤ 1s。
-         *   - isFinal=true 仍然短路立刻下发（兼容主动信号），但不再依赖它。
+         * 实测：低于 1s（试过 200ms）耳机端 RCSP 解码器会被频繁 reset 直至死机，
+         * 因此周期上限只能保持 1s。降低段间延迟改走"首段优先 flush"路线（B）。
          */
         private const val PERIODIC_FLUSH_MS = 1_000L
+        /**
+         * 首段优先 flush 阈值（路线 B）：每个 utterance 的**首段**达到此毫秒数对应字节量
+         * 就立即 flush，不等周期。让用户开口到对方听到的延迟尽可能小（< 200ms）。
+         *
+         * 触发后转入周期模式直到 isFinal=true 重置。火山不发 isFinal 的会话里，
+         * 只有第一句享受首段优先；后续句统一走 [PERIODIC_FLUSH_MS] 周期。这是为了
+         * 避免连续讲话被反复识别成"新 utterance"导致每 100ms 切一段、reset 频率失控。
+         */
+        private const val FIRST_SEGMENT_FLUSH_MS = 100L
     }
 
     /**
@@ -242,6 +246,8 @@ class RcspTranslationRuntime(
      * key = outputStreamId（OUT_UPLINK / OUT_DOWNLINK / OUT_SPEAKER 等）
      */
     private val pcmBuffers = mutableMapOf<String, ByteArrayOutputStream>()
+    /** 每条 leg 是否仍处于"等待首段触发"状态（路线 B 首段优先 flush 用）。 */
+    private val firstSegmentPending = mutableMapOf<String, Boolean>()
     private val bufferLock = Any()
     private var encodeSeq = 0L
 
@@ -339,10 +345,12 @@ class RcspTranslationRuntime(
             writeBack(AudioData(source, Constants.AUDIO_TYPE_PCM, pcm))
             return true
         }
-        // OPUS 模式：仅累积到 buffer。
-        //   - 切片节奏完全由 [PERIODIC_FLUSH_MS] 巡检线程驱动（每秒 flush 一次）
-        //   - isFinal=true 时立刻短路 flush 当前残余，不等下一次 tick
-        // 这样不依赖任何外部段尾事件，对方耳机最大听感延迟 ≤ 1s。
+        // OPUS 模式：累积到 buffer，三条 flush 触发链（按优先级）：
+        //   1. isFinal=true            → 立即 flush，并把首段优先重置回 true（下一句新算）
+        //   2. 首段优先（路线 B）       → 当前 leg 处于 firstSegmentPending=true 且 buffer
+        //                                 累积到 FIRST_SEGMENT_FLUSH_MS 字节量时立即 flush，
+        //                                 让"开口到对方听见"的延迟最小化（< 200ms）
+        //   3. 周期 flush（路线 A）     → 由 [PERIODIC_FLUSH_MS] 巡检线程接管
         val pendingFlush: ByteArray? = synchronized(bufferLock) {
             val buf = pcmBuffers.getOrPut(outputStreamId) { ByteArrayOutputStream() }
             if (pcm.isNotEmpty()) {
@@ -353,10 +361,26 @@ class RcspTranslationRuntime(
                 }
                 buf.write(pcm)
             }
-            if (!isFinal) return@synchronized null
-            val out = buf.toByteArray()
-            buf.reset()
-            if (out.isEmpty()) null else out
+            // 1) 段尾信号：立即下发尾段并把首段标志重置回 true。
+            if (isFinal) {
+                firstSegmentPending[outputStreamId] = true
+                val out = buf.toByteArray()
+                buf.reset()
+                return@synchronized if (out.isEmpty()) null else out
+            }
+            // 2) 首段优先：仅当 leg 处于 pending 状态（首次 utterance 起始或 isFinal 重置后）。
+            val pending = firstSegmentPending.getOrDefault(outputStreamId, true)
+            if (pending) {
+                val firstFlushBytes = (sampleRateHz * 2 * FIRST_SEGMENT_FLUSH_MS / 1000L).toInt()
+                if (buf.size() >= firstFlushBytes) {
+                    firstSegmentPending[outputStreamId] = false
+                    val out = buf.toByteArray()
+                    buf.reset()
+                    Log.d(TAG, "firstSegmentFlush: leg=$outputStreamId bytes=${out.size}")
+                    return@synchronized if (out.isEmpty()) null else out
+                }
+            }
+            null
         }
         if (pendingFlush != null) {
             encodeAndDispatchAsync(source, outputStreamId, pendingFlush)
@@ -426,6 +450,7 @@ class RcspTranslationRuntime(
         synchronized(bufferLock) {
             pcmBuffers.values.forEach { it.reset() }
             pcmBuffers.clear()
+            firstSegmentPending.clear()
         }
     }
 

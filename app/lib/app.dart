@@ -97,7 +97,7 @@ class _AppState extends ConsumerState<App> {
     ref.watch(deviceAutoReconnectProvider);
 
     return MaterialApp.router(
-      title: 'AI Agents',
+      title: '云衍测试平台',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: appConfig.themeMode,

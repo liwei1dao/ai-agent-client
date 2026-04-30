@@ -210,7 +210,7 @@ class LogService {
     final out = File('${tmp.path}/ai_agent_logs_$stamp.log');
     final sink = out.openWrite();
 
-    sink.writeln('# AI Agent Client 日志导出');
+    sink.writeln('# 云衍测试平台 日志导出');
     sink.writeln('# 导出时间: ${DateTime.now().toIso8601String()}');
     sink.writeln('# 平台: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
     sink.writeln('');

@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:local_db/local_db.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:tts_azure/tts_azure.dart';
+import '../../../core/security/config_crypto.dart';
 import '../../../core/services/config_service.dart';
 import '../../../core/services/device_service.dart';
 import '../../../core/services/log_service.dart';
@@ -100,7 +101,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // 优先走系统分享；用户可以选择保存到文件、AirDrop、邮件等
       await Share.shareXFiles(
         [XFile(file.path)],
-        subject: 'AI Agent Client 日志',
+        subject: '云衍测试平台 日志',
         text: '应用日志导出 ${DateTime.now().toIso8601String()}',
       );
     } catch (e) {
@@ -301,16 +302,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _exportData(BuildContext context, String scope) async {
-    String jsonStr;
+    String plainJson;
+    int agentsCount = 0;
+    int servicesCount = 0;
     String fileName;
     switch (scope) {
       case 'agents':
-        jsonStr = ref.read(agentListProvider.notifier).exportAgentsJson();
+        plainJson = ref.read(agentListProvider.notifier).exportAgentsJson();
+        agentsCount =
+            (jsonDecode(plainJson)['agents'] as List?)?.length ?? 0;
         fileName = 'agents_export.json';
         break;
       case 'services':
-        jsonStr =
+        plainJson =
             ref.read(serviceLibraryProvider.notifier).exportServicesJson();
+        servicesCount =
+            (jsonDecode(plainJson)['services'] as List?)?.length ?? 0;
         fileName = 'services_export.json';
         break;
       default:
@@ -318,23 +325,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ref.read(agentListProvider.notifier).exportAgentsJson());
         final servicesData = jsonDecode(
             ref.read(serviceLibraryProvider.notifier).exportServicesJson());
-        jsonStr = jsonEncode({
+        agentsCount = (agentsData['agents'] as List?)?.length ?? 0;
+        servicesCount = (servicesData['services'] as List?)?.length ?? 0;
+        plainJson = jsonEncode({
           'agents': agentsData['agents'],
           'services': servicesData['services'],
         });
         fileName = 'ai_agent_export.json';
     }
 
+    // 配置中包含 API Key / App Secret 等敏感字段，强制要求设置密码加密。
+    final password = await _showExportPasswordDialog(context);
+    if (password == null) return;
+
+    final String exportJson;
+    try {
+      exportJson = await _runWithLoading(
+        '正在加密…',
+        () => ConfigCrypto.encryptJson(
+          plainJson,
+          password,
+          meta: {
+            'agents': agentsCount,
+            'services': servicesCount,
+            'exportedAt': DateTime.now().toIso8601String(),
+          },
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('加密失败: $e'),
+            backgroundColor: const Color(0xFFEF4444)),
+      );
+      return;
+    }
+
     try {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/$fileName');
-      await file.writeAsString(jsonStr);
+      await file.writeAsString(exportJson);
 
       if (!mounted) return;
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'application/json')],
-        subject: 'AI Agent Client 配置',
-        text: '配置导出 ${DateTime.now().toIso8601String()}',
+        subject: '云衍测试平台 配置（已加密）',
+        text: '配置导出 ${DateTime.now().toIso8601String()}（已使用密码加密，导入时需输入相同密码）',
       );
     } catch (e) {
       if (!mounted) return;
@@ -346,6 +383,45 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// 设置导出密码（需两次输入一致）。返回 null 表示取消。
+  Future<String?> _showExportPasswordDialog(BuildContext context) {
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const _ExportPasswordDialog(),
+    );
+  }
+
+  /// 在阻塞 loading 浮层下执行耗时任务，结束后自动关闭。
+  /// 用于 PBKDF2 加解密 / DB 批量写入等会让 UI 看起来卡住的步骤。
+  Future<T> _runWithLoading<T>(String label, Future<T> Function() task) async {
+    if (!mounted) return task();
+    final navigator = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _LoadingDialog(label: label),
+    );
+    try {
+      return await task();
+    } finally {
+      if (navigator.canPop()) navigator.pop();
+    }
+  }
+
+  /// 输入解密密码。返回 null 表示取消。
+  Future<String?> _showImportPasswordDialog(BuildContext context,
+      {String? hint, String? errorText}) {
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _ImportPasswordDialog(
+        hint: hint,
+        initialError: errorText,
+      ),
+    );
+  }
+
   Future<void> _importData(BuildContext context,
       {bool importAgents = true, bool importServices = true}) async {
     final result = await FilePicker.platform.pickFiles(
@@ -354,7 +430,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     if (result == null || result.files.single.path == null) return;
     final file = File(result.files.single.path!);
-    final jsonStr = await file.readAsString();
+    final rawStr = await file.readAsString();
+
+    // 加密格式检测：若是 ai-agent-export-v2 加密文件，提示输入密码并解密。
+    String jsonStr = rawStr;
+    if (ConfigCrypto.isEncrypted(rawStr)) {
+      String? errorText;
+      while (true) {
+        if (!mounted) return;
+        final password = await _showImportPasswordDialog(
+          context,
+          errorText: errorText,
+        );
+        if (password == null) return;
+        try {
+          jsonStr = await _runWithLoading(
+            '正在解密…',
+            () => ConfigCrypto.decryptJson(rawStr, password),
+          );
+          break;
+        } on ConfigCryptoException catch (e) {
+          errorText = e.message;
+          continue;
+        } catch (e) {
+          errorText = '解密失败: $e';
+          continue;
+        }
+      }
+    }
 
     Map<String, dynamic> data;
     try {
@@ -400,17 +503,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: '服务导入冲突',
           );
           if (overwriteIds != null) {
-            totalImported += await svcNotifier.executeImport(
-              newItems: parsed.newItems,
-              conflicts: parsed.conflicts,
-              overwriteIds: overwriteIds,
+            totalImported += await _runWithLoading(
+              '正在导入服务…',
+              () => svcNotifier.executeImport(
+                newItems: parsed.newItems,
+                conflicts: parsed.conflicts,
+                overwriteIds: overwriteIds,
+              ),
             );
           }
         } else {
-          totalImported += await svcNotifier.executeImport(
-            newItems: parsed.newItems,
-            conflicts: [],
-            overwriteIds: {},
+          totalImported += await _runWithLoading(
+            '正在导入服务…',
+            () => svcNotifier.executeImport(
+              newItems: parsed.newItems,
+              conflicts: [],
+              overwriteIds: {},
+            ),
           );
         }
       }
@@ -431,17 +540,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: 'Agent 导入冲突',
           );
           if (overwriteIds != null) {
-            totalImported += await agentNotifier.executeImport(
-              newItems: parsed.newItems,
-              conflicts: parsed.conflicts,
-              overwriteIds: overwriteIds,
+            totalImported += await _runWithLoading(
+              '正在导入 Agent…',
+              () => agentNotifier.executeImport(
+                newItems: parsed.newItems,
+                conflicts: parsed.conflicts,
+                overwriteIds: overwriteIds,
+              ),
             );
           }
         } else {
-          totalImported += await agentNotifier.executeImport(
-            newItems: parsed.newItems,
-            conflicts: [],
-            overwriteIds: {},
+          totalImported += await _runWithLoading(
+            '正在导入 Agent…',
+            () => agentNotifier.executeImport(
+              newItems: parsed.newItems,
+              conflicts: [],
+              overwriteIds: {},
+            ),
           );
         }
       }
@@ -838,7 +953,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.smart_toy_outlined,
                     color: AppTheme.primary),
-                title: Text('AI Agent Client',
+                title: Text('云衍测试平台',
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
@@ -1275,6 +1390,225 @@ class _AudioOutputPill extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         visualDensity: VisualDensity.compact,
       ),
+    );
+  }
+}
+
+// ── 阻塞加载浮层 ───────────────────────────────────────────────────────
+class _LoadingDialog extends StatelessWidget {
+  const _LoadingDialog({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.78),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── 导出密码对话框 ─────────────────────────────────────────────────────
+// 用 StatefulWidget 让 controller 跟随 dialog 生命周期 dispose，
+// 避免「await showDialog 返回后立刻 dispose controller」造成的
+// `TextEditingController was used after being disposed` 崩溃。
+class _ExportPasswordDialog extends StatefulWidget {
+  const _ExportPasswordDialog();
+
+  @override
+  State<_ExportPasswordDialog> createState() => _ExportPasswordDialogState();
+}
+
+class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
+  final _pwdCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _pwdCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final p = _pwdCtrl.text;
+    final c = _confirmCtrl.text;
+    if (p.length < 6) {
+      setState(() => _errorText = '密码长度至少 6 位');
+      return;
+    }
+    if (p != c) {
+      setState(() => _errorText = '两次输入的密码不一致');
+      return;
+    }
+    Navigator.pop(context, p);
+  }
+
+  void _clearError() {
+    if (_errorText != null) setState(() => _errorText = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('设置导出密码',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '配置中包含 API Key / App Secret 等敏感信息，'
+            '将使用 AES-256 + PBKDF2 加密导出。\n'
+            '请妥善保管密码，丢失后无法恢复。',
+            style: TextStyle(fontSize: 13, color: AppTheme.text2),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _pwdCtrl,
+            obscureText: true,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: '密码（至少 6 位）',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => _clearError(),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _confirmCtrl,
+            obscureText: true,
+            decoration: InputDecoration(
+              labelText: '确认密码',
+              isDense: true,
+              border: const OutlineInputBorder(),
+              errorText: _errorText,
+            ),
+            onChanged: (_) => _clearError(),
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+          child: const Text('确认导出'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── 导入解密密码对话框 ─────────────────────────────────────────────────
+class _ImportPasswordDialog extends StatefulWidget {
+  const _ImportPasswordDialog({this.hint, this.initialError});
+
+  final String? hint;
+  final String? initialError;
+
+  @override
+  State<_ImportPasswordDialog> createState() => _ImportPasswordDialogState();
+}
+
+class _ImportPasswordDialogState extends State<_ImportPasswordDialog> {
+  final _pwdCtrl = TextEditingController();
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _errorText = widget.initialError;
+  }
+
+  @override
+  void dispose() {
+    _pwdCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('输入解密密码',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.hint ?? '该配置文件已加密，请输入导出时设置的密码。',
+            style: const TextStyle(fontSize: 13, color: AppTheme.text2),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _pwdCtrl,
+            obscureText: true,
+            autofocus: true,
+            onSubmitted: (v) => Navigator.pop(context, v),
+            decoration: InputDecoration(
+              labelText: '密码',
+              isDense: true,
+              border: const OutlineInputBorder(),
+              errorText: _errorText,
+            ),
+            onChanged: (_) {
+              if (_errorText != null) setState(() => _errorText = null);
+            },
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _pwdCtrl.text),
+          style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+          child: const Text('解密导入'),
+        ),
+      ],
     );
   }
 }
