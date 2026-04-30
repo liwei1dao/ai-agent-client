@@ -167,11 +167,11 @@ class AstTranslateAgentSession : NativeAgent {
             eventSink.onConnectionStateChanged(config.agentId, "connected")
             eventSink.onAgentReady(config.agentId, ready = true)
             Log.d(TAG, "AST connected, inputMode=$inputMode")
-            // 'call' 模式 = 持续通话路径：默认开 self-mic 推 PCM，否则火山 8 秒
-            // 收不到帧会主动断（status=45000081）。
-            // 通话翻译（CallTranslationSession）虽然也用 inputMode='call' 但它在
-            // connect 后会立即调 startExternalAudio —— AstVolcengineService 那侧
-            // 已加自动 stopAudio 接管的兜底，瞬间窗口期不影响 SCO。
+            // 'call' 模式 = chat / translate UI 持续通话：开 self-mic 推 PCM，否则
+            // 火山 8 秒收不到帧会主动断（status=45000081）。
+            // 通话翻译（CallTranslationSession）显式传 inputMode='external'，由
+            // CallTranslationSession.start 在 connect 完成后调 startExternalAudio
+            // 接管音源，绝不能在此自动开 self-mic（会抢 RECORD_AUDIO 与 SCO）。
             if (inputMode == "call") {
                 astService.startAudio()
             }

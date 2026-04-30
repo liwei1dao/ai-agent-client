@@ -30,10 +30,18 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
   }
 
   Future<void> _initAgent() async {
-    final state = ref.read(agentScreenProvider(widget.agentId));
-    if (state.isEndToEnd) {
-      await Permission.microphone.request();
-      if (!mounted) return;
+    // 翻译界面同样四种类型都用 mic（ast-translate 端到端 / translate 三段式）。
+    // 统一进入界面就请求一次，避免被拒后底层 AudioFlinger 静默失败。
+    final status = await Permission.microphone.request();
+    if (!mounted) return;
+    if (!status.isGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('需要麦克风权限才能进行语音翻译'),
+        action: status.isPermanentlyDenied
+            ? SnackBarAction(label: '去设置', onPressed: openAppSettings)
+            : null,
+      ));
+      return;
     }
     ref.read(agentScreenProvider(widget.agentId).notifier).init();
   }
@@ -64,14 +72,26 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
     return langName(activeLang);
   }
 
-  void _toggleConnection() {
+  Future<void> _toggleConnection() async {
     final notifier = ref.read(agentScreenProvider(widget.agentId).notifier);
     final state = ref.read(agentScreenProvider(widget.agentId));
     if (state.connectionState == ServiceConnectionState.connected) {
       notifier.disconnectService();
-    } else {
-      notifier.connectService();
+      return;
     }
+    // 重连前再校一次权限——用户可能在系统设置里撤销过。
+    final status = await Permission.microphone.request();
+    if (!mounted) return;
+    if (!status.isGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('需要麦克风权限才能进行语音翻译'),
+        action: status.isPermanentlyDenied
+            ? SnackBarAction(label: '去设置', onPressed: openAppSettings)
+            : null,
+      ));
+      return;
+    }
+    notifier.connectService();
   }
 
   @override

@@ -75,6 +75,7 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
         allServices: services,
         srcLang: userLang,
         dstLang: peerLang,
+        inputMode: 'external',
       ).build(),
       downlinkAgentType: downlinkAgent.type,
       downlinkConfig: AgentConfigBuilder(
@@ -82,6 +83,7 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
         allServices: services,
         srcLang: peerLang,
         dstLang: userLang,
+        inputMode: 'external',
       ).build(),
       userLanguage: userLang,
       peerLanguage: peerLang,

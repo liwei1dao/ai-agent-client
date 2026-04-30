@@ -30,20 +30,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _initAgent() async {
-    final state = ref.read(agentScreenProvider(widget.agentId));
-    if (state.isEndToEnd) {
-      final status = await Permission.microphone.request();
-      if (!mounted) return;
-      if (!status.isGranted) {
-        // 未授权直接提示用户去设置开权限，不再 init（后面 connect 时 AudioRecord 会 -20 静默失败）
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('需要麦克风权限才能进行语音对话'),
-          action: status.isPermanentlyDenied
-              ? SnackBarAction(label: '去设置', onPressed: openAppSettings)
-              : null,
-        ));
-        return;
-      }
+    // 四种 agent 类型都会用到 mic：
+    //   - sts-chat / ast-translate（端到端）connect 时立刻推流；
+    //   - chat / translate（三段式）按 STT 按钮时启 AudioRecord。
+    // 统一在进入界面时请求一次，避免被拒后底层 AudioFlinger 静默 -1。
+    final status = await Permission.microphone.request();
+    if (!mounted) return;
+    if (!status.isGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('需要麦克风权限才能进行语音对话'),
+        action: status.isPermanentlyDenied
+            ? SnackBarAction(label: '去设置', onPressed: openAppSettings)
+            : null,
+      ));
+      return;
     }
     ref.read(agentScreenProvider(widget.agentId).notifier).init();
   }
@@ -73,18 +73,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       notifier.disconnectService();
       return;
     }
-    if (state.isEndToEnd) {
-      final status = await Permission.microphone.request();
-      if (!mounted) return;
-      if (!status.isGranted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('需要麦克风权限才能进行语音对话'),
-          action: status.isPermanentlyDenied
-              ? SnackBarAction(label: '去设置', onPressed: openAppSettings)
-              : null,
-        ));
-        return;
-      }
+    // 重新连接前再确认一次（用户可能在系统设置里撤销权限）。
+    final status = await Permission.microphone.request();
+    if (!mounted) return;
+    if (!status.isGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('需要麦克风权限才能进行语音对话'),
+        action: status.isPermanentlyDenied
+            ? SnackBarAction(label: '去设置', onPressed: openAppSettings)
+            : null,
+      ));
+      return;
     }
     notifier.connectService();
   }
