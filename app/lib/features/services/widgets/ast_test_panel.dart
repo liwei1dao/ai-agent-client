@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:local_db/local_db.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:service_manager/service_manager.dart';
 
 import '../../../shared/themes/app_theme.dart';
@@ -127,6 +128,20 @@ class _AstTestPanelState extends State<AstTestPanel> {
         _phase = _Phase.error;
         _errorMessage =
             '请先选择一个 PolyChat Agent（到「设置 → PolyChat 平台」同步）';
+      });
+      return;
+    }
+
+    // AST 测试默认走 self-mic 路径，必须先拿到 RECORD_AUDIO 运行时权限。
+    // 没有权限的话 connect 后 startAudio 会被原生 AudioFlinger 拒掉。
+    final micStatus = await Permission.microphone.request();
+    if (!mounted) return;
+    if (!micStatus.isGranted) {
+      setState(() {
+        _phase = _Phase.error;
+        _errorMessage = micStatus.isPermanentlyDenied
+            ? '麦克风权限被永久拒绝，请前往系统设置开启'
+            : '需要麦克风权限才能进行 AST 测试';
       });
       return;
     }
