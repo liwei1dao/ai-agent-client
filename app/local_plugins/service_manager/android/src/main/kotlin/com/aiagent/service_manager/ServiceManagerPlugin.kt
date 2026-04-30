@@ -132,6 +132,7 @@ class ServiceManagerPlugin : FlutterPlugin, ServiceTestEventSink {
                     r.testAstConnect(
                         testId = call.argument<String>("testId")!!,
                         serviceId = call.argument<String>("serviceId")!!,
+                        extraConfigJson = call.argument<String>("extraConfigJson"),
                     )
                     result.success(null)
                 }

@@ -117,11 +117,11 @@ class AstTranslateAgentSession : NativeAgent {
         Log.d(TAG, "setInputMode: $mode")
         inputMode = mode
         when (mode) {
-            // call 模式 = external audio：PCM 由 CallTranslationSession 通过
-            // startExternalAudio + pushExternalAudioFrame 喂进来，**绝不能**在这里
-            // 调 startAudio()，否则会进入 self-mic 模式与 external audio 互斥，
-            // 后续 startExternalAudio 抛 "external audio cannot mix with self-mic"。
-            "call" -> { /* no-op: 等 CallTranslationSession 调 startExternalAudio */ }
+            // chat / translate UI 持续通话：开本地麦克风往火山推 PCM。
+            // 通话翻译（CallTranslationSession）那条路径不会进 setInputMode —— 它
+            // 直接 connectService → startExternalAudio 接管，所以这里开 self-mic
+            // 不会与 external-audio 互斥。
+            "call" -> astService.startAudio()
             "short_voice" -> { /* 按住说话，由 UI 调用 startListening/stopListening */ }
             else -> astService.stopAudio()
         }
@@ -167,8 +167,14 @@ class AstTranslateAgentSession : NativeAgent {
             eventSink.onConnectionStateChanged(config.agentId, "connected")
             eventSink.onAgentReady(config.agentId, ready = true)
             Log.d(TAG, "AST connected, inputMode=$inputMode")
-            // call 模式下 CallTranslationSession 会随后调 startExternalAudio 把
-            // 耳机解码出来的 PCM 喂进来，这里不要触发 self-mic 路径。
+            // 'call' 模式 = 持续通话路径：默认开 self-mic 推 PCM，否则火山 8 秒
+            // 收不到帧会主动断（status=45000081）。
+            // 通话翻译（CallTranslationSession）虽然也用 inputMode='call' 但它在
+            // connect 后会立即调 startExternalAudio —— AstVolcengineService 那侧
+            // 已加自动 stopAudio 接管的兜底，瞬间窗口期不影响 SCO。
+            if (inputMode == "call") {
+                astService.startAudio()
+            }
         }
 
         override fun onDisconnected() {

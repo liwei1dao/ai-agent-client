@@ -253,6 +253,7 @@ class _CallSessionImpl extends CallTranslationSession {
       stage: stage,
       sourceText: (raw['sourceText'] as String?) ?? '',
       translatedText: raw['translatedText'] as String?,
+      requestId: raw['requestId'] as String?,
       sourceLanguage: raw['sourceLanguage'] as String?,
       destLanguage: raw['destLanguage'] as String?,
     );

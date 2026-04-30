@@ -29,6 +29,7 @@ class TranslateSubtitleEvent {
     required this.stage,
     required this.sourceText,
     this.translatedText,
+    this.requestId,
     this.sourceLanguage,
     this.destLanguage,
   });
@@ -38,10 +39,17 @@ class TranslateSubtitleEvent {
   final SubtitleStage stage;
 
   /// 识别原文（partial 阶段为累计快照；final 阶段为整句定稿）。
+  /// `requestId == null` 时表示这是 in-progress 的源文 partial（无 requestId 可绑）。
+  /// `requestId != null` 且 sourceText 非空 → 该回合源文定稿；
+  /// `requestId != null` 且 sourceText 为空 → 同回合的 LLM partial/done 事件，只更新译文。
   final String sourceText;
 
   /// 翻译后的目标语文本；可能为 null（agent 还没出译文时）。
   final String? translatedText;
+
+  /// 同一对话回合的标识。STT finalResult / LLM firstToken / LLM done 共享同一 requestId，
+  /// UI 据此把源文与译文配对到同一行字幕，避免按到达顺序拼接造成的错位。
+  final String? requestId;
 
   final String? sourceLanguage;
   final String? destLanguage;

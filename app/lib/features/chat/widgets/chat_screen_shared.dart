@@ -407,9 +407,6 @@ class TranslateLanguageBar extends StatelessWidget {
     required this.onSrcTap,
     required this.onDstTap,
     required this.onSwap,
-    this.bidirectionalAvailable = false,
-    this.bidirectional = false,
-    this.onBidirectionalChanged,
   });
   final String srcLang;
   final String dstLang;
@@ -418,11 +415,6 @@ class TranslateLanguageBar extends StatelessWidget {
   final VoidCallback onSrcTap;
   final VoidCallback onDstTap;
   final VoidCallback onSwap;
-
-  /// 是否暴露互译开关（仅当 STT 厂商支持语言识别时为 true）
-  final bool bidirectionalAvailable;
-  final bool bidirectional;
-  final ValueChanged<bool>? onBidirectionalChanged;
 
   String _supportedHint(List<String> codes) {
     return codes.map((c) => langName(c)).join(' / ');
@@ -449,37 +441,7 @@ class TranslateLanguageBar extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (bidirectionalAvailable)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    const Icon(Icons.translate,
-                        size: 14, color: AppTheme.text2),
-                    const SizedBox(width: 4),
-                    const Text('互译',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: AppTheme.text2,
-                            fontWeight: FontWeight.w600)),
-                    const SizedBox(width: 6),
-                    SizedBox(
-                      height: 18,
-                      child: Switch(
-                        value: bidirectional,
-                        onChanged: onBidirectionalChanged,
-                        materialTapTargetSize:
-                            MaterialTapTargetSize.shrinkWrap,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            Row(
+        child: Row(
           children: [
             // Source language
             Expanded(
@@ -572,8 +534,6 @@ class TranslateLanguageBar extends StatelessWidget {
                 ),
               ),
             ),
-          ],
-        ),
           ],
         ),
       ),

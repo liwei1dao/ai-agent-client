@@ -98,10 +98,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         agentScreenProvider(widget.agentId).select((s) => s.messages.length),
         (_, __) => _scrollToBottom());
 
-    final isPlaying = state.sessionState == AgentSessionState.playing ||
-        state.sessionState == AgentSessionState.tts;
-    final isCall = state.inputMode == 'call';
-
     final colors = context.appColors;
     return Scaffold(
       backgroundColor: colors.bg,
@@ -244,11 +240,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
           ),
 
-          // TTS strip + Input bar: only when connected (or non-E2E)
+          // Input bar: only when connected (or non-E2E)
           if (!isE2E ||
               state.connectionState ==
                   ServiceConnectionState.connected) ...[
-            if (isCall && isPlaying) TtsPlayingStrip(isTranslateMode: false),
             MultimodalInputBar(
               inputMode: state.inputMode,
               partialText: state.sttPartial,

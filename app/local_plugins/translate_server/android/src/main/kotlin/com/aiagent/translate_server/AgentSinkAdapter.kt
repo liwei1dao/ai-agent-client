@@ -9,13 +9,15 @@ import kotlinx.coroutines.CompletableDeferred
 /**
  * 把翻译型 agent 的 [AgentEventSink] 事件转译成通话翻译统一的字幕/状态/错误事件。
  *
- * AST agent 的桥接策略（与 [AstTranslateAgentSession] 一致）：
- *  - SttEventData(partialResult)  → SubtitleStage.partial , sourceText 覆盖
- *  - SttEventData(finalResult)    → SubtitleStage.final   , sourceText 定稿
- *  - LlmEventData(firstToken)     → translatedText 覆盖（partial 阶段）
- *  - LlmEventData(done)           → translatedText 定稿（final 阶段）
+ * 配对策略（按 [requestId]）：
+ *  - 每条 STT finalResult / LLM done 事件携带 `requestId`，UI 端按 `requestId`
+ *    把 source 和 translated 配对到同一行字幕，**不依赖到达顺序**。
+ *  - SttEventData(partialResult) → stage=partial, sourceText, requestId=null（未定稿）
+ *  - SttEventData(finalResult)   → stage=final,   sourceText, translatedText=null
+ *  - LlmEventData(firstToken)    → stage=partial, translatedText, requestId（更新对应行的译文 partial）
+ *  - LlmEventData(done)          → stage=final,   translatedText（更新对应行的译文 final）
  *
- * 三段式 translate agent 走同样语义。
+ * 这样：连续多句翻译时，UI 不会把旧句的译文错位到新句的源文下。
  */
 internal class AgentSinkAdapter(
     private val sessionId: String,
@@ -25,21 +27,30 @@ internal class AgentSinkAdapter(
     val connected: CompletableDeferred<Unit> = CompletableDeferred(),
 ) : AgentEventSink {
 
-    /** 当前一句的源文 / 译文累积（partial 阶段覆盖；final 阶段提交后清空）。 */
-    @Volatile private var currentSource: String = ""
-    @Volatile private var currentTranslated: String? = null
-
     override fun onSttEvent(event: SttEventData) {
         when (event.kind) {
             "partialResult" -> {
-                currentSource = event.text ?: ""
-                emitSubtitle(stage = "partial", requestId = event.requestId.takeIf { it.isNotBlank() })
+                // 进行中的源文（无 requestId），UI 显示 in-progress 当前句的源文。
+                emit(TranslateEvents.subtitle(
+                    sessionId = sessionId,
+                    leg = leg.wireName,
+                    stage = "partial",
+                    sourceText = event.text ?: "",
+                    translatedText = null,
+                    requestId = null,
+                ))
             }
             "finalResult" -> {
-                currentSource = event.text ?: currentSource
-                emitSubtitle(stage = "final", requestId = event.requestId.takeIf { it.isNotBlank() })
-                currentSource = ""
-                currentTranslated = null
+                // 一句源文定稿，按 requestId 钉到 UI 端。译文留 null，由后续 LLM done 补。
+                val reqId = event.requestId.takeIf { it.isNotBlank() } ?: return
+                emit(TranslateEvents.subtitle(
+                    sessionId = sessionId,
+                    leg = leg.wireName,
+                    stage = "final",
+                    sourceText = event.text ?: "",
+                    translatedText = null,
+                    requestId = reqId,
+                ))
             }
             "error" -> emit(TranslateEvents.error(
                 sessionId = sessionId,
@@ -54,13 +65,26 @@ internal class AgentSinkAdapter(
     override fun onLlmEvent(event: LlmEventData) {
         when (event.kind) {
             "firstToken" -> {
-                currentTranslated = event.textDelta ?: currentTranslated
-                emitSubtitle(stage = "partial", requestId = event.requestId.takeIf { it.isNotBlank() })
+                val reqId = event.requestId.takeIf { it.isNotBlank() } ?: return
+                emit(TranslateEvents.subtitle(
+                    sessionId = sessionId,
+                    leg = leg.wireName,
+                    stage = "partial",
+                    sourceText = "",            // 源文已在 STT final 时定稿；这里不复发
+                    translatedText = event.textDelta ?: "",
+                    requestId = reqId,
+                ))
             }
             "done" -> {
-                currentTranslated = event.fullText ?: event.textDelta ?: currentTranslated
-                emitSubtitle(stage = "final", requestId = event.requestId.takeIf { it.isNotBlank() })
-                // final 后清场由 onSttEvent.finalResult 触发——这里不动，避免和 STT 端 race。
+                val reqId = event.requestId.takeIf { it.isNotBlank() } ?: return
+                emit(TranslateEvents.subtitle(
+                    sessionId = sessionId,
+                    leg = leg.wireName,
+                    stage = "final",
+                    sourceText = "",
+                    translatedText = event.fullText ?: event.textDelta ?: "",
+                    requestId = reqId,
+                ))
             }
             "error" -> emit(TranslateEvents.error(
                 sessionId = sessionId,
@@ -127,14 +151,4 @@ internal class AgentSinkAdapter(
         }
     }
 
-    private fun emitSubtitle(stage: String, requestId: String?) {
-        emit(TranslateEvents.subtitle(
-            sessionId = sessionId,
-            leg = leg.wireName,
-            stage = stage,
-            sourceText = currentSource,
-            translatedText = currentTranslated,
-            requestId = requestId,
-        ))
-    }
 }

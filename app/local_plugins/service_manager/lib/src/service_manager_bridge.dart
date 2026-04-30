@@ -145,13 +145,18 @@ class ServiceManagerBridge {
   // ─────────────────────────────────────────────────
 
   /// 连接 AST 测试
+  ///
+  /// [extraConfigJson] 可选；JSON 对象字符串，会**覆盖式**合并到从 DB 加载的
+  /// service config 之上（用于测试面板临时覆盖 srcLang / dstLang / agentId 等）。
   Future<void> testAstConnect({
     required String testId,
     required String serviceId,
+    String? extraConfigJson,
   }) =>
       _commandChannel.invokeMethod('testAstConnect', {
         'testId': testId,
         'serviceId': serviceId,
+        if (extraConfigJson != null) 'extraConfigJson': extraConfigJson,
       });
 
   /// 开始 AST 音频发送

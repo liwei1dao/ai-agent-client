@@ -359,13 +359,24 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
       // 厂商是否原生支持语种检测（与 bidirectional 是否实际开启无关，仅决定 UI 是否暴露开关）。
       final sttSupportsDetect =
           _SttCapability.supportsLanguageDetection(sttVendorStr);
-      // 实际启用 AutoDetect 仅在"互译开 + 厂商支持"时；否则单语模式（只用 srcLang）。
+      // 互译开 + 厂商支持 → AutoDetect 候选 = {srcLang, dstLang}（剔除 auto）。
+      // 互译关 + srcLang=='auto' + 厂商支持 → AutoDetect 候选 = srcLangs（剔除 auto），
+      //   "原语言识别" 但用户选了"自动检测"——必须走 AutoDetect，否则把 'auto' 当成
+      //   单语 language 喂给厂商会导致 STT 静默失败（Azure 不接受 'auto' 作为
+      //   speechRecognitionLanguage）。
+      // 其它情况走单语模式（按 cfg.language=srcLang）。
       final effectiveBidi = persistedBidi && sttSupportsDetect;
-      final sttLanguages = effectiveBidi
-          ? <String>{srcLang, dstLang}
-              .where((l) => l.isNotEmpty && l != 'auto')
-              .toList()
-          : <String>[]; // 空数组 → STT 走单语模式（按 cfg.language）
+      final List<String> sttLanguages;
+      if (effectiveBidi) {
+        sttLanguages = <String>{srcLang, dstLang}
+            .where((l) => l.isNotEmpty && l != 'auto')
+            .toList();
+      } else if (srcLang == 'auto' && sttSupportsDetect) {
+        sttLanguages =
+            srcLangs.where((l) => l.isNotEmpty && l != 'auto').toList();
+      } else {
+        sttLanguages = <String>[]; // 空数组 → STT 单语模式
+      }
       _log('INFO',
           'sttLanguages=$sttLanguages supportsDetect=$sttSupportsDetect '
           'bidirectional=$effectiveBidi');
@@ -486,7 +497,7 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
         _log('EVENT', 'sessionState → $agentState');
         state = state.copyWith(sessionState: agentState);
 
-      case SttEvent(:final kind, :final text, :final detectedLang):
+      case SttEvent(:final kind, :final text, :final detectedLang, :final requestId):
         if (kind == SttEventKind.partialResult) {
           if (state.inputMode == 'call' && (text ?? '').isNotEmpty) {
             // call 模式（端到端 / 三段式通用）：实时更新用户气泡
@@ -506,13 +517,18 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
                 role: 'user',
                 content: text!,
                 status: 'streaming',
-                // 支持语言识别时只信任 detectedLang（partial 阶段可能为 null，
-                // 留待 finalResult 时定稿，避免 CJK 启发式误判）；
-                // 不支持时回退到启发式。
+                // 三段式 translate 的 detectedLang 决定 UI 左右站位：
+                //   - 互译关 + srcLang 是具体语言：单语模式，强制打成 srcLang
+                //     （= 自然全部右侧"我"，无需依赖 STT 是否给 detectedLang）
+                //   - 互译开（或 srcLang=='auto'）+ 厂商支持 detection：信任 STT 的；
+                //     partial 阶段可能为 null，留待 finalResult 时定稿，避免 CJK 启发式误判
+                //   - 否则回退启发式（厂商不支持 detection 时兜底）
                 detectedLang: state.isTranslateMode
-                    ? (state.sttSupportsLanguageDetection
-                        ? detectedLang
-                        : _detectLang(text))
+                    ? (!state.bidirectional && state.srcLang != 'auto'
+                        ? state.srcLang
+                        : (state.sttSupportsLanguageDetection
+                            ? detectedLang
+                            : _detectLang(text)))
                     : null,
               ));
             }
@@ -530,19 +546,41 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
                 (m) => m.role == 'user' && m.status == 'streaming');
             String? finalDetected;
             if (state.isTranslateMode) {
-              finalDetected = state.sttSupportsLanguageDetection
-                  ? detectedLang
-                  : (detectedLang ?? _detectLang(text!));
-            }
-            if (existingIdx != -1) {
-              msgs[existingIdx].content = text!;
-              msgs[existingIdx].status = 'done';
-              if (state.isTranslateMode && finalDetected != null) {
-                msgs[existingIdx].detectedLang = finalDetected;
+              // 同 partial 路径的 detectedLang 解析规则。
+              if (!state.bidirectional && state.srcLang != 'auto') {
+                finalDetected = state.srcLang;
+              } else if (state.sttSupportsLanguageDetection) {
+                finalDetected = detectedLang ?? _detectLang(text!);
+              } else {
+                finalDetected = detectedLang ?? _detectLang(text!);
               }
+            }
+            // 三段式翻译要求 user 气泡 id == native finalResult.requestId，
+            // 这样后续 LLM firstToken/done(requestId=同) 才能配对，把译文写入
+            // user 气泡的 translatedContent。否则会另起一个空 assistant 气泡。
+            // AgentMessage.id 是 final，必须 replace 整条。
+            if (existingIdx != -1) {
+              final old = msgs[existingIdx];
+              final newId =
+                  (state.isTranslateMode && requestId.isNotEmpty)
+                      ? requestId
+                      : old.id;
+              msgs[existingIdx] = AgentMessage(
+                id: newId,
+                role: old.role,
+                content: text!,
+                status: 'done',
+                translatedContent: old.translatedContent,
+                detectedLang: state.isTranslateMode && finalDetected != null
+                    ? finalDetected
+                    : old.detectedLang,
+                createdAt: old.createdAt,
+              );
             } else {
               final msgId = state.isTranslateMode
-                  ? 'ast_src_${DateTime.now().millisecondsSinceEpoch}'
+                  ? (requestId.isNotEmpty
+                      ? requestId
+                      : 'ast_src_${DateTime.now().millisecondsSinceEpoch}')
                   : 'sts_user_${DateTime.now().millisecondsSinceEpoch}';
               msgs.add(AgentMessage(
                 id: msgId,
@@ -862,11 +900,20 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
     if (args == null) return;
     final agentType = args['agentType'] as String;
     final inputMode = args['inputMode'] as String;
-    final sttLanguages = state.bidirectional
-        ? <String>{state.srcLang, state.dstLang}
-            .where((l) => l.isNotEmpty && l != 'auto')
-            .toList()
-        : <String>[];
+    // 与 init 路径一致：互译关 + srcLang=='auto' + 厂商支持 → 仍要走 AutoDetect，
+    // 否则会把 'auto' 当成 STT 单语 language 喂进去导致静默失败。
+    final List<String> sttLanguages;
+    if (state.bidirectional) {
+      sttLanguages = <String>{state.srcLang, state.dstLang}
+          .where((l) => l.isNotEmpty && l != 'auto')
+          .toList();
+    } else if (state.srcLang == 'auto' && state.sttSupportsLanguageDetection) {
+      sttLanguages = state.srcLangs
+          .where((l) => l.isNotEmpty && l != 'auto')
+          .toList();
+    } else {
+      sttLanguages = <String>[];
+    }
 
     try {
       await _bridge.stopAgent(_agentId);

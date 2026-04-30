@@ -14,10 +14,11 @@ import '../../../core/services/translate_service.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../../agents/providers/agent_list_provider.dart';
 
-/// 通话翻译界面。
+/// 通话翻译界面（聊天气泡风格）。
 ///
-/// 核心流程：选 uplink/downlink agent + 双语 → "开始" → translate_server (native)
-/// 编排两个 agent + 设备 RCSP 通话翻译模式 → 字幕双栏实时显示。
+/// 双向通话翻译两条 leg 的字幕共享一条时间线：role==user（我说→对方听）显示在
+/// **右侧**紫色气泡；role==peer（对方说→我听）显示在**左侧**白色气泡。
+/// 每个气泡内含原文 + 译文。开始/停止控制以浮动按钮形式悬浮在右下角。
 class CallTranslateScreen extends ConsumerStatefulWidget {
   const CallTranslateScreen({super.key});
 
@@ -26,7 +27,6 @@ class CallTranslateScreen extends ConsumerStatefulWidget {
 }
 
 class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
-  // 当前 active session 句柄 + 订阅
   CallTranslationSession? _session;
   StreamSubscription<TranslateSubtitleEvent>? _subtitleSub;
   StreamSubscription<TranslateErrorEvent>? _errorSub;
@@ -34,15 +34,17 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
 
   final SubtitleAggregator _aggregator = SubtitleAggregator();
   final List<TranslateErrorEvent> _errors = [];
+  final ScrollController _scrollController = ScrollController();
   TranslationSessionState _sessionState = TranslationSessionState.stopped;
   bool _starting = false;
+  bool _configExpanded = true;
 
   @override
   void dispose() {
     _subtitleSub?.cancel();
     _errorSub?.cancel();
     _stateSub?.cancel();
-    // 离开界面 = 停止会话；不清前端的 stop 远程取消（best-effort）
+    _scrollController.dispose();
     _session?.stop();
     super.dispose();
   }
@@ -90,6 +92,8 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
       final server = ref.read(translateServerProvider);
       final session = await server.startCallTranslation(req);
       _bindSession(session);
+      // 启动后自动折叠配置区，把空间让给字幕。
+      setState(() => _configExpanded = false);
     } on TranslateException catch (e) {
       _toast('启动失败：${e.code}\n${e.message ?? ''}');
     } catch (e) {
@@ -109,7 +113,10 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
     _errors.clear();
     _subtitleSub = session.subtitles.listen((e) {
       _aggregator.feed(e);
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        _scrollToBottom();
+      }
     });
     _errorSub = session.errors.listen((e) {
       if (!mounted) return;
@@ -127,6 +134,18 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
       }
     });
     setState(() => _sessionState = session.state);
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   // ─── pickers ────────────────────────────────────────────────────────────
@@ -188,6 +207,24 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
     final agents = ref.watch(agentListProvider);
     final session = ref.watch(activeDeviceSessionProvider).valueOrNull;
 
+    // 设备断开 → 自动结束通话翻译。
+    // 通话翻译依赖耳机持续在线（双向音频通过设备走），耳机一旦掉线 session
+    // 已无意义；这里在 UI 层观测 active session 变化兜底关闭。
+    ref.listen<AsyncValue<DeviceSession?>>(activeDeviceSessionProvider,
+        (prev, next) {
+      if (_session == null) return;
+      final s = next.valueOrNull;
+      final ready = s != null && s.state == DeviceConnectionState.ready;
+      if (!ready) {
+        _stop();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('耳机已断开，已自动结束通话翻译')),
+          );
+        }
+      }
+    });
+
     final uplinkAgent = _findAgent(agents, config.defaultCallUplinkAgentId);
     final downlinkAgent = _findAgent(agents, config.defaultCallDownlinkAgentId);
     final userLang = config.defaultCallUserLanguage;
@@ -210,22 +247,39 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
       appBar: AppBar(
         title: const Text('通话翻译',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        actions: [
+          // 配置区折叠/展开按钮——session 活动时默认折叠，可手动展开微调
+          IconButton(
+            tooltip: _configExpanded ? '收起配置' : '展开配置',
+            icon: Icon(_configExpanded ? Icons.expand_less : Icons.tune,
+                color: colors.text2),
+            onPressed: () =>
+                setState(() => _configExpanded = !_configExpanded),
+          ),
+        ],
       ),
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            _buildDeviceStatusBar(config, session, colors),
-            _buildConfigCard(uplinkAgent, downlinkAgent, userLang, peerLang,
-                colors, isActive),
-            const SizedBox(height: 12),
-            _buildPrimaryAction(canStart, isActive),
-            if (_errors.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              _buildErrorChip(),
-            ],
-            const SizedBox(height: 12),
-            const _SectionLabel('实时字幕'),
-            Expanded(child: _buildSubtitlePanel(colors)),
+            Column(
+              children: [
+                _buildDeviceStatusBar(config, session, colors),
+                if (_configExpanded)
+                  _buildConfigCard(uplinkAgent, downlinkAgent, userLang,
+                      peerLang, colors, isActive),
+                if (_errors.isNotEmpty) _buildErrorChip(),
+                Expanded(child: _buildChatList(colors, userLang, peerLang)),
+              ],
+            ),
+            // 浮动开始/停止按钮——底部居中，电话接听 / 挂断风格
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 20,
+              child: Center(
+                child: _buildFloatingActionButton(canStart, isActive),
+              ),
+            ),
           ],
         ),
       ),
@@ -250,8 +304,8 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
     final color = ok ? const Color(0xFF10B981) : const Color(0xFFEF4444);
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
@@ -259,7 +313,7 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
       child: Row(
         children: [
           Icon(ok ? Icons.headset_mic : Icons.headset_off,
-              size: 18, color: color),
+              size: 16, color: color),
           const SizedBox(width: 8),
           Expanded(
             child: Text(hint,
@@ -282,12 +336,12 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
     bool isActive,
   ) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       child: Column(
         children: [
           Row(
@@ -313,7 +367,7 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -360,7 +414,7 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: colors.bg,
           borderRadius: BorderRadius.circular(8),
@@ -371,16 +425,16 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
           children: [
             Text(title,
                 style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     color: colors.text2,
                     fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: enabled ? colors.text1 : colors.text2),
             ),
@@ -401,7 +455,7 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: colors.bg,
           borderRadius: BorderRadius.circular(8),
@@ -410,69 +464,108 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
         child: Row(
           children: [
             Text('$label:',
-                style: TextStyle(fontSize: 12, color: colors.text2)),
-            const SizedBox(width: 6),
+                style: TextStyle(fontSize: 11, color: colors.text2)),
+            const SizedBox(width: 4),
             Expanded(
               child: Text(
                 _langLabel(value),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: enabled ? colors.text1 : colors.text2),
               ),
             ),
-            Icon(Icons.expand_more, size: 16, color: colors.text2),
+            Icon(Icons.expand_more, size: 14, color: colors.text2),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPrimaryAction(bool canStart, bool isActive) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: SizedBox(
-        width: double.infinity,
-        height: 44,
-        child: isActive
-            ? FilledButton(
-                onPressed: _stop,
-                style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFEF4444)),
-                child: Text(_starting ? '正在启动…' : '停止通话翻译'),
-              )
-            : FilledButton(
-                onPressed: canStart ? _start : null,
-                style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primary),
-                child: Text(_starting ? '正在启动…' : '开始通话翻译'),
+  Widget _buildFloatingActionButton(bool canStart, bool isActive) {
+    final bool busy = _starting;
+    final bool enabled = isActive ? !busy : (canStart && !busy);
+    final Color bg = isActive
+        ? const Color(0xFFEF4444)
+        : (enabled ? const Color(0xFF10B981) : const Color(0xFFCBD5E1));
+    final IconData icon = isActive ? Icons.call_end : Icons.call;
+    final String hint = isActive
+        ? (busy ? '正在停止…' : '挂断')
+        : (busy ? '正在启动…' : '接听');
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: enabled ? (isActive ? _stop : _start) : null,
+            child: Container(
+              width: 68,
+              height: 68,
+              decoration: BoxDecoration(
+                color: bg,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: bg.withValues(alpha: 0.35),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
               ),
-      ),
+              child: busy
+                  ? const Padding(
+                      padding: EdgeInsets.all(22),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Transform.rotate(
+                      // 挂断键习惯性旋转 135°
+                      angle: isActive ? 2.356 : 0,
+                      child: Icon(icon, color: Colors.white, size: 30),
+                    ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          hint,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: enabled ? AppTheme.text1 : AppTheme.text2,
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildErrorChip() {
     final last = _errors.last;
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: const Color(0xFFEF4444).withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, size: 16, color: Color(0xFFEF4444)),
+          const Icon(Icons.error_outline, size: 14, color: Color(0xFFEF4444)),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               '${last.code}${last.role != null ? ' [${last.role!.name}]' : ''}: ${last.message ?? ''}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 11, color: Color(0xFFEF4444)),
+              style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444)),
             ),
           ),
           IconButton(
@@ -486,113 +579,39 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
     );
   }
 
-  Widget _buildSubtitlePanel(AppColors colors) {
-    final user = _aggregator.viewOf(SubtitleRole.user);
-    final peer = _aggregator.viewOf(SubtitleRole.peer);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: _subtitleColumn('我', user, colors, AppTheme.primary)),
-          const SizedBox(width: 8),
-          Expanded(
-              child: _subtitleColumn(
-                  '对方', peer, colors, AppTheme.translateAccent)),
-        ],
-      ),
-    );
-  }
+  Widget _buildChatList(AppColors colors, String? userLang, String? peerLang) {
+    final lines = _aggregator.lines;
+    final userPartial = _aggregator.partialSourceFor(SubtitleRole.user);
+    final peerPartial = _aggregator.partialSourceFor(SubtitleRole.peer);
 
-  Widget _subtitleColumn(
-      String title, SubtitleView view, AppColors colors, Color accent) {
-    return Container(
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.10),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-            ),
-            child: Text(title,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: accent)),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(10),
-              reverse: true,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var i = 0; i < view.committedSource.length; i++)
-                    _subtitleLine(
-                      source: view.committedSource[i],
-                      translated: i < view.committedTranslated.length
-                          ? view.committedTranslated[i]
-                          : null,
-                      colors: colors,
-                      partial: false,
-                    ),
-                  if ((view.currentSource ?? '').isNotEmpty ||
-                      (view.currentTranslated ?? '').isNotEmpty)
-                    _subtitleLine(
-                      source: view.currentSource ?? '',
-                      translated: view.currentTranslated,
-                      colors: colors,
-                      partial: true,
-                    ),
-                  if (view.isEmpty)
-                    Text('等待输入…',
-                        style: TextStyle(
-                            fontSize: 12, color: colors.text2)),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    // 把 finalized lines + 两条 in-progress partial 拼成渲染序列。
+    // partial 永远放最后；如果两侧都有 partial，按 user 在前 peer 在后的固定序。
+    final items = <_ChatItem>[
+      for (final line in lines) _ChatItem.fromLine(line),
+      if ((userPartial ?? '').isNotEmpty)
+        _ChatItem.partial(SubtitleRole.user, userPartial!),
+      if ((peerPartial ?? '').isNotEmpty)
+        _ChatItem.partial(SubtitleRole.peer, peerPartial!),
+    ];
 
-  Widget _subtitleLine({
-    required String source,
-    required String? translated,
-    required AppColors colors,
-    required bool partial,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            source,
-            style: TextStyle(
-                fontSize: 13,
-                color: colors.text1,
-                fontWeight: partial ? FontWeight.w500 : FontWeight.w600,
-                fontStyle: partial ? FontStyle.italic : FontStyle.normal),
-          ),
-          if (translated != null && translated.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              translated,
-              style: TextStyle(
-                  fontSize: 12,
-                  color: colors.text2,
-                  fontStyle: partial ? FontStyle.italic : FontStyle.normal),
-            ),
-          ],
-        ],
+    if (items.isEmpty) {
+      return Center(
+        child: Text(_sessionState == TranslationSessionState.active
+            ? '等待通话内容…'
+            : '点击右下角按钮开始通话翻译',
+            style: TextStyle(fontSize: 12, color: colors.text2)),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+      itemCount: items.length,
+      itemBuilder: (_, i) => _SubtitleBubble(
+        item: items[i],
+        userLangLabel: _langLabel(userLang),
+        peerLangLabel: _langLabel(peerLang),
+        colors: colors,
       ),
     );
   }
@@ -620,24 +639,147 @@ class _CallTranslateScreenState extends ConsumerState<CallTranslateScreen> {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.title);
-  final String title;
+// ─── 字幕气泡数据模型 ────────────────────────────────────────────────────────
+
+class _ChatItem {
+  _ChatItem({
+    required this.role,
+    required this.source,
+    required this.translated,
+    required this.translatedPartial,
+    required this.isInProgress,
+  });
+
+  factory _ChatItem.fromLine(SubtitleLine line) => _ChatItem(
+        role: line.role,
+        source: line.source,
+        translated: line.translated,
+        translatedPartial: line.translatedPartial,
+        isInProgress: false,
+      );
+
+  factory _ChatItem.partial(SubtitleRole role, String source) => _ChatItem(
+        role: role,
+        source: source,
+        translated: null,
+        translatedPartial: false,
+        isInProgress: true,
+      );
+
+  final SubtitleRole role;
+  final String source;
+  final String? translated;
+  final bool translatedPartial;
+
+  /// 在途的 partial 源文（还没拿到 final / requestId），UI 渲染为半透明斜体。
+  final bool isInProgress;
+}
+
+class _SubtitleBubble extends StatelessWidget {
+  const _SubtitleBubble({
+    required this.item,
+    required this.userLangLabel,
+    required this.peerLangLabel,
+    required this.colors,
+  });
+  final _ChatItem item;
+  final String userLangLabel;
+  final String peerLangLabel;
+  final AppColors colors;
+
   @override
   Widget build(BuildContext context) {
+    final isUser = item.role == SubtitleRole.user;
+    final langLabel = isUser ? userLangLabel : peerLangLabel;
+    final bubbleColor =
+        isUser ? AppTheme.primary : Colors.white;
+    final textColor =
+        isUser ? Colors.white : colors.text1;
+    final translatedColor =
+        isUser ? Colors.white.withValues(alpha: 0.85) : colors.text2;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(title,
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: context.appColors.text2)),
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment:
+            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          // 角色 + 语言标签
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4, left: 4, right: 4),
+            child: Text(
+              '${isUser ? '我' : '对方'} · $langLabel',
+              style: TextStyle(fontSize: 10, color: colors.text2),
+            ),
+          ),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.78,
+            ),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: bubbleColor.withValues(
+                    alpha: item.isInProgress ? 0.7 : 1.0),
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(14),
+                  topRight: const Radius.circular(14),
+                  bottomLeft: Radius.circular(isUser ? 14 : 4),
+                  bottomRight: Radius.circular(isUser ? 4 : 14),
+                ),
+                border: isUser
+                    ? null
+                    : Border.all(color: colors.border),
+                boxShadow: isUser
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 6,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.source,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: textColor,
+                      height: 1.4,
+                      fontStyle: item.isInProgress
+                          ? FontStyle.italic
+                          : FontStyle.normal,
+                    ),
+                  ),
+                  if ((item.translated ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      item.translated!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: translatedColor,
+                        height: 1.4,
+                        fontStyle: item.translatedPartial
+                            ? FontStyle.italic
+                            : FontStyle.normal,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+
+// ─── pickers ─────────────────────────────────────────────────────────────────
 
 class _AgentPickerSheet extends StatelessWidget {
   const _AgentPickerSheet({required this.agents});

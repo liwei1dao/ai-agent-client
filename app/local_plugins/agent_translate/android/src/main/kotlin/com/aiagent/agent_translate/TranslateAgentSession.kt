@@ -19,10 +19,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * 状态机：IDLE → LISTENING → STT → TRANSLATING → TTS → IDLE
  *
- * 打断机制（"latest wins"）：
- * - activeRequestId 保存当前请求 UUID
- * - 新输入到来时 cancel activeJob → 更新 activeRequestId → 启动新管线
- * - speechStartDetected → 打断当前 Translation/TTS → 回到 LISTENING
+ * 调度模型：**所有输入一律 FIFO 队列处理，互不打断**。
+ * 翻译场景下"换一句话"应该排队顺序翻译/播报，而不是抢占——这与 chat agent
+ * 的 latest-wins 是相反的取舍。无论 call / short_voice / text / PTT 路径，
+ * 输入都进入 [callQueue] 由单消费者顺序跑 translate + TTS。
+ * VAD speechStart 也不再触发打断；仅显式 [interrupt] / mode 切换 / release
+ * 才会清空队列。
  *
  * 从 config.extraParams 获取 srcLang / dstLang。
  */
@@ -79,7 +81,18 @@ class TranslateAgentSession : NativeAgent {
 
     @Volatile
     private var activeRequestId: String? = null
-    private var activeJob: Job? = null
+
+    /**
+     * 全局 FIFO 翻译队列（所有 inputMode 共用）。
+     *
+     * 每条输入（finalResult / sendText）都作为独立 [QueuedRequest] 入队，由
+     * 单消费者 [callQueueWorker] 顺序跑 translate + TTS，**互不打断**。
+     * "换一句话"在翻译场景下意味着排队顺序翻译，不是抢占。
+     */
+    private data class QueuedRequest(val requestId: String, val text: String, val direction: String)
+
+    private var callQueue: Channel<QueuedRequest>? = null
+    private var callQueueWorker: Job? = null
 
     private lateinit var sttService: NativeSttService
     private lateinit var translationService: NativeTranslationService
@@ -156,9 +169,10 @@ class TranslateAgentSession : NativeAgent {
         // push-to-talk 场景：finalResult 已先到达 native 并把 detectedLang 存入
         // [lastSttDetectedLang]，这里一次性消费用于方向解算；纯文本输入时为 null，
         // resolveDirection 会回退到 UI direction。
+        // 所有路径走同一 FIFO 队列，互不打断。
         val det = lastSttDetectedLang
         lastSttDetectedLang = null
-        onUserInput(requestId, text, resolveDirection(det))
+        enqueueTranslation(requestId, text, resolveDirection(det))
     }
 
     override fun setOption(key: String, value: String) {
@@ -219,13 +233,14 @@ class TranslateAgentSession : NativeAgent {
     override fun setInputMode(mode: String) {
         Log.d(TAG, "setInputMode: $mode")
         inputMode = mode
+        // 模式切换是显式动作，清空在途队列重新开始。
+        shutdownCallQueue("mode_switch_$mode")
         when (mode) {
             "call" -> {
                 // 外部音频源场景下：STT 已在 externalMode，识别由 push 帧驱动，
                 // 切勿再走 self-mic 路径 —— 否则触发 stt_busy。
                 if (externalAudioActive) return
                 ttsService.stop()
-                cancelActiveJob("mode_switch_call")
                 startContinuousListening()
             }
             "short_voice" -> { /* UI controls startListening/stopListening */ }
@@ -237,11 +252,12 @@ class TranslateAgentSession : NativeAgent {
 
     override fun interrupt() {
         ttsService.stop()
-        cancelActiveJob("manual_interrupt")
+        shutdownCallQueue("manual_interrupt")
         transitionTo(State.IDLE)
     }
 
     override fun release() {
+        shutdownCallQueue("release")
         scope.cancel()
         sttService.release()
         translationService.release()
@@ -285,7 +301,7 @@ class TranslateAgentSession : NativeAgent {
         sttService.stopExternalAudio()
         ttsService.stop()
         ttsService.stopExternalAudio()
-        cancelActiveJob("external_audio_stop")
+        shutdownCallQueue("external_audio_stop")
         transitionTo(State.IDLE)
     }
 
@@ -293,106 +309,129 @@ class TranslateAgentSession : NativeAgent {
     // 核心：用户输入触发 Translation→TTS 管线
     // ─────────────────────────────────────────────────
 
-    private fun onUserInput(requestId: String, text: String, dir: String) {
-        val previousId = activeRequestId
-        cancelActiveJob("new_input")
-        activeRequestId = requestId
+    /**
+     * 把一次输入入队。第一次入队时懒启动消费者协程；消费者顺序执行
+     * [runTranslationPipeline]，**互不打断**。所有 inputMode 共用同一队列。
+     */
+    private fun enqueueTranslation(requestId: String, text: String, dir: String) {
+        if (callQueue == null) {
+            val ch = Channel<QueuedRequest>(Channel.UNLIMITED)
+            callQueue = ch
+            callQueueWorker = scope.launch {
+                try {
+                    for (req in ch) {
+                        if (!isActive) break
+                        activeRequestId = req.requestId
+                        runCatching { runTranslationPipeline(req.requestId, req.text, req.direction) }
+                            .onFailure { e ->
+                                if (e is CancellationException) throw e
+                                Log.e(TAG, "queued translation failed: ${e.message}")
+                            }
+                        // 单条管线跑完根据 inputMode 回到 LISTENING / IDLE；
+                        // 下一条若已在队列里，它自己 transitionTo(TRANSLATING) 会立即覆盖。
+                        if (isActive) {
+                            if (inputMode == "call") {
+                                transitionTo(State.LISTENING)
+                            } else {
+                                activeRequestId = null
+                                transitionTo(State.IDLE)
+                            }
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    // 队列被显式取消（interrupt / stopExternalAudio / mode_switch / release）
+                }
+            }
+        }
+        callQueue?.trySend(QueuedRequest(requestId, text, dir))
+    }
 
-        // 按本次方向解算源/目标语言（srcLang 可能为 null：交给翻译服务自动检测）
+    /**
+     * 清空翻译队列。仅显式动作（打断 / 停止 / 换模式 / release）调用。
+     */
+    private fun shutdownCallQueue(reason: String) {
+        callQueue?.close()
+        callQueue = null
+        callQueueWorker?.cancel(CancellationException(reason))
+        callQueueWorker = null
+        activeRequestId = null
+    }
+
+    /**
+     * 翻译 + TTS 纯管线。
+     *
+     * 取消语义只看协程的 [isActive]：worker 协程未被取消时一路跑完，互不打断；
+     * 只有 [shutdownCallQueue]（显式打断 / 停止 / 换模式 / release）会取消 worker。
+     */
+    private suspend fun runTranslationPipeline(requestId: String, text: String, dir: String) = coroutineScope {
         val (sourceForCall, targetForCall) = if (dir == DIRECTION_DST_TO_SRC) {
             dstLang to (srcLang ?: dstLang)
         } else {
             (srcLang) to dstLang
         }
 
-        activeJob = scope.launch {
-            // Mark previous assistant message as cancelled
-            if (previousId != null) {
-                runCatching {
-                    db.messageDao().updateStatus(previousId, "cancelled", System.currentTimeMillis())
-                }
-            }
-
-            // Write user message to DB
-            val now = System.currentTimeMillis()
-            db.messageDao().insert(
-                MessageEntity(
-                    id = requestId,
-                    agentId = config.agentId,
-                    role = "user",
-                    content = text,
-                    status = "done",
-                    createdAt = now,
-                    updatedAt = now,
-                )
+        val now = System.currentTimeMillis()
+        db.messageDao().insert(
+            MessageEntity(
+                id = requestId,
+                agentId = config.agentId,
+                role = "user",
+                content = text,
+                status = "done",
+                createdAt = now,
+                updatedAt = now,
             )
+        )
 
-            // Write placeholder assistant message
-            val assistantId = UUID.randomUUID().toString()
-            db.messageDao().insert(
-                MessageEntity(
-                    id = assistantId,
-                    agentId = config.agentId,
-                    role = "assistant",
-                    content = "",
-                    status = "pending",
-                    createdAt = now + 1,
-                    updatedAt = now + 1,
-                )
+        val assistantId = UUID.randomUUID().toString()
+        db.messageDao().insert(
+            MessageEntity(
+                id = assistantId,
+                agentId = config.agentId,
+                role = "assistant",
+                content = "",
+                status = "pending",
+                createdAt = now + 1,
+                updatedAt = now + 1,
             )
+        )
 
-            // ── 翻译 ──
-            transitionTo(State.TRANSLATING)
-            db.messageDao().updateStatus(assistantId, "streaming", System.currentTimeMillis())
+        transitionTo(State.TRANSLATING)
+        db.messageDao().updateStatus(assistantId, "streaming", System.currentTimeMillis())
+        eventSink.onLlmEvent(LlmEventData(
+            config.agentId, requestId, kind = "firstToken", textDelta = ""))
 
-            // 通知 Flutter 翻译开始（复用 LLM 事件通道）
+        val translationResult = try {
+            translationService.translate(
+                text = text,
+                targetLang = targetForCall,
+                sourceLang = sourceForCall,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Translation failed: ${e.message}")
             eventSink.onLlmEvent(LlmEventData(
-                config.agentId, requestId, kind = "firstToken", textDelta = ""))
+                config.agentId, requestId, kind = "error",
+                errorCode = "translation_error", errorMessage = e.message ?: "Unknown error"))
+            db.messageDao().updateStatus(assistantId, "error", System.currentTimeMillis())
+            transitionTo(State.ERROR)
+            return@coroutineScope
+        }
 
-            val translationResult = try {
-                translationService.translate(
-                    text = text,
-                    targetLang = targetForCall,
-                    sourceLang = sourceForCall,
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "Translation failed: ${e.message}")
-                eventSink.onLlmEvent(LlmEventData(
-                    config.agentId, requestId, kind = "error",
-                    errorCode = "translation_error", errorMessage = e.message ?: "Unknown error"))
-                db.messageDao().updateStatus(assistantId, "error", System.currentTimeMillis())
-                transitionTo(State.ERROR)
-                return@launch
-            }
+        if (!isActive) return@coroutineScope
 
-            if (!isActive || activeRequestId != requestId) return@launch
+        val translatedText = translationResult.translatedText
+        db.messageDao().appendContent(assistantId, translatedText, System.currentTimeMillis())
+        db.messageDao().updateStatus(assistantId, "done", System.currentTimeMillis())
+        eventSink.onLlmEvent(LlmEventData(
+            config.agentId, requestId, kind = "done", fullText = translatedText))
 
-            val translatedText = translationResult.translatedText
+        if (!isActive) return@coroutineScope
 
-            // 更新 DB 中的助手消息
-            db.messageDao().appendContent(assistantId, translatedText, System.currentTimeMillis())
-            db.messageDao().updateStatus(assistantId, "done", System.currentTimeMillis())
-
-            // 通知 Flutter 翻译完成
-            eventSink.onLlmEvent(LlmEventData(
-                config.agentId, requestId, kind = "done", fullText = translatedText))
-
-            if (!isActive || activeRequestId != requestId) return@launch
-
-            // ── TTS 播报翻译结果（句切 + 合成池/播放消费者双流水线）──
-            if (translatedText.isNotBlank()) {
-                transitionTo(State.TTS)
-                runTtsPipeline(requestId, translatedText)
-            }
-
-            if (isActive && activeRequestId == requestId) {
-                transitionTo(State.IDLE)
-                if (inputMode == "call") {
-                    startContinuousListening()
-                }
-            }
+        if (translatedText.isNotBlank()) {
+            transitionTo(State.TTS)
+            runTtsPipeline(requestId, translatedText)
         }
     }
 
@@ -401,9 +440,18 @@ class TranslateAgentSession : NativeAgent {
      *
      * 顺序铁律：playQueue 入队顺序 = 文本顺序；播放消费者按 seq await 各段 audio，
      * 因此短段先合成完也不会抢先播放。
+     *
+     * 例外：通话翻译（inputMode=="call"）下**禁用句切**——把整段译文当作 1 个子句一次合成、
+     * 一次 play。原因：call 模式下 TTS 走 [ExternalAudioSink] → device runtime → RCSP
+     * writeAudioData，每次 play 的末帧 isFinal=true 会触发 runtime 整段编码 + 一个
+     * AudioData 下发。多子句意味着多 AudioData 串行下发（每段 encode + 蓝牙 write），
+     * 延迟随子句数线性累加。整段一次 play 让 runtime 的 3s 阈值真正生效——长译文按 3s
+     * 滚动 flush，短译文一次到达；不会再有"说完后多个子句串行下发"的尾延迟。
+     * 本地播报（外放/听筒）路径保留分句以获得首句快速到达的体验。
      */
     private suspend fun runTtsPipeline(requestId: String, text: String) = coroutineScope {
-        val sentences = splitSentences(text)
+        val sentences = if (inputMode == "call") listOf(text.trim()).filter { it.isNotEmpty() }
+                        else splitSentences(text)
         if (sentences.isEmpty()) return@coroutineScope
 
         val synthQueue = Channel<TtsSegment>(Channel.UNLIMITED)
@@ -414,7 +462,7 @@ class TranslateAgentSession : NativeAgent {
         val synthWorkers = List(MAX_CONCURRENT_SYNTHESIS) {
             launch {
                 for (seg in synthQueue) {
-                    if (!isActive || activeRequestId != requestId) {
+                    if (!isActive) {
                         seg.audio.cancel(CancellationException("session_inactive"))
                         continue
                     }
@@ -453,7 +501,7 @@ class TranslateAgentSession : NativeAgent {
         val ttsConsumer = launch {
             try {
                 for (seg in playQueue) {
-                    if (!isActive || activeRequestId != requestId) break
+                    if (!isActive) break
                     try {
                         val audio = seg.audio.await()
                         eventSink.onTtsEvent(TtsEventData(
@@ -474,7 +522,7 @@ class TranslateAgentSession : NativeAgent {
                         ))
                     }
                 }
-                if (firstSegmentEmitted.get() && isActive && activeRequestId == requestId) {
+                if (firstSegmentEmitted.get() && isActive) {
                     eventSink.onTtsEvent(TtsEventData(config.agentId, requestId, kind = "playbackDone"))
                 }
             } catch (e: CancellationException) {
@@ -532,15 +580,17 @@ class TranslateAgentSession : NativeAgent {
                 config.agentId, requestId = reqId, kind = "finalResult",
                 text = text, detectedLang = detectedLang,
             ))
-            // call 模式：自动触发翻译管线，方向按 bidirectional + detectedLang 解算
+            // call 模式：自动触发翻译管线，方向按 bidirectional + detectedLang 解算。
+            // 进 FIFO 队列，连续多个 finalResult 顺序处理，互不打断。
             if (inputMode == "call") {
-                lastSttDetectedLang = null  // 由 onUserInput 直接消费 detectedLang
-                onUserInput(reqId, text, resolveDirection(detectedLang))
+                lastSttDetectedLang = null  // 由队列消费者直接消费 detectedLang
+                enqueueTranslation(reqId, text, resolveDirection(detectedLang))
             }
         }
         override fun onVadSpeechStart() {
             eventSink.onSttEvent(SttEventData(config.agentId, requestId = "", kind = "vadSpeechStart"))
-            interruptForVoiceInput()
+            // 翻译 agent 永不因 VAD 抢占：所有路径都进 FIFO 队列顺序处理，
+            // "换一句话"意味着排队，不是打断。
         }
         override fun onVadSpeechEnd() {
             eventSink.onSttEvent(SttEventData(config.agentId, requestId = "", kind = "vadSpeechEnd"))
@@ -556,28 +606,6 @@ class TranslateAgentSession : NativeAgent {
     // ─────────────────────────────────────────────────
     // 内部方法
     // ─────────────────────────────────────────────────
-
-    /**
-     * 用户开口说话 → 打断正在进行的 TTS/Translation，回到 LISTENING
-     */
-    private fun interruptForVoiceInput() {
-        if (_state.value == State.IDLE || _state.value == State.LISTENING) return
-        val prevId = activeRequestId
-        ttsService.stop()
-        cancelActiveJob("voice_interrupt")
-        if (prevId != null) {
-            scope.launch {
-                runCatching { db.messageDao().updateStatus(prevId, "cancelled", System.currentTimeMillis()) }
-            }
-        }
-        transitionTo(State.LISTENING)
-        Log.d(TAG, "voice interrupt: cancelled requestId=$prevId, back to LISTENING")
-    }
-
-    private fun cancelActiveJob(reason: String) {
-        activeJob?.cancel(CancellationException(reason))
-        activeJob = null
-    }
 
     private fun startContinuousListening() {
         if (externalAudioActive) {

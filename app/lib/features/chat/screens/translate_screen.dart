@@ -83,10 +83,6 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
         agentScreenProvider(widget.agentId).select((s) => s.messages.length),
         (_, __) => _scrollToBottom());
 
-    final isPlaying = state.sessionState == AgentSessionState.playing ||
-        state.sessionState == AgentSessionState.tts;
-    final isCall = state.inputMode == 'call';
-
     final colors = context.appColors;
     return Scaffold(
       backgroundColor: colors.bg,
@@ -153,11 +149,16 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
       ),
       body: Column(
         children: [
-          // Service chips
-          if (state.llmServiceName.isNotEmpty ||
-              state.sttServiceName.isNotEmpty ||
-              state.ttsServiceName.isNotEmpty)
-            Container(
+          // Service chips + 互译 toggle (toggle 仅三段式 translate +
+          // STT 厂商支持语言识别时显示)
+          Builder(builder: (_) {
+            final showBidi = state.agentType == 'translate' &&
+                state.sttSupportsLanguageDetection;
+            final hasChip = state.llmServiceName.isNotEmpty ||
+                state.sttServiceName.isNotEmpty ||
+                state.ttsServiceName.isNotEmpty;
+            if (!hasChip && !showBidi) return const SizedBox.shrink();
+            return Container(
               color: colors.surface,
               padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
               child: Row(
@@ -187,9 +188,38 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
                       bg: const Color(0xFFECFDF5),
                       color: const Color(0xFF065F46),
                     ),
+                  if (showBidi) ...[
+                    const Spacer(),
+                    const Icon(Icons.translate,
+                        size: 13, color: AppTheme.text2),
+                    const SizedBox(width: 3),
+                    const Text('互译',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.text2,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 4),
+                    Transform.scale(
+                      scale: 0.7,
+                      alignment: Alignment.centerRight,
+                      child: SizedBox(
+                        height: 20,
+                        child: Switch(
+                          value: state.bidirectional,
+                          onChanged: (v) => ref
+                              .read(agentScreenProvider(widget.agentId)
+                                  .notifier)
+                              .setBidirectional(v),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
-            ),
+            );
+          }),
 
           // Language bar
           TranslateLanguageBar(
@@ -197,13 +227,6 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
             dstLang: state.dstLang,
             srcLangs: state.srcLangs,
             dstLangs: state.dstLangs,
-            bidirectionalAvailable:
-                state.agentType == 'translate' &&
-                    state.sttSupportsLanguageDetection,
-            bidirectional: state.bidirectional,
-            onBidirectionalChanged: (v) => ref
-                .read(agentScreenProvider(widget.agentId).notifier)
-                .setBidirectional(v),
             onSrcTap: () => showLangPicker(
               context,
               isSource: true,
@@ -246,20 +269,21 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
                       isTranslateMode: true,
                       srcLang: state.srcLang,
                       dstLang: state.dstLang,
-                      // 三段式 translate：己方说源语言（srcLang）→ 右侧；
-                      // ast-translate：己方读译文（dstLang）→ 右侧。
-                      selfLang: state.agentType == 'translate'
-                          ? state.srcLang
-                          : state.dstLang,
+                      // 三段式 translate / ast-translate：以"识别文本的语言编码"决定左右——
+                      //   detectedLang == dstLang（目标语言）→ 右侧；
+                      //   detectedLang == srcLang（源语言）→ 左侧。
+                      // 与界面顶部"来源语言（左）→ 目标语言（右）"的方向标识一致。
+                      // 互译关下 STT/文本路径会把 detectedLang 强制打成 srcLang，
+                      // 自然全部落在左侧；互译开则按 STT 真实识别结果分左右。
+                      selfLang: state.dstLang,
                     ),
                   ),
           ),
 
-          // TTS strip + Input bar: only when connected (or non-E2E)
+          // Input bar: only when connected (or non-E2E)
           if (!isE2E ||
               state.connectionState ==
                   ServiceConnectionState.connected) ...[
-            if (isCall && isPlaying) TtsPlayingStrip(isTranslateMode: true),
             MultimodalInputBar(
               inputMode: state.inputMode,
               partialText: state.sttPartial,

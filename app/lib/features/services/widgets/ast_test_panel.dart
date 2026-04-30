@@ -1,21 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:agents_server/agents_server.dart';
 import 'package:flutter/material.dart';
 import 'package:local_db/local_db.dart';
+import 'package:service_manager/service_manager.dart';
 
 import '../../../shared/themes/app_theme.dart';
 import '../../chat/providers/agent_screen_provider.dart' show AgentMessage;
-import '../../chat/widgets/chat_screen_shared.dart'
-    show statusColor, statusLabel;
 import '../../chat/widgets/message_bubble.dart';
 import 'test_log_panel.dart';
 
-/// Shared AST (end-to-end translate) test session panel. Reused by every
-/// AST vendor (volcengine, polychat, ...). Handles selection, connection
-/// lifecycle, and renders source + translation pairs through [MessageBubble]
-/// so the visual style matches the production translate screen.
+/// AST (end-to-end translate) test session panel. Talks **directly** to the
+/// vendor `NativeAstService` via [ServiceManagerBridge] — does **not** go
+/// through `agents_server` / `agent_ast_translate`, because those are the
+/// orchestration layer and would conflate vendor connectivity bugs with
+/// agent-container scheduling bugs (see local_plugins/CLAUDE.md §1).
 class AstTestPanel extends StatefulWidget {
   const AstTestPanel({super.key, required this.services});
   final List<ServiceConfigDto> services;
@@ -48,12 +47,11 @@ class _AstTestPanelState extends State<AstTestPanel> {
   String _srcLang = 'zh';
   String _dstLang = 'en';
 
-  // ── Session ───────────────────────────────────────────────────────────────
-  final _bridge = AgentsServerBridge();
-  StreamSubscription<AgentEvent>? _eventSub;
-  String? _sessionId;
+  // ── Test session ──────────────────────────────────────────────────────────
+  final _bridge = ServiceManagerBridge();
+  StreamSubscription<ServiceTestEvent>? _eventSub;
+  String? _testId;
   _Phase _phase = _Phase.idle;
-  AgentSessionState _sessionState = AgentSessionState.idle;
   String? _errorMessage;
   Duration _connectionDuration = Duration.zero;
   Timer? _connTimer;
@@ -76,7 +74,11 @@ class _AstTestPanelState extends State<AstTestPanel> {
   void dispose() {
     _connTimer?.cancel();
     _eventSub?.cancel();
-    if (_sessionId != null) _bridge.stopAgent(_sessionId!);
+    final tid = _testId;
+    if (tid != null) {
+      _bridge.testAstDisconnect(tid);
+      _bridge.releaseTest(tid);
+    }
     super.dispose();
   }
 
@@ -129,21 +131,20 @@ class _AstTestPanelState extends State<AstTestPanel> {
       return;
     }
 
-    final sid = 'ast_test_${DateTime.now().millisecondsSinceEpoch}';
+    final tid = 'ast_test_${DateTime.now().millisecondsSinceEpoch}';
     _connTimer?.cancel();
     _connectionDuration = Duration.zero;
     setState(() {
       _phase = _Phase.connecting;
-      _sessionState = AgentSessionState.idle;
       _errorMessage = null;
       _messages.clear();
       _logs.clear();
-      _sessionId = sid;
+      _testId = tid;
     });
-    _log('→ createAgent sid=$sid vendor=$vendor $_srcLang→$_dstLang');
+    _log('→ testAstConnect tid=$tid vendor=$vendor $_srcLang→$_dstLang');
 
     _eventSub?.cancel();
-    _eventSub = _bridge.eventStream.where((e) => e.sessionId == sid).listen(
+    _eventSub = _bridge.eventStream.where((e) => e.testId == tid).listen(
       _onEvent,
       onError: (e) {
         _log('‼ stream error: $e');
@@ -157,35 +158,28 @@ class _AstTestPanelState extends State<AstTestPanel> {
     );
 
     try {
-      final cfg = jsonDecode(svc.configJson) as Map<String, dynamic>;
-      cfg['srcLang'] = _srcLang;
-      cfg['dstLang'] = _dstLang;
+      final overrides = <String, dynamic>{
+        'srcLang': _srcLang,
+        'dstLang': _dstLang,
+      };
       if (vendor == 'polychat') {
         final agentCfg =
             jsonDecode(_selectedAgent!.configJson) as Map<String, dynamic>;
-        cfg['agentId'] = agentCfg['agentId'];
+        overrides['agentId'] = agentCfg['agentId'];
       }
-      final mergedCfg = jsonEncode(cfg);
-
-      await _bridge.createAgent(
-        agentId: sid,
-        agentType: 'ast-translate',
-        inputMode: 'text',
-        astVendor: vendor,
-        astConfigJson: mergedCfg,
-        extraParams: {'srcLang': _srcLang, 'dstLang': _dstLang},
+      await _bridge.testAstConnect(
+        testId: tid,
+        serviceId: svc.id,
+        extraConfigJson: jsonEncode(overrides),
       );
-      _log('→ connectService');
-      await _bridge.connectService(sid);
-      _log('→ setInputMode=call');
-      await _bridge.setInputMode(sid, 'call');
+      // 服务测试 = 本地麦克风路径；底层 connected 事件到达后再开 startAudio。
     } catch (e) {
       _log('‼ connect exception: $e');
       if (mounted) {
         setState(() {
           _phase = _Phase.error;
           _errorMessage = e.toString().replaceFirst('Exception: ', '');
-          _sessionId = null;
+          _testId = null;
         });
       }
     }
@@ -195,18 +189,17 @@ class _AstTestPanelState extends State<AstTestPanel> {
     _connTimer?.cancel();
     _eventSub?.cancel();
     _eventSub = null;
-    final sid = _sessionId;
-    _sessionId = null;
-    if (sid != null) {
-      _log('→ stopAgent');
-      try {
-        await _bridge.stopAgent(sid);
-      } catch (_) {}
+    final tid = _testId;
+    _testId = null;
+    if (tid != null) {
+      _log('→ testAstStopAudio + testAstDisconnect');
+      try { await _bridge.testAstStopAudio(tid); } catch (_) {}
+      try { await _bridge.testAstDisconnect(tid); } catch (_) {}
+      try { await _bridge.releaseTest(tid); } catch (_) {}
     }
     if (!mounted) return;
     setState(() {
       _phase = _Phase.idle;
-      _sessionState = AgentSessionState.idle;
       _errorMessage = null;
       _messages.clear();
     });
@@ -225,56 +218,40 @@ class _AstTestPanelState extends State<AstTestPanel> {
 
   // ── Event handling ────────────────────────────────────────────────────────
 
-  void _onEvent(AgentEvent event) {
+  void _onEvent(ServiceTestEvent event) {
     if (!mounted) return;
+    if (event is! AstTestEvent) return;
     _log('← ${_summarize(event)}');
     setState(() {
-      switch (event) {
-        case ServiceConnectionStateEvent(
-            :final connectionState,
-            :final errorMessage,
-          ):
-          switch (connectionState) {
-            case ServiceConnectionState.connected:
-              if (_phase != _Phase.connected) _startConnTimer();
-              _phase = _Phase.connected;
-            case ServiceConnectionState.connecting:
-              _phase = _Phase.connecting;
-            case ServiceConnectionState.error:
-              _connTimer?.cancel();
-              _phase = _Phase.error;
-              _errorMessage = errorMessage ?? '连接失败';
-            case ServiceConnectionState.disconnected:
-              _connTimer?.cancel();
-              if (_phase != _Phase.error) _phase = _Phase.idle;
+      switch (event.kind) {
+        case AstTestEventKind.connected:
+          if (_phase != _Phase.connected) _startConnTimer();
+          _phase = _Phase.connected;
+          // 服务测试默认 self-mic 路径：连上后立即开本地麦克风往火山推 PCM，
+          // 否则服务端 8 秒收不到帧会主动断开。
+          final tid = _testId;
+          if (tid != null) {
+            _log('→ testAstStartAudio');
+            _bridge.testAstStartAudio(tid).catchError((e) {
+              _log('‼ startAudio failed: $e');
+            });
           }
-        case SessionStateEvent(:final state):
-          _sessionState = state;
-          if (_phase == _Phase.connecting) {
-            _startConnTimer();
-            _phase = _Phase.connected;
-          }
-          if (state == AgentSessionState.error) {
-            _phase = _Phase.error;
-            _connTimer?.cancel();
-          }
-        case SttEvent(:final kind, :final text):
-          final txt = text ?? '';
-          if (kind == SttEventKind.partialResult && txt.isNotEmpty) {
-            _upsertSourcePartial(txt);
-          } else if (kind == SttEventKind.finalResult && txt.isNotEmpty) {
-            _finalizeSource(txt);
-          }
-        case LlmEvent(:final kind, :final textDelta, :final fullText):
-          if (kind == LlmEventKind.firstToken && (textDelta ?? '').isNotEmpty) {
-            _appendTranslation(textDelta!);
-          } else if (kind == LlmEventKind.done && (fullText ?? '').isNotEmpty) {
-            _finalizeTranslation(fullText!);
-          }
-        case AgentErrorEvent(:final errorCode, :final message):
+        case AstTestEventKind.sourceSubtitle:
+          final txt = event.text ?? '';
+          if (txt.isNotEmpty) _upsertSourcePartial(txt);
+        case AstTestEventKind.translatedSubtitle:
+          final txt = event.text ?? '';
+          if (txt.isNotEmpty) _appendTranslation(txt);
+        case AstTestEventKind.disconnected:
+          _connTimer?.cancel();
+          if (_phase != _Phase.error) _phase = _Phase.idle;
+        case AstTestEventKind.error:
           _phase = _Phase.error;
-          _errorMessage = '[$errorCode] $message';
-        default:
+          _connTimer?.cancel();
+          _errorMessage =
+              '[${event.errorCode ?? 'error'}] ${event.errorMessage ?? ''}';
+        case AstTestEventKind.speechStart:
+        case AstTestEventKind.stateChanged:
           break;
       }
     });
@@ -282,7 +259,6 @@ class _AstTestPanelState extends State<AstTestPanel> {
 
   // ── Transcript helpers ────────────────────────────────────────────────────
 
-  /// Partial source subtitle — overwrite the last streaming user message.
   void _upsertSourcePartial(String text) {
     final idx = _messages.lastIndexWhere(
       (m) => m.role == 'user' && m.status == 'streaming',
@@ -302,53 +278,29 @@ class _AstTestPanelState extends State<AstTestPanel> {
     }
   }
 
-  /// Final source subtitle — mark the user message as pending translation.
-  void _finalizeSource(String text) {
+  /// AST native 端把 sourceSubtitle / translatedSubtitle 都按"累计快照"派发
+  /// （见 ServiceTestRunner.buildAstTestCallback），所以这里直接整体覆盖即可。
+  void _appendTranslation(String full) {
     final idx = _messages.lastIndexWhere(
-      (m) => m.role == 'user' && m.status == 'streaming',
+      (m) => m.role == 'user' &&
+          (m.status == 'streaming' ||
+              m.status == 'pending' ||
+              m.translatedContent != null),
     );
-    if (idx != -1) {
-      _messages[idx].content = text;
-      _messages[idx].status = 'pending';
-    } else {
+    if (idx == -1) {
       _messages.add(
         AgentMessage(
           id: 's_${DateTime.now().microsecondsSinceEpoch}',
           role: 'user',
-          content: text,
-          status: 'pending',
+          content: '',
+          status: 'streaming',
           detectedLang: _srcLang,
+          translatedContent: full,
         ),
       );
+    } else {
+      _messages[idx].translatedContent = full;
     }
-  }
-
-  /// Translation delta — attach to the most recent source message that is
-  /// awaiting or streaming a translation.
-  void _appendTranslation(String delta) {
-    final idx = _messages.lastIndexWhere(
-      (m) => m.role == 'user' &&
-          (m.status == 'pending' || m.status == 'streaming'),
-    );
-    if (idx == -1) return;
-    final existing = _messages[idx].translatedContent ?? '';
-    _messages[idx].translatedContent = existing + delta;
-    if (_messages[idx].status == 'pending') {
-      _messages[idx].status = 'streaming';
-    }
-  }
-
-  /// Translation done — set final translated text and mark done.
-  void _finalizeTranslation(String full) {
-    final idx = _messages.lastIndexWhere(
-      (m) => m.role == 'user' &&
-          (m.status == 'pending' ||
-              m.status == 'streaming' ||
-              m.translatedContent != null),
-    );
-    if (idx == -1) return;
-    _messages[idx].translatedContent = full;
-    _messages[idx].status = 'done';
   }
 
   // ── Logging ───────────────────────────────────────────────────────────────
@@ -366,27 +318,21 @@ class _AstTestPanelState extends State<AstTestPanel> {
     });
   }
 
-  String _summarize(AgentEvent e) => switch (e) {
-        ServiceConnectionStateEvent(
-          :final connectionState,
-          :final errorMessage,
-        ) =>
-          'ConnState=${connectionState.name}${errorMessage == null ? '' : ' err=$errorMessage'}',
-        SessionStateEvent(:final state) => 'Session=${state.name}',
-        SttEvent(:final kind, :final text) =>
-          'Src.${kind.name}${_clip(text)}',
-        LlmEvent(:final kind, :final textDelta) =>
-          'Trans.${kind.name}${_clip(textDelta, prefix: ' +')}',
-        AgentErrorEvent(:final errorCode, :final message) =>
-          'Error [$errorCode] $message',
-        _ => e.runtimeType.toString(),
-      };
-
-  String _clip(String? s, {String prefix = ' '}) {
-    final t = s ?? '';
-    if (t.isEmpty) return '';
-    final n = t.length > 40 ? 40 : t.length;
-    return '$prefix"${t.substring(0, n)}"';
+  String _summarize(AstTestEvent e) {
+    final t = e.text ?? '';
+    final clipped = t.isEmpty
+        ? ''
+        : ' "${t.substring(0, t.length > 40 ? 40 : t.length)}"';
+    return switch (e.kind) {
+      AstTestEventKind.connected => 'connected',
+      AstTestEventKind.sourceSubtitle => 'src$clipped',
+      AstTestEventKind.translatedSubtitle => 'trans$clipped',
+      AstTestEventKind.speechStart => 'speechStart',
+      AstTestEventKind.stateChanged => 'state=${e.state ?? ''}',
+      AstTestEventKind.disconnected => 'disconnected',
+      AstTestEventKind.error =>
+        'error [${e.errorCode ?? ''}] ${e.errorMessage ?? ''}',
+    };
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -578,12 +524,12 @@ class _AstTestPanelState extends State<AstTestPanel> {
     final color = isError
         ? AppTheme.danger
         : isConnected
-            ? statusColor(_sessionState)
+            ? AppTheme.success
             : AppTheme.warning;
     final label = isError
         ? '错误'
         : isConnected
-            ? statusLabel(_sessionState)
+            ? '已连接'
             : '正在建立连接...';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

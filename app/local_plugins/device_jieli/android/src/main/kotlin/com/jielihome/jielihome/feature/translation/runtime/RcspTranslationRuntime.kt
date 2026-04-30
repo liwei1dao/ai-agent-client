@@ -16,6 +16,9 @@ import com.jieli.jl_audio_decode.opus.OpusManager
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.ArrayDeque
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -137,11 +140,17 @@ class RcspTranslationRuntime(
         /** 单段 PCM 上限：≈ 60s 16k mono 16bit = 1.92MB，正常 utterance 远低于此值。 */
         private const val PCM_BUFFER_HARD_LIMIT_BYTES = 2 * 1024 * 1024
         /**
-         * 缓冲触发下发的"音频时长"阈值，单位毫秒。译文很长时（用户连续说话），
-         * 在累计达到此时长时先 encode + 下发一段，避免对方耳机听到时延线性累加；
-         * isFinal=true 仍会把残余 buffer 立即下发尾段。
+         * 周期性 flush 间隔：每隔此毫秒数巡检一次 buffer，**只要非空就 flush**。
+         *
+         * 设计理由：
+         *   - 火山 AST 等端到端服务的段尾事件（TTS_ENDED / TRANS_SUBTITLE_END）颗粒度
+         *     不可靠——有时根本不发，有时延迟数秒，无法据此驱动 flush。
+         *   - 字节累计阈值（"buffer 攒满 N 秒"）也不行：短句永远凑不够字节就卡死。
+         *   - 唯一可靠的是**纯时间驱动**：每秒切一次 buffer，已收到的 PCM 立即编码下发；
+         *     OPUS 流可以多段连续拼接，对方耳机听感连续，最大延迟 ≤ 1s。
+         *   - isFinal=true 仍然短路立刻下发（兼容主动信号），但不再依赖它。
          */
-        private const val FLUSH_THRESHOLD_MS = 3_000L
+        private const val PERIODIC_FLUSH_MS = 1_000L
     }
 
     /**
@@ -236,6 +245,9 @@ class RcspTranslationRuntime(
     private val bufferLock = Any()
     private var encodeSeq = 0L
 
+    /** 周期性 flush 巡检线程；start() 启动，stop() 关闭。 */
+    private var flushWatcher: ScheduledExecutorService? = null
+
     /** 启动前置校验 + 进入翻译模式 */
     fun start(): Result<Unit> {
         if (!translationImpl.isInit) {
@@ -258,7 +270,45 @@ class RcspTranslationRuntime(
         translationImpl.addTranslationCallback(translationCallback)
         Log.d(TAG, "enterMode: mode=${mode.mode} type=${mode.audioType} sr=${mode.sampleRate} ch=${mode.channel} strategy=${mode.recordingStrategy} (waiting for onModeChange/onReceiveAudioData)")
         translationImpl.enterMode(mode, translationCallback)
+
+        // OPUS 模式启动周期性 flush 巡检：每 [PERIODIC_FLUSH_MS] 切一次缓冲。
+        if (!isPcmMode) startPeriodicFlushWatcher()
         return Result.success(Unit)
+    }
+
+    private fun startPeriodicFlushWatcher() {
+        flushWatcher?.shutdownNow()
+        val exec = Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "rcsp-tts-flush").apply { isDaemon = true }
+        }
+        flushWatcher = exec
+        exec.scheduleAtFixedRate(
+            { runCatching { periodicFlush() } },
+            PERIODIC_FLUSH_MS, PERIODIC_FLUSH_MS, TimeUnit.MILLISECONDS,
+        )
+    }
+
+    /** 每秒巡检：每条 leg 的 buffer 只要非空就立即切走 + 编码 + 下发（不依赖任何外部信号）。 */
+    private fun periodicFlush() {
+        val toEncode = mutableListOf<Triple<Int, String, ByteArray>>()
+        synchronized(bufferLock) {
+            for ((leg, buf) in pcmBuffers) {
+                if (buf.size() == 0) continue
+                val source = when (leg) {
+                    TranslationStreams.OUT_UPLINK -> AudioData.SOURCE_E_SCO_UP_LINK
+                    TranslationStreams.OUT_DOWNLINK -> AudioData.SOURCE_E_SCO_DOWN_LINK
+                    else -> AudioData.SOURCE_PHONE_MIC
+                }
+                val out = buf.toByteArray()
+                buf.reset()
+                Log.d(TAG, "periodicFlush: leg=$leg bytes=${out.size}")
+                toEncode.add(Triple(source, leg, out))
+            }
+        }
+        // encode 走 async，必须释放锁后做。
+        for ((source, leg, pcm) in toEncode) {
+            encodeAndDispatchAsync(source, leg, pcm)
+        }
     }
 
     /**
@@ -266,18 +316,17 @@ class RcspTranslationRuntime(
      *
      * 策略：
      *   - PCM 模式：每次调用直接当作一段 AudioData 下发（SDK 内部按 blockMtu 分片）。
-     *   - OPUS 模式：上层逐帧喂（service 端按帧 + 末帧 isFinal 的统一协议），runtime 在
-     *     这里做"容错缓冲"：
-     *       a) 帧追加进 per-leg buffer；
-     *       b) buffer 累计音频时长 ≥ [FLUSH_THRESHOLD_MS]（默认 3s）→ 取出整段 encode +
-     *          下发一段 AudioData，buffer 清零继续累积下一段；
-     *       c) `isFinal=true` 到达时，把 buffer 残留立即 encode + 下发尾段。
-     *     这样长译文最多 3s 就能开始送达对方，不会等整段合成完。
+     *   - OPUS 模式：纯时间驱动 flush —— 火山等端到端服务的段尾事件不可靠，
+     *     不能依赖 isFinal 或字节量阈值。改为：
+     *       a) feedTtsPcm 仅追加 buffer，不主动 flush（除非 isFinal=true）；
+     *       b) [PERIODIC_FLUSH_MS] (1s) 巡检线程每秒切走 buffer 并整段编码下发；
+     *       c) `isFinal=true` 仍短路立即 flush（兼容主动信号，不再依赖）。
+     *     最大听感延迟 ≤ 1s，且短句 / 没有段尾事件的服务都不会卡死。
      *
      * @param outputStreamId 决定 source：
      *   [TranslationStreams.OUT_UPLINK] / [TranslationStreams.OUT_DOWNLINK] 用于通话翻译；
      *   其它（speaker/localPlayback）由 ModeHandler 自己处理，不会落到这里。
-     * @param isFinal 本帧是否为当前 utterance 的最后一帧；触发 buffer 残余 flush。
+     * @param isFinal 本帧是否为当前 utterance 的最后一帧；触发 buffer 残余立即 flush。
      */
     fun feedTtsPcm(outputStreamId: String, pcm: ByteArray, isFinal: Boolean): Boolean {
         val source = when (outputStreamId) {
@@ -290,10 +339,10 @@ class RcspTranslationRuntime(
             writeBack(AudioData(source, Constants.AUDIO_TYPE_PCM, pcm))
             return true
         }
-        // OPUS 模式：缓冲 + 阈值/边界触发整段编码下发。
-        // bytesPerSec = sampleRate × channels × 2 (S16LE)；3s 阈值固定按 PCM 字节数算。
-        val bytesPerSec = sampleRateHz * 1 * 2
-        val flushThresholdBytes = (bytesPerSec * FLUSH_THRESHOLD_MS / 1000L).toInt()
+        // OPUS 模式：仅累积到 buffer。
+        //   - 切片节奏完全由 [PERIODIC_FLUSH_MS] 巡检线程驱动（每秒 flush 一次）
+        //   - isFinal=true 时立刻短路 flush 当前残余，不等下一次 tick
+        // 这样不依赖任何外部段尾事件，对方耳机最大听感延迟 ≤ 1s。
         val pendingFlush: ByteArray? = synchronized(bufferLock) {
             val buf = pcmBuffers.getOrPut(outputStreamId) { ByteArrayOutputStream() }
             if (pcm.isNotEmpty()) {
@@ -304,8 +353,7 @@ class RcspTranslationRuntime(
                 }
                 buf.write(pcm)
             }
-            val shouldFlush = isFinal || buf.size() >= flushThresholdBytes
-            if (!shouldFlush) return@synchronized null
+            if (!isFinal) return@synchronized null
             val out = buf.toByteArray()
             buf.reset()
             if (out.isEmpty()) null else out
@@ -356,6 +404,8 @@ class RcspTranslationRuntime(
     }
 
     fun stop() {
+        runCatching { flushWatcher?.shutdownNow() }
+        flushWatcher = null
         runCatching {
             translationImpl.exitMode(object : OnRcspActionCallback<Int> {
                 override fun onSuccess(d: BluetoothDevice?, t: Int?) {}
@@ -373,7 +423,10 @@ class RcspTranslationRuntime(
             phoneMicWriter.clear()
             rawWriter.clear()
         }
-        synchronized(bufferLock) { pcmBuffers.values.forEach { it.reset() }; pcmBuffers.clear() }
+        synchronized(bufferLock) {
+            pcmBuffers.values.forEach { it.reset() }
+            pcmBuffers.clear()
+        }
     }
 
     /**

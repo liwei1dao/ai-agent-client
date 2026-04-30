@@ -58,22 +58,71 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
         private const val WS_URL = "wss://openspeech.bytedance.com/api/v4/ast/v2/translate"
         private const val FIXED_RESOURCE_ID = "volc.bigasr.auc"
 
-        // Event codes (Type enum from events.proto)
+        // ─── 火山 AST 协议事件码（Type enum，from events.proto）─────────────────
+        //
+        // 编号区段语义：
+        //   100~199  会话生命周期（client → server 用 1xx 偶数；server → client 用 1xx 奇数附近）
+        //   200~299  音频任务请求（client → server）
+        //   300~399  TTS 合成相关（server → client，端到端模式下伴随音频字节）
+        //   400~499  ASR 实时识别（server → client）
+        //   600~699  字幕事件（server → client）：源语言 65x，译文 65x（START/SUBTITLE/END 三件套）
+        //
+        // 一轮"一句话"的标准事件序列（端到端 mode=s2s）：
+        //   client → 100 StartSession
+        //   server ← 150 SessionStarted
+        //   client → 200 TaskRequest（持续推 PCM）
+        //   server ← 451* 实时 ASR 预览（可选）
+        //   server ← 650 → 651* → 652   源语言字幕一句完整（START → 增量 → END）
+        //   server ← 653 → 654* → 655   译文字幕一句完整（音频字节附在 654.data 字段）
+        //   server ← 350* → 359         TTS 句首/句尾（部分场景才发；用作段尾兜底信号）
+        //   ...（下一句重复 650~655）
+        //   client → 102 FinishSession
+        //   server ← 152 SessionFinished
+        //   异常分支：server ← 153 SessionFailed（带错误码，stream 终止）
+        //   server ← 154 UsageResponse（计费用量回执，可忽略）
+
+        // ── 会话生命周期 ──
+        /** client → server：开启会话，payload 含 user / source_audio / target_audio / mode 等。 */
         private const val EVT_START_SESSION    = 100
+        /** client → server：主动结束会话；服务端会回 [EVT_SESSION_FINISHED]。 */
         private const val EVT_FINISH_SESSION   = 102
+        /** server → client：StartSession 已被服务端接受，可以开始推音频。 */
         private const val EVT_SESSION_STARTED  = 150
+        /** server → client：会话正常结束（FinishSession 应答）。 */
         private const val EVT_SESSION_FINISHED = 152
+        /** server → client：会话失败（鉴权 / 配额 / 8s 无音频 timeout 等）；带 status + msg。 */
         private const val EVT_SESSION_FAILED   = 153
+        /** server → client：用量回执（计费维度，业务无需消费）。 */
         private const val EVT_USAGE_RESPONSE   = 154
+
+        // ── 音频上行 ──
+        /** client → server：单帧 PCM 任务请求；source_audio.binary_data 字段携带音频字节。 */
         private const val EVT_TASK_REQUEST     = 200
+
+        // ── TTS 合成（端到端 s2s 模式下，音频字节嵌在 65x.data；35x 仅作段边界提示）──
+        /** server → client：TTS 句首事件，data 字段可能携带首段音频 PCM。 */
         private const val EVT_TTS_SENTENCE_START = 350
+        /** server → client：TTS 整句合成完毕；上层据此发 isFinal=true 让下游 flush。 */
         private const val EVT_TTS_ENDED        = 359
+
+        // ── ASR 实时识别（中间预览，不一定每轮都发）──
+        /** server → client：实时 ASR 部分结果 / 增量文本（s2s 模式下偶发）。 */
         private const val EVT_ASR_RESPONSE     = 451
+
+        // ── 源语言字幕（说话人原文）──
+        /** server → client：源语言字幕开始；标记本句新轮次的起点。 */
         private const val EVT_SRC_SUBTITLE_START = 650
+        /** server → client：源语言字幕**增量片段**（需在客户端累积成完整句）。 */
         private const val EVT_SRC_SUBTITLE     = 651
+        /** server → client：源语言字幕结束；本句源文已全部送达，等待译文。 */
         private const val EVT_SRC_SUBTITLE_END = 652
+
+        // ── 译文字幕（带 TTS 音频）──
+        /** server → client：译文字幕开始；后续 654 帧的 data 字段会附带 TTS PCM 音频。 */
         private const val EVT_TRANS_SUBTITLE_START = 653
+        /** server → client：译文字幕**增量片段** + TTS 音频字节（写入 AudioTrack / sink）。 */
         private const val EVT_TRANS_SUBTITLE   = 654
+        /** server → client：译文字幕结束；本轮译文完成，触发下游 flush + endRound。 */
         private const val EVT_TRANS_SUBTITLE_END = 655
     }
 
@@ -97,7 +146,6 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
     @Volatile private var connectId: String = ""
     @Volatile private var srcLang: String = "zh"
     @Volatile private var dstLang: String = "en"
-    @Volatile private var isBidirectional = false
 
     // 字幕文本累积器（服务端发送增量片段，需要累积为完整文本）
     private val srcSubtitleAccum = StringBuilder()
@@ -127,9 +175,20 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
         appKey = config.optString("appKey").ifBlank { config.optString("appId") }
         accessKey = config.optString("accessKey").ifBlank { config.optString("accessToken") }
         resourceId = config.optString("resourceId").ifBlank { FIXED_RESOURCE_ID }
-        srcLang = config.optString("srcLang").ifBlank { "zh" }
-        dstLang = config.optString("dstLang").ifBlank { "en" }
+        // 火山 AST 协议只认短码（zh / en / ja …），不认 BCP-47 完整 locale
+        // （zh-CN / en-US / ja-JP）—— 不归一化会得到 status=45000001
+        // "InvalidData:sp ... langPair:zh-CN2en-US not found"。
+        // 调用方（agent / 服务测试 / call_translate）传什么都接住，由本插件归一。
+        srcLang = normalizeLang(config.optString("srcLang"))
+        dstLang = normalizeLang(config.optString("dstLang"))
         Log.d(TAG, "initialize: appKey=${appKey.take(8)}... srcLang=$srcLang dstLang=$dstLang")
+    }
+
+    private fun normalizeLang(raw: String): String {
+        val s = raw.trim()
+        if (s.isEmpty()) return "zh"
+        // 取 BCP-47 primary subtag：zh-CN → zh, en_US → en, ja-JP → ja
+        return s.substringBefore('-').substringBefore('_').lowercase()
     }
 
     override fun connect(callback: AstCallback) {
@@ -148,9 +207,8 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                 connectId = UUID.randomUUID().toString()
                 srcSubtitleAccum.clear()
                 transSubtitleAccum.clear()
-                isBidirectional = setOf(srcLang, dstLang) == setOf("zh", "en")
 
-                Log.d(TAG, "connect(): appKey=$appKey resourceId=$resourceId srcLang=$srcLang dstLang=$dstLang")
+                Log.d(TAG, "connect(): appKey='${appKey}'(len=${appKey.length}) accessKey='${accessKey.take(8)}...'(len=${accessKey.length}) resourceId='$resourceId' srcLang=$srcLang dstLang=$dstLang url=$WS_URL")
 
                 // 注意：connect() 阶段**不**碰本地音频硬件。
                 // setupAudioRecord / setupAudioTrack 会触发
@@ -284,8 +342,11 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                 "ast_volcengine not connected; call connect() first")
         }
         if (isAudioRunning) {
-            throw IllegalStateException(
-                "external audio cannot mix with self-mic mode (stopAudio first)")
+            // self-mic 当前在跑（chat UI 默认 'call' 模式会先开 self-mic）；
+            // external 路径主动接管：先停 self-mic 再切外部源，避免两个 PCM 源
+            // 同时往同一个 WS 灌帧。
+            Log.d(TAG, "startExternalAudio: stopping self-mic before takeover")
+            stopAudio()
         }
         if (externalMode) {
             Log.d(TAG, "startExternalAudio: already active, replacing sink")
@@ -338,15 +399,12 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
             if (pcmData != null && pcmData.isNotEmpty()) f = f + encBytes(14, pcmData)
             f
         }
-        // 中英互译时协议层使用 "zhen"（火山引擎双向模式要求）
-        val wsSource = if (isBidirectional) "zhen" else srcLang
-        val wsTarget = if (isBidirectional) "zhen" else dstLang
         return encMsg(1, encStr(5, connectId) + encStr(6, remoteSessionId)) +
                encEnum(2, event) +
                encMsg(3, encStr(1, "ast_android") + encStr(2, "ast_android")) +
                encMsg(4, srcAudioFields) +
                encMsg(5, encStr(4, "wav") + encInt(7, TTS_SAMPLE_RATE) + encInt(8, 16) + encInt(9, 1)) +
-               encMsg(6, encStr(1, "s2s") + encStr(2, wsSource) + encStr(3, wsTarget))
+               encMsg(6, encStr(1, "s2s") + encStr(2, srcLang) + encStr(3, dstLang))
     }
 
     /**
@@ -470,18 +528,6 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
         return if (b.isEmpty()) "" else String(b, Charsets.UTF_8)
     }
 
-    // ─── 双向语言检测 ──────────────────────────────────────────────────────────
-
-    /**
-     * 通过 CJK 字符占比判断文本语言（中英双向模式专用）。
-     * 汉字占比 > 30% -> zh，否则 -> en。
-     */
-    private fun detectTextLang(text: String): String {
-        val cjk = text.count { it in '\u4e00'..'\u9fff' }
-        val total = text.count { !it.isWhitespace() }
-        return if (total == 0 || cjk.toFloat() / total > 0.3f) "zh" else "en"
-    }
-
     // ─── Response Handling ───────────────────────────────────────────────────────
 
     private fun handleResponse(data: ByteArray) {
@@ -543,10 +589,16 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
 
             EVT_SRC_SUBTITLE_START -> {
                 Log.d(TAG, "SourceSubtitleStart")
+                // 新一句开始：重置段尾信号 flag，允许本轮再发一次 isFinal=true。
+                ttsFinalSentForRound = false
                 srcSubtitleAccum.clear()
                 val cb = callback
                 if (cb != null) {
-                    beginRound(cb)
+                    // 火山协议每句先发完整 SRC（START→SUBTITLE→END），再发 TRANS。
+                    // 上一轮如果只发了 SRC_END 没等到 TRANS_END，currentRequestId
+                    // 还挂着——这里 force=true 强制结束旧轮再开新轮，避免新句的
+                    // SRC 跟旧句的残留 requestId 串起来。
+                    beginRound(cb, force = true)
                     openRole(cb, AstRole.SOURCE)
                 }
                 if (audioData.isNotEmpty()) writeAudio(audioData)
@@ -576,7 +628,9 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                         emitRoleText(cb, AstRole.SOURCE, isFinal = true, text = srcSubtitleAccum.toString())
                     }
                     closeRole(cb, AstRole.SOURCE)
-                    maybeEndRound(cb)
+                    // 不在这里 endRound —— 必须保留 currentRequestId 让接下来的
+                    // TRANS_START/SUBTITLE/END 共用同一 requestId，UI 端 SubtitleAggregator
+                    // 才能把源文与译文配到同一行。endRound 由 TRANS_END 触发。
                 }
             }
 
@@ -617,6 +671,10 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                     closeRole(cb, AstRole.TRANSLATED)
                     maybeEndRound(cb)
                 }
+                // 段尾信号：本句的 trans 文本和 TTS 音频都到此为止，给下游 sink
+                // 一个 isFinal=true 的空帧，杰理那边据此 flush 缓存（不再等更多帧）。
+                // 优先用 EVT_TTS_ENDED；若火山没发 TTS_ENDED 就用 TRANS_END 兜底。
+                emitTtsFinalOnce("trans_end")
             }
 
             EVT_TTS_SENTENCE_START -> {
@@ -626,6 +684,7 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
 
             EVT_TTS_ENDED -> {
                 Log.d(TAG, "TTSEnded")
+                emitTtsFinalOnce("tts_ended")
             }
 
             EVT_USAGE_RESPONSE -> {
@@ -751,11 +810,23 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
         }
 
         override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
-            Log.e(TAG, "WS failure code=${response?.code}  ${t.message}")
+            val code = response?.code
+            val body = runCatching { response?.body?.string() }.getOrNull()
+            val logId = response?.header("X-Tt-Logid")
+                ?: response?.header("X-Api-Log-Id")
+                ?: response?.header("X-Tt-LogID")
+            val resHeader = response?.header("X-Api-Resource-Id")
+            Log.e(TAG, "WS failure code=$code logId=$logId resourceIdEcho=$resHeader body=${body?.take(500)} err=${t.message}")
             runCatching { wsReady.completeExceptionally(t) }
             runCatching { sessionStarted.completeExceptionally(t) }
-            if (isRunning) callback?.onError("ws_error",
-                "WebSocket error ${response?.code}: ${t.message}")
+            if (isRunning) {
+                val detail = buildString {
+                    append("WebSocket error ").append(code).append(": ").append(t.message)
+                    if (!body.isNullOrBlank()) append(" | body=").append(body.take(300))
+                    if (!logId.isNullOrBlank()) append(" | logId=").append(logId)
+                }
+                callback?.onError("ws_error", detail)
+            }
             isRunning = false
             isConnected = false
             isAudioRunning = false
@@ -774,16 +845,46 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
     // ─── Audio Pump ───────────────────────────────────────────────────────────────
 
     private fun startAudioPump() {
-        val ar = audioRecord ?: return
+        val ar = audioRecord ?: run {
+            Log.e(TAG, "startAudioPump: audioRecord is null!")
+            return
+        }
         ar.startRecording()
+        Log.d(TAG, "startAudioPump: AudioRecord recordingState=${ar.recordingState} (1=stopped, 3=recording), state=${ar.state}")
         pumpJob = scope.launch {
             val buf = ByteArray(FRAME_BYTES)
+            var sentCount = 0L
+            var sentBytes = 0L
+            var lastReportMs = System.currentTimeMillis()
+            var maxAmp = 0
             while (isActive && isAudioRunning &&
                 ar.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                 val read = ar.read(buf, 0, buf.size)
-                if (read > 0) sendProto(buildAudioFrame(buf.copyOf(read)))
+                if (read > 0) {
+                    // sample peak amplitude (16-bit PCM little-endian)
+                    var i = 0
+                    while (i + 1 < read) {
+                        val s = (buf[i + 1].toInt() shl 8) or (buf[i].toInt() and 0xFF)
+                        val abs = if (s < 0) -s else s
+                        if (abs > maxAmp) maxAmp = abs
+                        i += 2
+                    }
+                    sendProto(buildAudioFrame(buf.copyOf(read)))
+                    sentCount++
+                    sentBytes += read
+                    val now = System.currentTimeMillis()
+                    if (now - lastReportMs >= 1000L) {
+                        Log.d(TAG, "audioPump stats (last ${now - lastReportMs}ms): frames=$sentCount bytes=$sentBytes peakAmp=$maxAmp wsAlive=${webSocket != null}")
+                        sentCount = 0
+                        sentBytes = 0
+                        maxAmp = 0
+                        lastReportMs = now
+                    }
+                } else if (read < 0) {
+                    Log.e(TAG, "audioPump: AudioRecord.read returned error $read")
+                }
             }
-            Log.d(TAG, "Audio pump stopped")
+            Log.d(TAG, "Audio pump stopped (isActive=$isActive isAudioRunning=$isAudioRunning recState=${ar.recordingState})")
         }
     }
 
@@ -804,17 +905,86 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
         return out.array()
     }
 
+    @Volatile private var ttsRxCount = 0L
+    @Volatile private var ttsRxBytes = 0L
+    @Volatile private var ttsRxReportMs = 0L
+    /** 当前一句的段尾 final 信号是否已发出，避免 TTS_ENDED + TRANS_END 重复触发。 */
+    @Volatile private var ttsFinalSentForRound = false
+
+    /** 推一个 isFinal=true 的空帧给下游 sink，标记本句 TTS 音频结束（段边界）。 */
+    private fun emitTtsFinalOnce(reason: String) {
+        if (ttsFinalSentForRound) return
+        if (!externalMode) return  // self-mic 模式没有下游 sink，不需要段尾信号
+        val sink = externalSink ?: return
+        ttsFinalSentForRound = true
+        Log.d(TAG, "emitTtsFinal: reason=$reason (sink flush)")
+        sink.onTtsFrame(
+            ExternalAudioFrame(
+                codec = ExternalAudioFormat.Codec.PCM_S16LE,
+                sampleRate = MIC_SAMPLE_RATE,
+                channels = 1,
+                bytes = ByteArray(0),
+                isFinal = true,
+            )
+        )
+    }
+
+    /**
+     * 24 kHz mono PCM_S16LE → 16 kHz mono PCM_S16LE 线性插值降采样（3:2）。
+     * 简单的 lerp，无 LPF——会引入轻微高频混叠，但语音 (<4 kHz) 可接受；
+     * 通话翻译要求耳机端 16 kHz 输入，必须做这一步。
+     */
+    private fun downsample24kTo16k(input: ByteArray): ByteArray {
+        if (input.size < 2) return input
+        val inSamples = input.size / 2
+        val outSamples = (inSamples * 2) / 3
+        if (outSamples <= 0) return ByteArray(0)
+        val out = ByteArray(outSamples * 2)
+        val inBuf = java.nio.ByteBuffer.wrap(input).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val outBuf = java.nio.ByteBuffer.wrap(out).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until outSamples) {
+            // src 索引 = i * 1.5
+            val srcIdx2 = i * 3 // 用整数运算：srcIdx 表示 i*1.5 的 *2 倍
+            val baseIdx = srcIdx2 / 2
+            val frac = (srcIdx2 % 2) // 0 → frac=0, 1 → frac=0.5
+            val s0 = inBuf.getShort(baseIdx * 2).toInt()
+            val s1 = if (baseIdx + 1 < inSamples) inBuf.getShort((baseIdx + 1) * 2).toInt() else s0
+            val interp = if (frac == 0) s0 else (s0 + s1) / 2
+            outBuf.putShort(i * 2, interp.toShort())
+        }
+        return out
+    }
+
     private fun writeAudio(data: ByteArray) {
         if (data.isEmpty()) return
+        ttsRxCount++
+        ttsRxBytes += data.size
+        val now = System.currentTimeMillis()
+        if (now - ttsRxReportMs >= 1000L) {
+            Log.d(TAG, "ttsRx stats (last 1s): frames=$ttsRxCount bytes=$ttsRxBytes externalMode=$externalMode sinkBound=${externalSink != null}")
+            ttsRxCount = 0
+            ttsRxBytes = 0
+            ttsRxReportMs = now
+        }
         // 外部音频模式：不放本地扬声器，回写给 sink，由编排器决定下游去向（如灌回耳机）。
         // 注：外部模式下不应用软件增益——耳机端通常自带输出增益，避免重复放大产生 clipping。
         if (externalMode) {
-            externalSink?.onTtsFrame(
+            val sink = externalSink
+            if (sink == null) {
+                Log.w(TAG, "writeAudio: externalMode but sink is null — TTS frame dropped (${data.size}B)")
+                return
+            }
+            // 火山 AST 输出 24 kHz PCM；通话翻译耳机端只接受 AudioFormat.standard
+            // = 16 kHz mono PCM（杰理 feedTranslatedAudio 在非 16k 时 silently
+            // 返回 false，对方就听不到声音）。runner 层负责重采样到 16k —— 符合
+            // local_plugins/CLAUDE.md §11.4 "agent runner 必须输出标准格式"。
+            val pcm16k = downsample24kTo16k(data)
+            sink.onTtsFrame(
                 ExternalAudioFrame(
                     codec = ExternalAudioFormat.Codec.PCM_S16LE,
-                    sampleRate = TTS_SAMPLE_RATE,
+                    sampleRate = MIC_SAMPLE_RATE, // 16000
                     channels = 1,
-                    bytes = data,
+                    bytes = pcm16k,
                 )
             )
             return
@@ -835,10 +1005,15 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
             AudioFormat.ENCODING_PCM_16BIT, bufSize,
         )
         audioRecord = ar
+        // 1=STATE_INITIALIZED 即就绪；0=STATE_UNINITIALIZED 表示构造失败（权限 / 被占用）。
+        val arState = ar.state
+        if (arState != AudioRecord.STATE_INITIALIZED) {
+            Log.e(TAG, "AudioRecord NOT initialized (state=$arState) — RECORD_AUDIO 权限缺失或麦克风被占用")
+        }
         val sid = ar.audioSessionId
         if (AcousticEchoCanceler.isAvailable()) aec = AcousticEchoCanceler.create(sid)?.also { it.enabled = true }
         if (NoiseSuppressor.isAvailable())      ns  = NoiseSuppressor.create(sid)?.also { it.enabled = true }
-        Log.d(TAG, "AudioRecord created bufSize=$bufSize AEC=${aec != null}")
+        Log.d(TAG, "AudioRecord created bufSize=$bufSize state=$arState AEC=${aec != null} NS=${ns != null}")
     }
 
     private fun setupAudioTrack() {

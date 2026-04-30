@@ -311,12 +311,13 @@ class ServiceTestRunner(
     // AST 测试
     // ─────────────────────────────────────────────────
 
-    fun testAstConnect(testId: String, serviceId: String) {
+    fun testAstConnect(testId: String, serviceId: String, extraConfigJson: String? = null) {
         scope.launch {
             try {
                 val config = loadServiceConfig(serviceId) ?: return@launch
+                val mergedJson = mergeConfigOverride(config.configJson, extraConfigJson)
                 val service = NativeServiceRegistry.createAst(config.vendor)
-                service.initialize(config.configJson, context)
+                service.initialize(mergedJson, context)
 
                 releaseSession(testId)
                 sessions[testId] = TestSession.AstSession(service)
@@ -326,6 +327,23 @@ class ServiceTestRunner(
                 Log.e(TAG, "testAstConnect error: ${e.message}", e)
                 eventSink.onAstTestEvent(testId, "error", errorCode = "init_error", errorMessage = e.message)
             }
+        }
+    }
+
+    /** 与 [mergeConfig] 不同：本方法**覆盖**已有键，专供测试面板临时改 srcLang/dstLang/agentId。 */
+    private fun mergeConfigOverride(configJson: String, extraJson: String?): String {
+        if (extraJson.isNullOrBlank()) return configJson
+        return try {
+            val base = org.json.JSONObject(configJson)
+            val extra = org.json.JSONObject(extraJson)
+            val keys = extra.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                base.put(k, extra.get(k))
+            }
+            base.toString()
+        } catch (_: Exception) {
+            configJson
         }
     }
 
