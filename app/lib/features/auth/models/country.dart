@@ -1,0 +1,63 @@
+class Country {
+  const Country({required this.name, required this.code, required this.flag});
+  final String name;
+  final String code;
+  final String flag;
+}
+
+const kCountryEmail = Country(name: '邮箱', code: '', flag: '✉️');
+
+const kCountries = <Country>[
+  kCountryEmail,
+  Country(name: '中国', code: '+86', flag: '🇨🇳'),
+  Country(name: '美国', code: '+1', flag: '🇺🇸'),
+  Country(name: '加拿大', code: '+1', flag: '🇨🇦'),
+  Country(name: '俄罗斯', code: '+7', flag: '🇷🇺'),
+  Country(name: '英国', code: '+44', flag: '🇬🇧'),
+  Country(name: '德国', code: '+49', flag: '🇩🇪'),
+  Country(name: '意大利', code: '+39', flag: '🇮🇹'),
+  Country(name: '法国', code: '+33', flag: '🇫🇷'),
+  Country(name: '西班牙', code: '+34', flag: '🇪🇸'),
+  Country(name: '南非', code: '+27', flag: '🇿🇦'),
+  Country(name: '沙特阿拉伯', code: '+966', flag: '🇸🇦'),
+  Country(name: '土耳其', code: '+90', flag: '🇹🇷'),
+  Country(name: '日本', code: '+81', flag: '🇯🇵'),
+  Country(name: '韩国', code: '+82', flag: '🇰🇷'),
+  Country(name: '新加坡', code: '+65', flag: '🇸🇬'),
+  Country(name: '马来西亚', code: '+60', flag: '🇲🇾'),
+  Country(name: '泰国', code: '+66', flag: '🇹🇭'),
+  Country(name: '越南', code: '+84', flag: '🇻🇳'),
+  Country(name: '印度', code: '+91', flag: '🇮🇳'),
+  Country(name: '巴基斯坦', code: '+92', flag: '🇵🇰'),
+  Country(name: '菲律宾', code: '+63', flag: '🇵🇭'),
+  Country(name: '印度尼西亚', code: '+62', flag: '🇮🇩'),
+  Country(name: '阿联酋', code: '+971', flag: '🇦🇪'),
+  Country(name: '墨西哥', code: '+52', flag: '🇲🇽'),
+  Country(name: '巴西', code: '+55', flag: '🇧🇷'),
+  Country(name: '阿根廷', code: '+54', flag: '🇦🇷'),
+  Country(name: '澳大利亚', code: '+61', flag: '🇦🇺'),
+  Country(name: '新西兰', code: '+64', flag: '🇳🇿'),
+  Country(name: '中国香港', code: '+852', flag: '🇭🇰'),
+  Country(name: '中国澳门', code: '+853', flag: '🇲🇴'),
+  Country(name: '中国台湾', code: '+886', flag: '🇹🇼'),
+  Country(name: '埃及', code: '+20', flag: '🇪🇬'),
+  Country(name: '希腊', code: '+30', flag: '🇬🇷'),
+  Country(name: '荷兰', code: '+31', flag: '🇳🇱'),
+  Country(name: '比利时', code: '+32', flag: '🇧🇪'),
+  Country(name: '匈牙利', code: '+36', flag: '🇭🇺'),
+  Country(name: '罗马尼亚', code: '+40', flag: '🇷🇴'),
+  Country(name: '瑞士', code: '+41', flag: '🇨🇭'),
+  Country(name: '奥地利', code: '+43', flag: '🇦🇹'),
+  Country(name: '丹麦', code: '+45', flag: '🇩🇰'),
+  Country(name: '瑞典', code: '+46', flag: '🇸🇪'),
+  Country(name: '挪威', code: '+47', flag: '🇳🇴'),
+  Country(name: '波兰', code: '+48', flag: '🇵🇱'),
+  Country(name: '葡萄牙', code: '+351', flag: '🇵🇹'),
+  Country(name: '爱尔兰', code: '+353', flag: '🇮🇪'),
+  Country(name: '芬兰', code: '+358', flag: '🇫🇮'),
+  Country(name: '乌克兰', code: '+380', flag: '🇺🇦'),
+  Country(name: '捷克', code: '+420', flag: '🇨🇿'),
+  Country(name: '以色列', code: '+972', flag: '🇮🇱'),
+  Country(name: '阿富汗', code: '+93', flag: '🇦🇫'),
+  Country(name: '蒙古', code: '+976', flag: '🇲🇳'),
+];

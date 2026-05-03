@@ -38,4 +38,8 @@ class AppConfig {
   String get polychatBaseUrl => dotenv.env['POLYCHAT_BASE_URL'] ?? '';
   String get polychatAppId => dotenv.env['POLYCHAT_APP_ID'] ?? '';
   String get polychatAppSecret => dotenv.env['POLYCHAT_APP_SECRET'] ?? '';
+
+  // 业务后端（账号 + 会议共享同一个域名）
+  // 为空时走 Mock 实现，不发起真实请求
+  String get apiBaseUrl => dotenv.env['API_BASE_URL'] ?? '';
 }

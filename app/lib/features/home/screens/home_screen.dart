@@ -64,6 +64,8 @@ class HomeScreen extends ConsumerWidget {
           const SizedBox(height: 8),
           _CallTranslateEntry(onTap: () => context.push('/call-translate')),
           const SizedBox(height: 8),
+          _MeetingEntry(onTap: () => context.push('/meeting')),
+          const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
@@ -362,6 +364,77 @@ class _CallTranslateEntry extends StatelessWidget {
               ),
               const Icon(Icons.play_circle_outline,
                   color: accent, size: 26),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MeetingEntry extends StatelessWidget {
+  const _MeetingEntry({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    const accent = Color(0xFFF59E0B);
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.mic_none_rounded,
+                    color: accent, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '会议记录',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colors.text2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '录音 · 转写 · 摘要 · 思维导图',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: colors.text1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: accent, size: 26),
             ],
           ),
         ),
