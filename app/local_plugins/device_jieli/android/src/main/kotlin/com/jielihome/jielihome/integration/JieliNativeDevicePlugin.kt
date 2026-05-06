@@ -128,6 +128,7 @@ class JieliNativeDevicePlugin(
         override fun onConnectionState(address: String, state: Int) {
             val session = _activeSession ?: return
             if (session.deviceId != address) return
+            Log.d(TAG, "onConnectionState addr=$address state=$state")
             when (state) {
                 2 -> session.setState(DeviceConnectionState.CONNECTING)
                 1 -> session.setState(DeviceConnectionState.LINK_CONNECTED)
@@ -152,6 +153,7 @@ class JieliNativeDevicePlugin(
         override fun onRcspInit(address: String, code: Int) {
             val session = _activeSession ?: return
             if (session.deviceId != address) return
+            Log.d(TAG, "onRcspInit addr=$address code=$code")
             if (code == 0) {
                 session.setState(DeviceConnectionState.READY)
                 val pending = _pendingConnect
@@ -200,6 +202,25 @@ class JieliNativeDevicePlugin(
                 "translation: ${payload["code"]} ${payload["message"] ?: ""}",
             )
         }
+
+        override fun onDeviceRecordStart(payload: Map<String, Any?>) {
+            _activeSession?.emitFeature("jieli.deviceRecord.start", payload)
+        }
+
+        override fun onDeviceRecordAudio(payload: Map<String, Any?>) {
+            _activeSession?.emitFeature("jieli.deviceRecord.audio", payload)
+        }
+
+        override fun onDeviceRecordStop(payload: Map<String, Any?>) {
+            _activeSession?.emitFeature("jieli.deviceRecord.stop", payload)
+        }
+
+        override fun onDeviceRecordError(payload: Map<String, Any?>) {
+            _activeSession?.emitError(
+                "device.feature_failed",
+                "deviceRecord: ${payload["code"]} ${payload["message"] ?: ""}",
+            )
+        }
     }
 
     // ─── NativeDevicePlugin 接口 ──────────────────────────────────────────
@@ -223,7 +244,13 @@ class JieliNativeDevicePlugin(
     override fun startScan(filter: DeviceScanFilter?, timeoutMs: Long?) {
         requireInit()
         val ms = (timeoutMs ?: 30_000L).toInt()
-        server.scanFeature.startScan(ms).onFailure {
+        val nameList = filter?.nameList?.filter { it.isNotEmpty() }
+            ?.takeIf { it.isNotEmpty() }
+            ?: filter?.namePrefix?.takeIf { it.isNotEmpty() }?.let { listOf(it) }
+            ?: emptyList()
+        val uuidList = filter?.serviceUuids?.filter { it.isNotEmpty() } ?: emptyList()
+        val skipUnnamed = filter?.skipUnnamed ?: true
+        server.scanFeature.startScan(ms, nameList, uuidList, skipUnnamed).onFailure {
             throw DeviceException("device.scan_failed", it.message, it)
         }
     }
@@ -260,11 +287,15 @@ class JieliNativeDevicePlugin(
         _pendingConnect = future
         _pendingConnectAddress = deviceId
 
+        val edrAddress = extra["edrAddr"] as? String
+        val deviceType = (extra["deviceType"] as? Number)?.toInt() ?: 0
+        val connectWay = (extra["connectWay"] as? Number)?.toInt() ?: 0
+        Log.d(TAG, "connect deviceId=$deviceId edr=$edrAddress dt=$deviceType cw=$connectWay")
         server.connectFeature.connect(
             bleAddress = deviceId,
-            edrAddress = extra["edrAddr"] as? String,
-            deviceType = (extra["deviceType"] as? Number)?.toInt() ?: 0,
-            connectWay = (extra["connectWay"] as? Number)?.toInt() ?: 0,
+            edrAddress = edrAddress,
+            deviceType = deviceType,
+            connectWay = connectWay,
         ).onFailure {
             future.completeExceptionally(
                 DeviceException(DeviceErrorCode.CONNECT_FAILED, it.message, it)

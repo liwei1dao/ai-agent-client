@@ -4,6 +4,7 @@ import 'package:device_plugin_interface/device_plugin_interface.dart';
 import 'package:flutter/services.dart';
 
 export 'package:device_plugin_interface/device_plugin_interface.dart';
+export 'src/device_recorder.dart';
 
 /// # device_manager（Flutter facade）
 ///
@@ -196,10 +197,12 @@ class MethodChannelDeviceManager implements DeviceManager {
         if (filter != null)
           'filter': {
             if (filter.namePrefix != null) 'namePrefix': filter.namePrefix,
+            if (filter.nameList != null) 'nameList': filter.nameList,
             if (filter.serviceUuids != null)
               'serviceUuids': filter.serviceUuids,
             if (filter.vendor != null) 'vendor': filter.vendor,
             if (filter.minRssi != null) 'minRssi': filter.minRssi,
+            if (filter.skipUnnamed != null) 'skipUnnamed': filter.skipUnnamed,
           },
         if (timeout != null) 'timeoutMs': timeout.inMilliseconds,
       });

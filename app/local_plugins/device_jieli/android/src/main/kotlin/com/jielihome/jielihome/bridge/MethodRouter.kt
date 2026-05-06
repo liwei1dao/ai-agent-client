@@ -32,7 +32,10 @@ class MethodRouter(
 
                 "startScan" -> {
                     val timeout = call.argument<Int>("timeoutMs") ?: 30000
-                    server.scanFeature.startScan(timeout)
+                    val nameList = call.argument<List<String>>("nameList") ?: emptyList()
+                    val uuidList = call.argument<List<String>>("uuidList") ?: emptyList()
+                    val skipUnnamed = call.argument<Boolean>("skipUnnamed") ?: true
+                    server.scanFeature.startScan(timeout, nameList, uuidList, skipUnnamed)
                         .fold({ result.success(true) },
                               { result.error("SCAN_FAILED", it.message, null) })
                 }
@@ -113,6 +116,8 @@ class MethodRouter(
                         ?: return result.error("BAD_ARG", "modeId required", null)
                     @Suppress("UNCHECKED_CAST")
                     val args = (call.argument<Map<String, Any?>>("args") ?: emptyMap())
+                    // 设备录音与翻译互斥：启动翻译前先停录音
+                    if (server.deviceRecordFeature.isRecording()) server.deviceRecordFeature.stop()
                     server.translationFeature.start(modeId, args)
                         .fold({ result.success(true) },
                               { result.error("TRANSLATION_ERR", it.message, null) })
@@ -201,6 +206,26 @@ class MethodRouter(
                         }
                     )
                 }
+
+                // ── 设备录音 ──────────────────────────────────────────────────
+                "deviceRecordStart" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val args = (call.argument<Map<String, Any?>>("args") ?: emptyMap())
+                    // 翻译与设备录音互斥：启动录音前先停翻译
+                    if (server.translationFeature.isWorking()) server.translationFeature.stop()
+                    server.deviceRecordFeature.start(args)
+                        .fold({ result.success(true) },
+                              { result.error("DEVICE_RECORD_ERR", it.message, null) })
+                }
+
+                "deviceRecordStop" -> {
+                    server.deviceRecordFeature.stop()
+                    result.success(true)
+                }
+
+                "deviceRecordStatus" -> result.success(
+                    mapOf("recording" to server.deviceRecordFeature.isRecording())
+                )
 
                 "otaStart" -> {
                     val path = call.argument<String>("firmwareFilePath")

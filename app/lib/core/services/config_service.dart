@@ -76,6 +76,9 @@ class AppConfig {
     this.defaultCallPeerLanguage,
     this.lastDeviceId,
     this.lastDeviceName,
+    this.scanNameList = const <String>[],
+    this.scanUuidList = const <String>[],
+    this.scanSkipUnnamed = true,
   });
 
   final ThemeMode themeMode;
@@ -113,6 +116,15 @@ class AppConfig {
   /// 上次成功连接过的设备显示名（重连时回填到 connect options.extra.name）。
   final String? lastDeviceName;
 
+  /// 扫描过滤：设备名命中列表（精确匹配，忽略大小写）。空 = 不按名过滤。
+  final List<String> scanNameList;
+
+  /// 扫描过滤：UUID 命中列表（杰理实现按广播 flagContent contains 匹配）。空 = 不按 UUID 过滤。
+  final List<String> scanUuidList;
+
+  /// 扫描过滤：是否跳过没有 name 的广播（环境噪声），默认 true。
+  final bool scanSkipUnnamed;
+
   AppConfig copyWith({
     ThemeMode? themeMode,
     int? historyMessageCount,
@@ -128,6 +140,9 @@ class AppConfig {
     Object? defaultCallPeerLanguage = _unset,
     Object? lastDeviceId = _unset,
     Object? lastDeviceName = _unset,
+    List<String>? scanNameList,
+    List<String>? scanUuidList,
+    bool? scanSkipUnnamed,
   }) =>
       AppConfig(
         themeMode: themeMode ?? this.themeMode,
@@ -162,6 +177,9 @@ class AppConfig {
         lastDeviceName: identical(lastDeviceName, _unset)
             ? this.lastDeviceName
             : lastDeviceName as String?,
+        scanNameList: scanNameList ?? this.scanNameList,
+        scanUuidList: scanUuidList ?? this.scanUuidList,
+        scanSkipUnnamed: scanSkipUnnamed ?? this.scanSkipUnnamed,
       );
 }
 
@@ -218,7 +236,34 @@ class ConfigService extends StateNotifier<AppConfig> {
       defaultCallPeerLanguage: prefs.getString('default_call_peer_language'),
       lastDeviceId: prefs.getString('last_device_id'),
       lastDeviceName: prefs.getString('last_device_name'),
+      scanNameList: prefs.getStringList('scan_name_list') ?? const <String>[],
+      scanUuidList: prefs.getStringList('scan_uuid_list') ?? const <String>[],
+      scanSkipUnnamed: prefs.getBool('scan_skip_unnamed') ?? true,
     );
+  }
+
+  Future<void> setScanFilter({
+    required List<String> nameList,
+    required List<String> uuidList,
+    required bool skipUnnamed,
+  }) async {
+    state = state.copyWith(
+      scanNameList: nameList,
+      scanUuidList: uuidList,
+      scanSkipUnnamed: skipUnnamed,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    if (nameList.isEmpty) {
+      await prefs.remove('scan_name_list');
+    } else {
+      await prefs.setStringList('scan_name_list', nameList);
+    }
+    if (uuidList.isEmpty) {
+      await prefs.remove('scan_uuid_list');
+    } else {
+      await prefs.setStringList('scan_uuid_list', uuidList);
+    }
+    await prefs.setBool('scan_skip_unnamed', skipUnnamed);
   }
 
   Future<void> setLastDevice({String? id, String? name}) async {

@@ -30,12 +30,59 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
     }
     if (!await _ensurePermissions()) return;
     try {
-      await manager.startScan(timeout: const Duration(seconds: 30));
+      final cfg = ref.read(configServiceProvider);
+      await manager.startScan(
+        filter: DeviceScanFilter(
+          nameList: cfg.scanNameList,
+          serviceUuids: cfg.scanUuidList,
+          skipUnnamed: cfg.scanSkipUnnamed,
+        ),
+        timeout: const Duration(seconds: 30),
+      );
       if (mounted) setState(() => _scanning = true);
     } on DeviceException catch (e) {
       _toast('扫描失败：${e.code}');
     } catch (e) {
       _toast('扫描失败：$e');
+    }
+  }
+
+  Future<void> _openScanFilter() async {
+    final cfg = ref.read(configServiceProvider);
+    final result = await showModalBottomSheet<_ScanFilterResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ScanFilterSheet(
+        initialNameList: cfg.scanNameList,
+        initialUuidList: cfg.scanUuidList,
+        initialSkipUnnamed: cfg.scanSkipUnnamed,
+      ),
+    );
+    if (result == null || !mounted) return;
+    await ref.read(configServiceProvider.notifier).setScanFilter(
+          nameList: result.nameList,
+          uuidList: result.uuidList,
+          skipUnnamed: result.skipUnnamed,
+        );
+    if (!mounted) return;
+    _toast('已更新扫描过滤');
+    // 正在扫描时让新的过滤立刻生效
+    if (_scanning) {
+      final manager = ref.read(deviceManagerProvider);
+      await manager.stopScan();
+      try {
+        await manager.startScan(
+          filter: DeviceScanFilter(
+            nameList: result.nameList,
+            serviceUuids: result.uuidList,
+            skipUnnamed: result.skipUnnamed,
+          ),
+          timeout: const Duration(seconds: 30),
+        );
+      } on DeviceException catch (e) {
+        if (mounted) _toast('扫描失败：${e.code}');
+      }
     }
   }
 
@@ -177,13 +224,19 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
         actions: [
-          if (vendor != null)
+          if (vendor != null) ...[
+            _ScanFilterButton(
+              nameCount: config.scanNameList.length,
+              uuidCount: config.scanUuidList.length,
+              onPressed: _openScanFilter,
+            ),
             IconButton(
               icon: Icon(_scanning ? Icons.stop_circle_outlined : Icons.search,
                   color: AppTheme.primary),
               tooltip: _scanning ? '停止扫描' : '开始扫描',
               onPressed: _toggleScan,
             ),
+          ],
         ],
       ),
       body: vendor == null
@@ -637,6 +690,243 @@ class _SectionLabel extends StatelessWidget {
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: context.appColors.text2)),
+    );
+  }
+}
+
+class _ScanFilterResult {
+  const _ScanFilterResult({
+    required this.nameList,
+    required this.uuidList,
+    required this.skipUnnamed,
+  });
+  final List<String> nameList;
+  final List<String> uuidList;
+  final bool skipUnnamed;
+}
+
+class _ScanFilterButton extends StatelessWidget {
+  const _ScanFilterButton({
+    required this.nameCount,
+    required this.uuidCount,
+    required this.onPressed,
+  });
+  final int nameCount;
+  final int uuidCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = nameCount + uuidCount > 0;
+    return IconButton(
+      tooltip: active ? '扫描过滤（${nameCount + uuidCount}）' : '扫描过滤',
+      onPressed: onPressed,
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Icon(
+            active ? Icons.filter_alt : Icons.filter_alt_outlined,
+            color: AppTheme.primary,
+          ),
+          if (active)
+            Positioned(
+              right: -4,
+              top: -4,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${nameCount + uuidCount}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScanFilterSheet extends StatefulWidget {
+  const _ScanFilterSheet({
+    required this.initialNameList,
+    required this.initialUuidList,
+    required this.initialSkipUnnamed,
+  });
+  final List<String> initialNameList;
+  final List<String> initialUuidList;
+  final bool initialSkipUnnamed;
+
+  @override
+  State<_ScanFilterSheet> createState() => _ScanFilterSheetState();
+}
+
+class _ScanFilterSheetState extends State<_ScanFilterSheet> {
+  late final TextEditingController _nameCtl;
+  late final TextEditingController _uuidCtl;
+  late bool _skipUnnamed;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtl = TextEditingController(text: widget.initialNameList.join('\n'));
+    _uuidCtl = TextEditingController(text: widget.initialUuidList.join('\n'));
+    _skipUnnamed = widget.initialSkipUnnamed;
+  }
+
+  @override
+  void dispose() {
+    _nameCtl.dispose();
+    _uuidCtl.dispose();
+    super.dispose();
+  }
+
+  List<String> _parse(String raw) => raw
+      .split(RegExp(r'[\n,，;；\s]+'))
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList(growable: false);
+
+  void _save() {
+    Navigator.of(context).pop(_ScanFilterResult(
+      nameList: _parse(_nameCtl.text),
+      uuidList: _parse(_uuidCtl.text),
+      skipUnnamed: _skipUnnamed,
+    ));
+  }
+
+  void _clear() {
+    Navigator.of(context).pop(_ScanFilterResult(
+      nameList: const <String>[],
+      uuidList: const <String>[],
+      skipUnnamed: _skipUnnamed,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: colors.text2.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text('扫描过滤',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: colors.text1)),
+            const SizedBox(height: 4),
+            Text(
+              '设备名 / UUID 留空则不过滤；多个值用换行、逗号或空格分隔。两组同时设置时按 (名称 AND UUID) 命中才上报。',
+              style: TextStyle(fontSize: 11, color: colors.text2),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile.adaptive(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: _skipUnnamed,
+              onChanged: (v) => setState(() => _skipUnnamed = v),
+              title: Text('跳过未命名设备',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: colors.text1)),
+              subtitle: Text('过滤掉广播里没有 name 的环境 BLE 噪声',
+                  style: TextStyle(fontSize: 11, color: colors.text2)),
+              activeColor: AppTheme.primary,
+            ),
+            const SizedBox(height: 6),
+            Text('设备名（精确匹配）',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colors.text1)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _nameCtl,
+              maxLines: 3,
+              minLines: 1,
+              style: TextStyle(fontSize: 13, color: colors.text1),
+              decoration: InputDecoration(
+                hintText: 'JL_Earphone\nMyDevice-01',
+                hintStyle: TextStyle(fontSize: 12, color: colors.text2),
+                border: const OutlineInputBorder(),
+                isDense: true,
+                contentPadding: const EdgeInsets.all(10),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text('UUID（广播 flagContent contains）',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colors.text1)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _uuidCtl,
+              maxLines: 3,
+              minLines: 1,
+              style: TextStyle(fontSize: 13, color: colors.text1),
+              decoration: InputDecoration(
+                hintText: '0000180D-0000-1000-8000-00805F9B34FB',
+                hintStyle: TextStyle(fontSize: 12, color: colors.text2),
+                border: const OutlineInputBorder(),
+                isDense: true,
+                contentPadding: const EdgeInsets.all(10),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _clear,
+                    child: const Text('清除过滤'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _save,
+                    style: FilledButton.styleFrom(
+                        backgroundColor: AppTheme.primary),
+                    child: const Text('保存'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

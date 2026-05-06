@@ -109,19 +109,32 @@ enum DeviceConnectionState {
 }
 
 /// 扫描过滤条件。所有字段均可选；`null` 表示不过滤。
+///
+/// - [namePrefix]：设备名前缀（单串，跨厂商）；与 [nameList] 同时存在时各厂商
+///   实现可自行选择优先级，杰里实现优先 [nameList]。
+/// - [nameList]：设备名命中列表（精确匹配）；空 = 不按名过滤。
+/// - [serviceUuids]：UUID 命中列表；杰理实现按 `BleScanMessage.flagContent`
+///   做忽略大小写的 contains 匹配。
 @immutable
 class DeviceScanFilter {
   const DeviceScanFilter({
     this.namePrefix,
+    this.nameList,
     this.serviceUuids,
     this.vendor,
     this.minRssi,
+    this.skipUnnamed,
   });
 
   final String? namePrefix;
+  final List<String>? nameList;
   final List<String>? serviceUuids;
   final String? vendor;
   final int? minRssi;
+
+  /// 是否跳过没有 `name` 的广播（环境 BLE 噪声过滤）；`null` = 由实现选默认。
+  /// 杰理实现默认 `true`。
+  final bool? skipUnnamed;
 }
 
 /// 连接选项。

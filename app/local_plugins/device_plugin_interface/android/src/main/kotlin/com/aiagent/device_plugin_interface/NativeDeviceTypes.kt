@@ -54,9 +54,11 @@ data class DevicePluginConfig(
 /** 扫描过滤条件。 */
 data class DeviceScanFilter(
     val namePrefix: String? = null,
+    val nameList: List<String>? = null,
     val serviceUuids: List<String>? = null,
     val vendor: String? = null,
     val minRssi: Int? = null,
+    val skipUnnamed: Boolean? = null,
 ) {
     companion object {
         fun fromMap(map: Map<*, *>?): DeviceScanFilter? {
@@ -64,9 +66,11 @@ data class DeviceScanFilter(
             @Suppress("UNCHECKED_CAST")
             return DeviceScanFilter(
                 namePrefix = map["namePrefix"] as? String,
+                nameList = (map["nameList"] as? List<*>)?.map { it.toString() },
                 serviceUuids = (map["serviceUuids"] as? List<*>)?.map { it.toString() },
                 vendor = map["vendor"] as? String,
                 minRssi = (map["minRssi"] as? Number)?.toInt(),
+                skipUnnamed = map["skipUnnamed"] as? Boolean,
             )
         }
     }

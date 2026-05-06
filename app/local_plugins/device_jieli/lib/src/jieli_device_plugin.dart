@@ -91,7 +91,25 @@ class JieliDevicePlugin implements DevicePlugin {
   @override
   Future<void> startScan({DeviceScanFilter? filter, Duration? timeout}) async {
     _requireInit();
-    await _home.startScan(timeout: timeout ?? const Duration(seconds: 30));
+    final filterNameList = filter?.nameList
+        ?.where((e) => e.isNotEmpty)
+        .toList(growable: false);
+    final nameList = (filterNameList != null && filterNameList.isNotEmpty)
+        ? filterNameList
+        : <String>[
+            if (filter?.namePrefix != null && filter!.namePrefix!.isNotEmpty)
+              filter.namePrefix!,
+          ];
+    final uuidList = filter?.serviceUuids
+            ?.where((e) => e.isNotEmpty)
+            .toList(growable: false) ??
+        const <String>[];
+    await _home.startScan(
+      timeout: timeout ?? const Duration(seconds: 30),
+      nameList: nameList,
+      uuidList: uuidList,
+      skipUnnamed: filter?.skipUnnamed ?? true,
+    );
     _scanning = true;
     _emit(const DevicePluginEvent(type: DevicePluginEventType.scanStarted));
   }
@@ -237,6 +255,13 @@ class JieliDevicePlugin implements DevicePlugin {
         raw is TranslationResultEvent ||
         raw is TranslationErrorEvent) {
       _activeSession?.dispatchTranslationEvent(raw);
+      return;
+    }
+    if (raw is DeviceRecordStartEvent ||
+        raw is DeviceRecordAudioEvent ||
+        raw is DeviceRecordStopEvent ||
+        raw is DeviceRecordErrorEvent) {
+      _activeSession?.dispatchDeviceRecordEvent(raw);
       return;
     }
     if (raw is ScanStatusEvent) {

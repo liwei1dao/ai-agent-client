@@ -260,6 +260,62 @@ class SpeechStopReason {
   static const int stop = 1;
 }
 
+// ───── 设备录音事件 ─────
+
+/// 上行/下行通道 ID 常量（与 Kotlin DeviceRecordFeature 保持一致）
+class DeviceRecordStreams {
+  static const String inUplink = 'in.uplink';
+  static const String inDownlink = 'in.downlink';
+}
+
+class DeviceRecordStartEvent extends JieliEvent {
+  final String? address;
+  final int sampleRate;
+  final int tsMs;
+  const DeviceRecordStartEvent({
+    this.address,
+    required this.sampleRate,
+    required this.tsMs,
+  });
+}
+
+class DeviceRecordAudioEvent extends JieliEvent {
+  final String? address;
+
+  /// [DeviceRecordStreams.inUplink] 或 [DeviceRecordStreams.inDownlink]
+  final String streamId;
+  final int sampleRate;
+  final int channels;
+  final int bitsPerSample;
+  final int tsMs;
+
+  /// 16bit signed PCM 字节流（小端）
+  final Uint8List pcm;
+
+  const DeviceRecordAudioEvent({
+    this.address,
+    required this.streamId,
+    required this.sampleRate,
+    required this.channels,
+    required this.bitsPerSample,
+    required this.tsMs,
+    required this.pcm,
+  });
+}
+
+class DeviceRecordStopEvent extends JieliEvent {
+  final String? address;
+  final int tsMs;
+  const DeviceRecordStopEvent({this.address, required this.tsMs});
+}
+
+class DeviceRecordErrorEvent extends JieliEvent {
+  final String? address;
+  final int code;
+  final String? message;
+  const DeviceRecordErrorEvent({this.address, required this.code, this.message});
+}
+
 // ───── OTA 事件 ─────
 
 enum OtaState {
@@ -383,6 +439,33 @@ class Jielihome {
           (raw['code'] as int?) ?? 0,
           raw['message'] as String?,
         );
+      case 'deviceRecordStart':
+        return DeviceRecordStartEvent(
+          address: raw['address'] as String?,
+          sampleRate: (raw['sampleRate'] as int?) ?? 16000,
+          tsMs: (raw['tsMs'] as num?)?.toInt() ?? 0,
+        );
+      case 'deviceRecordAudio':
+        return DeviceRecordAudioEvent(
+          address: raw['address'] as String?,
+          streamId: raw['streamId'] as String,
+          sampleRate: (raw['sampleRate'] as int?) ?? 16000,
+          channels: (raw['channels'] as int?) ?? 1,
+          bitsPerSample: (raw['bitsPerSample'] as int?) ?? 16,
+          tsMs: (raw['tsMs'] as num?)?.toInt() ?? 0,
+          pcm: raw['pcm'] as Uint8List,
+        );
+      case 'deviceRecordStop':
+        return DeviceRecordStopEvent(
+          address: raw['address'] as String?,
+          tsMs: (raw['tsMs'] as num?)?.toInt() ?? 0,
+        );
+      case 'deviceRecordError':
+        return DeviceRecordErrorEvent(
+          address: raw['address'] as String?,
+          code: (raw['code'] as int?) ?? 0,
+          message: raw['message'] as String?,
+        );
       case 'otaState':
         return OtaStateEvent(
           state: _parseOtaState(raw['state'] as String?),
@@ -432,9 +515,22 @@ class Jielihome {
     });
   }
 
-  Future<void> startScan({Duration timeout = const Duration(seconds: 30)}) async {
+  /// 启动扫描，可选复合过滤。
+  ///
+  /// - [nameList]：设备名命中列表（精确匹配，忽略大小写）；空 = 不按名过滤
+  /// - [uuidList]：UUID 命中列表 → `ScanFilter.setServiceUuid`；空 = 不按 UUID 过滤
+  /// - [skipUnnamed]：跳过没有 name 的广播（环境噪声），默认 true
+  Future<void> startScan({
+    Duration timeout = const Duration(seconds: 30),
+    List<String> nameList = const [],
+    List<String> uuidList = const [],
+    bool skipUnnamed = true,
+  }) async {
     await _methodChannel.invokeMethod<bool>('startScan', {
       'timeoutMs': timeout.inMilliseconds,
+      'nameList': nameList,
+      'uuidList': uuidList,
+      'skipUnnamed': skipUnnamed,
     });
   }
 
@@ -607,6 +703,32 @@ class Jielihome {
       'address': address,
       'reason': reason,
     });
+  }
+
+  // ───── 设备录音 ─────
+  // 订阅 [DeviceRecordStartEvent] / [DeviceRecordAudioEvent] /
+  // [DeviceRecordStopEvent] / [DeviceRecordErrorEvent] 接收录音状态和 PCM 数据。
+
+  /// 启动设备录音上行。
+  /// [address] 省略则取当前已连设备。
+  Future<void> deviceRecordStart({
+    String? address,
+    int sampleRate = 16000,
+  }) async {
+    await _methodChannel.invokeMethod<bool>('deviceRecordStart', {
+      'args': {
+        if (address != null) 'address': address,
+        'sampleRate': sampleRate,
+      },
+    });
+  }
+
+  Future<void> deviceRecordStop() =>
+      _methodChannel.invokeMethod('deviceRecordStop');
+
+  Future<Map<String, Object?>?> deviceRecordStatus() async {
+    final raw = await _methodChannel.invokeMethod<Map?>('deviceRecordStatus');
+    return raw?.cast<String, Object?>();
   }
 
   // ───── OTA ─────

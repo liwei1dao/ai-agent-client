@@ -213,6 +213,31 @@ class JieliNativeDeviceSession internal constructor(
                 mapOf("ok" to true)
             }
 
+            // ── 设备录音 ───────────────────────────────────────────────────────
+            "jieli.deviceRecord.start" -> {
+                if (server.translationFeature.isWorking()) server.translationFeature.stop()
+                val sampleRate = (args["sampleRate"] as? Number)?.toInt() ?: 16000
+                server.deviceRecordFeature.start(
+                    mapOf("address" to deviceId, "sampleRate" to sampleRate)
+                ).getOrElse {
+                    throw DeviceException(
+                        "device.feature_failed",
+                        "deviceRecord.start failed: ${it.message}",
+                        it,
+                    )
+                }
+                mapOf("ok" to true)
+            }
+
+            "jieli.deviceRecord.stop" -> {
+                server.deviceRecordFeature.stop()
+                mapOf("ok" to true)
+            }
+
+            "jieli.deviceRecord.status" -> mapOf(
+                "recording" to server.deviceRecordFeature.isRecording()
+            )
+
             "jieli.cmd.send" -> {
                 val opCode = (args["opCode"] as? Number)?.toInt()
                     ?: throw DeviceException(

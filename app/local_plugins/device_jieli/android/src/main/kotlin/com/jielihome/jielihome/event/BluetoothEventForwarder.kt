@@ -1,6 +1,5 @@
 package com.jielihome.jielihome.event
 
-import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import com.jieli.bluetooth.bean.BleScanMessage
 import com.jieli.bluetooth.impl.JL_BluetoothManager
@@ -9,8 +8,14 @@ import com.jieli.bluetooth.interfaces.rcsp.callback.OnRcspCallback
 import com.jielihome.jielihome.bridge.EventDispatcher
 
 /**
- * 蓝牙基础事件：适配器开关、扫描状态、设备发现、配对、RCSP init、连接状态。
+ * 蓝牙基础事件：适配器开关、配对、RCSP init、连接状态。
  * 与设备「业务数据」（电量、音乐等）解耦。
+ *
+ * 注意：扫描结果（`onDiscovery` / `onDiscoveryStatus`）已不再走这里——
+ * [com.jielihome.jielihome.feature.ScanFeature] 直接用 Android 原生
+ * `BluetoothLeScanner` 扫描，避免 Jieli SDK `ParseDataUtil.isFilterBleDevice`
+ * 的 strategy / flagContent 过滤导致看不到设备。SDK 自身若偶发回调
+ * `onDiscovery`（例如内部自动重连等路径），这里**忽略**，避免重复上报。
  */
 class BluetoothEventForwarder(
     private val btManager: JL_BluetoothManager,
@@ -23,29 +28,11 @@ class BluetoothEventForwarder(
             )
         }
 
-        override fun onDiscoveryStatus(bBle: Boolean, bStart: Boolean) {
-            dispatcher.send(
-                mapOf("type" to "scanStatus", "ble" to bBle, "started" to bStart)
-            )
-        }
+        // SDK 内部仍会触发，但扫描状态由 ScanFeature 自行派发，这里不转发。
+        override fun onDiscoveryStatus(bBle: Boolean, bStart: Boolean) = Unit
 
-        @SuppressLint("MissingPermission")
-        override fun onDiscovery(device: BluetoothDevice?, msg: BleScanMessage?) {
-            if (device == null || msg == null) return
-            val name = try { device.name } catch (_: SecurityException) { null } ?: return
-            if (name.isEmpty()) return
-            dispatcher.send(
-                mapOf(
-                    "type" to "deviceFound",
-                    "name" to name,
-                    "address" to device.address,
-                    "edrAddr" to msg.edrAddr,
-                    "deviceType" to msg.deviceType,
-                    "connectWay" to msg.connectWay,
-                    "rssi" to msg.rssi
-                )
-            )
-        }
+        // 同上：扫描结果由 ScanFeature 直接派发，这里忽略。
+        override fun onDiscovery(device: BluetoothDevice?, msg: BleScanMessage?) = Unit
 
         override fun onBondStatus(device: BluetoothDevice?, status: Int) {
             if (device == null) return

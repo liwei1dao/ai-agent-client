@@ -16,6 +16,7 @@ import com.jielihome.jielihome.feature.CustomCmdFeature
 import com.jielihome.jielihome.feature.DeviceInfoFeature
 import com.jielihome.jielihome.feature.ScanFeature
 import com.jielihome.jielihome.feature.ota.OtaFeature
+import com.jielihome.jielihome.feature.record.DeviceRecordFeature
 import com.jielihome.jielihome.feature.translation.EventChannelAudioBridge
 import com.jielihome.jielihome.feature.translation.TranslationAudioBridge
 import com.jielihome.jielihome.feature.translation.TranslationFeature
@@ -77,6 +78,8 @@ class JieliHomeServer private constructor() {
         private set
     lateinit var otaFeature: OtaFeature
         private set
+    lateinit var deviceRecordFeature: DeviceRecordFeature
+        private set
 
     /** 默认翻译音频桥（EventChannel 透传到 Dart）；宿主 native 想完全自管时可调
      *  [TranslationFeature.setBridge] 替换。
@@ -97,10 +100,21 @@ class JieliHomeServer private constructor() {
 
         JL_Log.configureLog(context, enableLog, enableLog)
 
-        val option = BluetoothOption.createDefaultOption().also {
-            it.isUseMultiDevice = multiDevice
-            it.isSkipNoNameDev = skipNoNameDev
-        }
+        // 注意：扫描已不走 Jieli SDK（改为 ScanFeature 内的 BluetoothLeScanner），
+        // 所以 BluetoothOption 的 bleScanStrategy / scanFilterData 不再设置——
+        // 它们仅影响 SDK 自己的 `btManager.scan()` 路径，留默认即可。
+        val option = BluetoothOption.createDefaultOption()
+        option.setUseMultiDevice(multiDevice)
+        option.setSkipNoNameDev(skipNoNameDev)
+        // 关闭设备认证：SDK 默认 isUseDeviceAuth=true，会要求设备走 RCSP 授权流程
+        // (`DeviceStatusManager.isAuthBtDevice`)，未授权设备会被拒绝 → 表现为
+        // 连上后 RCSP init 完成立刻断开。授权需要服务端发签名密钥的整套基础
+        // 设施，目前没接，统一关掉。
+        option.setUseDeviceAuth(true)
+        android.util.Log.d(
+            "JieliHome",
+            "init multiDev=$multiDevice skipNoName=$skipNoNameDev useAuth=false"
+        )
         RCSPController.init(context, option)
 
         btManager = RCSPController.getInstance().bluetoothManager
@@ -113,13 +127,14 @@ class JieliHomeServer private constructor() {
         customForwarder = CustomEventForwarder(btManager, dispatcher).also { it.attach() }
 
         // 业务功能层
-        scanFeature = ScanFeature(btManager)
+        scanFeature = ScanFeature(context.applicationContext, dispatcher)
         connectFeature = ConnectFeature(btManager)
         deviceInfoFeature = DeviceInfoFeature(btManager)
         customCmdFeature = CustomCmdFeature(btManager)
         translationFeature = TranslationFeature(context.applicationContext, btManager, connectFeature)
         speechFeature = SpeechFeature(btManager, connectFeature, dispatcher).also { it.attach() }
         otaFeature = OtaFeature(btManager, connectFeature, dispatcher)
+        deviceRecordFeature = DeviceRecordFeature(context.applicationContext, btManager, connectFeature, dispatcher)
 
         // 默认音频桥：EventChannel；injector 把 Dart 推过来的 PCM 路由回当前 ModeHandler
         defaultBridge = EventChannelAudioBridge(dispatcher) { _, streamId, pcm, fmt, isFinal ->
@@ -140,8 +155,9 @@ class JieliHomeServer private constructor() {
                 "connectionState" -> {
                     val state = payload["state"] as? Int ?: return
                     // StateCode.CONNECTION_DISCONNECT == 0
-                    if (state == 0 && translationFeature.isWorking()) {
-                        translationFeature.stop()
+                    if (state == 0) {
+                        if (translationFeature.isWorking()) translationFeature.stop()
+                        if (deviceRecordFeature.isRecording()) deviceRecordFeature.stop()
                     }
                 }
                 "phoneCallStatus" -> {
@@ -177,9 +193,18 @@ class JieliHomeServer private constructor() {
         com.jielihome.jielihome.feature.translation.JieliCallTranslationPort(this)
     }
 
+    /**
+     * 设备录音端口 —— 原生层直连入口。
+     * 收集 [deviceRecordPort.audioFrames] 获取 PCM 帧，调用 [deviceRecordPort.start]/[stop] 控制录音。
+     */
+    val deviceRecordPort: com.jielihome.jielihome.feature.record.JieliDeviceRecordPort by lazy {
+        com.jielihome.jielihome.feature.record.JieliDeviceRecordPort(this)
+    }
+
     fun shutdown() {
         if (!initialized) return
         runCatching { otaFeature.cancel() }
+        runCatching { deviceRecordFeature.stop() }
         runCatching { translationFeature.stop() }
         runCatching { speechFeature.detach() }
         runCatching { bluetoothForwarder.detach() }

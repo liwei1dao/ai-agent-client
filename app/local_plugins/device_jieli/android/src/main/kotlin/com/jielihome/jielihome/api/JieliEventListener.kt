@@ -94,6 +94,11 @@ abstract class JieliEventAdapter : JieliEventListener {
             "speechEnd" -> onSpeechEnd(payload)
             "speechError" -> onSpeechError(payload)
 
+            "deviceRecordStart" -> onDeviceRecordStart(payload)
+            "deviceRecordAudio" -> onDeviceRecordAudio(payload)
+            "deviceRecordStop"  -> onDeviceRecordStop(payload)
+            "deviceRecordError" -> onDeviceRecordError(payload)
+
             "otaState" -> onOtaState(payload)
             "otaError" -> onOtaError(payload)
 
@@ -143,6 +148,23 @@ abstract class JieliEventAdapter : JieliEventListener {
     open fun onSpeechEnd(payload: Map<String, Any?>) {}
 
     open fun onSpeechError(payload: Map<String, Any?>) {}
+
+    // ── 设备录音 ────────────────────────────────────────────────────────────
+
+    /** 录音上行已启动；payload: address, sampleRate, tsMs */
+    open fun onDeviceRecordStart(payload: Map<String, Any?>) {}
+
+    /**
+     * 录音音频帧；payload: address, streamId("in.uplink"/"in.downlink"),
+     * pcm(ByteArray), sampleRate, channels, bitsPerSample, tsMs
+     */
+    open fun onDeviceRecordAudio(payload: Map<String, Any?>) {}
+
+    /** 录音上行已停止；payload: address, tsMs */
+    open fun onDeviceRecordStop(payload: Map<String, Any?>) {}
+
+    /** 录音错误；payload: address, code, message */
+    open fun onDeviceRecordError(payload: Map<String, Any?>) {}
 
     /** OTA 进度/状态：state(String), sent(Long), total(Long), percent(Int) */
     open fun onOtaState(payload: Map<String, Any?>) {}

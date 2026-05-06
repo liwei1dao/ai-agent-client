@@ -69,11 +69,13 @@ List<_ConfigField> _fieldsFor(String type, String vendor) {
             defaultValue: 'volc.bigasr.auc', readonly: true),
       ];
     }
-    return [
-      const _ConfigField('appId', 'App ID *', 'xxxxxxxx'),
-      const _ConfigField('accessToken', 'Access Token *', 'xxxxxxxx', obscure: true),
-      if (type == 'sts') const _ConfigField('appKey', 'App Key *', 'xxxxxxxxxxxxxxxx'),
-      if (type == 'sts') const _ConfigField('voiceType', '音色 ID', 'BV700_V2_streaming'),
+    return const [
+      _ConfigField('appId', 'App ID *', 'xxxxxxxx'),
+      _ConfigField('accessToken', 'Access Token *', 'xxxxxxxx', obscure: true),
+      _ConfigField('endpoint', '节点地址', 'wss://openspeech.bytedance.com/api/v3/realtime/dialogue',
+          readonly: true, defaultValue: 'wss://openspeech.bytedance.com/api/v3/realtime/dialogue'),
+      _ConfigField('voiceType', '音色 ID', 'zh_female_vv_jupiter_bigtts',
+          defaultValue: 'zh_female_vv_jupiter_bigtts'),
     ];
   }
   if (type == 'llm') {
@@ -485,11 +487,11 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
     _unlockedReadonly.clear();
   }
 
-  /// Pre-fill readonly fields with their defaultValue. When [force] is true
+  /// Pre-fill fields with their defaultValue. When [force] is true
   /// (vendor/type switching), overwrite existing text; otherwise keep user input.
   void _prefillDefaults({bool force = false}) {
     for (final f in _fieldsFor(_type, _vendor)) {
-      if (f.readonly && f.defaultValue != null) {
+      if (f.defaultValue != null) {
         final ctrl = _ctrlFor(f.key);
         if (force || ctrl.text.isEmpty) ctrl.text = f.defaultValue!;
       }

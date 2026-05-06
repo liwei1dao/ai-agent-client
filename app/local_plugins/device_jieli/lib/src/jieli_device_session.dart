@@ -161,6 +161,53 @@ class JieliDeviceSession implements DeviceSession {
     }
   }
 
+  /// 由 plugin 转发设备录音事件。
+  void dispatchDeviceRecordEvent(JieliEvent raw) {
+    if (_evt.isClosed) return;
+    if (raw is DeviceRecordAudioEvent) {
+      _evt.add(DeviceSessionEvent(
+        type: DeviceSessionEventType.feature,
+        deviceId: deviceId,
+        feature: DeviceFeatureEvent(
+          key: 'jieli.deviceRecord.audio',
+          data: {
+            'streamId': raw.streamId,
+            'sampleRate': raw.sampleRate,
+            'channels': raw.channels,
+            'bitsPerSample': raw.bitsPerSample,
+            'tsMs': raw.tsMs,
+            'pcm': raw.pcm,
+          },
+        ),
+      ));
+    } else if (raw is DeviceRecordStartEvent) {
+      _evt.add(DeviceSessionEvent(
+        type: DeviceSessionEventType.feature,
+        deviceId: deviceId,
+        feature: DeviceFeatureEvent(
+          key: 'jieli.deviceRecord.start',
+          data: {'sampleRate': raw.sampleRate, 'tsMs': raw.tsMs},
+        ),
+      ));
+    } else if (raw is DeviceRecordStopEvent) {
+      _evt.add(DeviceSessionEvent(
+        type: DeviceSessionEventType.feature,
+        deviceId: deviceId,
+        feature: DeviceFeatureEvent(
+          key: 'jieli.deviceRecord.stop',
+          data: {'tsMs': raw.tsMs},
+        ),
+      ));
+    } else if (raw is DeviceRecordErrorEvent) {
+      _evt.add(DeviceSessionEvent(
+        type: DeviceSessionEventType.error,
+        deviceId: deviceId,
+        errorCode: 'device.feature_failed',
+        errorMessage: 'jieli.deviceRecord: ${raw.code} ${raw.message ?? ''}',
+      ));
+    }
+  }
+
   /// 由 plugin 转发 RcspInitEvent。
   void updateRcspInit(bool success) {
     if (success) {
@@ -302,6 +349,22 @@ class JieliDeviceSession implements DeviceSession {
           sampleRate: (args['sampleRate'] as int?) ?? 16000,
         );
         return {'ok': ok};
+
+      // ── 设备录音 ─────────────────────────────────────────
+      case 'jieli.deviceRecord.start':
+        await Jielihome.instance.deviceRecordStart(
+          address: deviceId,
+          sampleRate: (args['sampleRate'] as int?) ?? 16000,
+        );
+        return {'ok': true};
+
+      case 'jieli.deviceRecord.stop':
+        await Jielihome.instance.deviceRecordStop();
+        return {'ok': true};
+
+      case 'jieli.deviceRecord.status':
+        final s = await Jielihome.instance.deviceRecordStatus();
+        return s ?? const <String, Object?>{};
 
       // ── 自定义 RCSP 命令 ────────────────────────────────
       case 'jieli.cmd.send':
