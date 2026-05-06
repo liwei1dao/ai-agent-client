@@ -98,6 +98,7 @@ class MethodChannelDeviceManager implements DeviceManager {
   static const _method = MethodChannel('device_manager/method');
   static const _eventChannel = EventChannel('device_manager/events');
   static const _triggerChannel = EventChannel('device_manager/triggers');
+  static const _otaChannel = EventChannel('device_manager/ota');
 
   StreamSubscription<dynamic>? _eventSub;
   StreamSubscription<dynamic>? _triggerSub;
@@ -627,6 +628,7 @@ class _MethodChannelSession implements DeviceSession {
       ));
       _evtCtrl.close();
     }
+    _disposeOtaPort();
     _disposed = true;
   }
 
@@ -714,6 +716,20 @@ class _MethodChannelSession implements DeviceSession {
     return out;
   }
 
+  @override
+  DeviceOtaPort? otaPort() {
+    if (_disposed) return null;
+    if (!_capabilities.contains(DeviceCapability.ota)) return null;
+    return _otaPort ??= _MethodChannelOtaPort();
+  }
+
+  _MethodChannelOtaPort? _otaPort;
+
+  void _disposeOtaPort() {
+    _otaPort?._dispose();
+    _otaPort = null;
+  }
+
   static DeviceCapability? _parseCapability(String s) => switch (s) {
         'SCAN' => DeviceCapability.scan,
         'CONNECT' => DeviceCapability.connect,
@@ -735,6 +751,142 @@ class _MethodChannelSession implements DeviceSession {
         'ON_DEVICE_RECORDING_TRANSLATION' =>
           DeviceCapability.onDeviceRecordingTranslation,
         'CUSTOM_COMMAND' => DeviceCapability.customCommand,
+        _ => null,
+      };
+}
+
+/// MethodChannel 视角的 [DeviceOtaPort]。
+///
+/// - `start` / `cancel` 走 method channel；
+/// - 进度走专属 [MethodChannelDeviceManager._otaChannel]，每次 listen 时由
+///   native 重新绑定到当前 active session 的端口（session 切换 / 断开时上层
+///   会 cancel 流，新 session 再订阅一次即可）；
+/// - `isRunning` 走同步 method channel 查询，避免本地缓存与 native 不一致。
+class _MethodChannelOtaPort implements DeviceOtaPort {
+  _MethodChannelOtaPort() {
+    _sub =
+        MethodChannelDeviceManager._otaChannel.receiveBroadcastStream().listen(
+      (raw) {
+        if (raw is! Map) return;
+        final p = _parse(raw);
+        if (p != null && !_ctrl.isClosed) _ctrl.add(p);
+      },
+      onError: (_) {/* native 端 channel 错误不致命，丢一次进度而已 */},
+    );
+  }
+
+  final _ctrl = StreamController<DeviceOtaProgress>.broadcast();
+  StreamSubscription<dynamic>? _sub;
+  bool _disposed = false;
+
+  @override
+  Stream<DeviceOtaProgress> get progressStream => _ctrl.stream;
+
+  @override
+  bool get isRunning {
+    // 同步 getter 不能 await；保留一份本地标记，由 progress 流推动。
+    return _localRunning;
+  }
+
+  bool _localRunning = false;
+
+  @override
+  Future<void> start(DeviceOtaRequest request) async {
+    if (_disposed) {
+      throw DeviceException(
+          DeviceErrorCode.noActiveSession, 'session disposed');
+    }
+    try {
+      _localRunning = true;
+      await MethodChannelDeviceManager._method.invokeMethod('otaStart', {
+        'request': _serializeRequest(request),
+      });
+    } on PlatformException catch (e) {
+      _localRunning = false;
+      throw DeviceException(
+        e.code.startsWith('device.') ? e.code : DeviceErrorCode.featureFailed,
+        e.message,
+      );
+    }
+  }
+
+  @override
+  Future<void> cancel() async {
+    if (_disposed) return;
+    try {
+      await MethodChannelDeviceManager._method.invokeMethod('otaCancel');
+    } on PlatformException catch (_) {/* best effort */}
+  }
+
+  void _dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _sub?.cancel();
+    _sub = null;
+    if (!_ctrl.isClosed) _ctrl.close();
+  }
+
+  // ─── helpers ─────────────────────────────────────────────────────────────
+
+  Map<String, Object?> _serializeRequest(DeviceOtaRequest req) {
+    final base = <String, Object?>{
+      if (req.blockSize != null) 'blockSize': req.blockSize,
+      if (req.timeout != null) 'timeoutMs': req.timeout!.inMilliseconds,
+    };
+    return switch (req) {
+      DeviceOtaFileRequest(:final filePath) => {
+          ...base,
+          'kind': 'file',
+          'filePath': filePath,
+        },
+      DeviceOtaBytesRequest(:final bytes) => {
+          ...base,
+          'kind': 'bytes',
+          'bytes': bytes,
+        },
+      DeviceOtaUrlRequest(:final url, :final headers) => {
+          ...base,
+          'kind': 'url',
+          'url': url,
+          'headers': headers,
+        },
+      DeviceOtaVendorRequest(:final vendorKey, :final payload) => {
+          ...base,
+          'kind': 'vendor',
+          'vendorKey': vendorKey,
+          'payload': payload,
+        },
+    };
+  }
+
+  DeviceOtaProgress? _parse(Map raw) {
+    final state = _parseState(raw['state'] as String?);
+    if (state == null) return null;
+    final p = DeviceOtaProgress(
+      state: state,
+      sentBytes: (raw['sentBytes'] as num?)?.toInt() ?? 0,
+      totalBytes: (raw['totalBytes'] as num?)?.toInt() ?? 0,
+      percent: (raw['percent'] as num?)?.toInt() ?? -1,
+      tsMs: (raw['tsMs'] as num?)?.toInt() ?? 0,
+      errorCode: raw['errorCode'] as String?,
+      errorMessage: raw['errorMessage'] as String?,
+    );
+    if (p.isTerminal) _localRunning = false;
+    return p;
+  }
+
+  static DeviceOtaState? _parseState(String? s) => switch (s) {
+        'IDLE' => DeviceOtaState.idle,
+        'DOWNLOADING' => DeviceOtaState.downloading,
+        'INQUIRING' => DeviceOtaState.inquiring,
+        'NOTIFYING_SIZE' => DeviceOtaState.notifyingSize,
+        'ENTERING' => DeviceOtaState.entering,
+        'TRANSFERRING' => DeviceOtaState.transferring,
+        'VERIFYING' => DeviceOtaState.verifying,
+        'REBOOTING' => DeviceOtaState.rebooting,
+        'DONE' => DeviceOtaState.done,
+        'FAILED' => DeviceOtaState.failed,
+        'CANCELLED' => DeviceOtaState.cancelled,
         _ => null,
       };
 }

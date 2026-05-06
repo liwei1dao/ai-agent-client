@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:device_manager/device_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/services/config_service.dart';
@@ -464,7 +465,12 @@ class _ConnectedTileState extends ConsumerState<_ConnectedTile> {
                   Text(session.deviceId,
                       style: TextStyle(fontSize: 11, color: colors.text2)),
                   const SizedBox(height: 4),
-                  Row(
+                  // Wrap 而非 Row：状态 chip / 电量 / FW 三段在窄屏（带升级+断开
+                  // 两个按钮）时会 overflow，自动换行更稳。
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -479,26 +485,38 @@ class _ConnectedTileState extends ConsumerState<_ConnectedTile> {
                                 color: statusColor,
                                 fontWeight: FontWeight.w600)),
                       ),
-                      if (battery != null) ...[
-                        const SizedBox(width: 8),
-                        _BatteryChip(percent: battery),
-                      ],
-                      if (fw != null && fw.isNotEmpty) ...[
-                        const SizedBox(width: 8),
+                      if (battery != null) _BatteryChip(percent: battery),
+                      if (fw != null && fw.isNotEmpty)
                         Text('FW $fw',
                             style: TextStyle(
                                 fontSize: 10, color: colors.text2)),
-                      ],
                     ],
                   ),
                 ],
               ),
             ),
-            TextButton(
-              onPressed: widget.onDisconnect,
-              style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFFEF4444)),
-              child: const Text('断开'),
+            // 按钮列竖排：横向放两个 TextButton 在窄屏会进一步挤压
+            // 信息列；垂直 IconButton 既省横向空间，又让动作更醒目。
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_state == DeviceConnectionState.ready &&
+                    session.capabilities.contains(DeviceCapability.ota))
+                  IconButton(
+                    onPressed: () => context.push('/devices/ota'),
+                    tooltip: '固件升级',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.system_update,
+                        size: 22, color: AppTheme.primary),
+                  ),
+                IconButton(
+                  onPressed: widget.onDisconnect,
+                  tooltip: '断开',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.link_off,
+                      size: 22, color: Color(0xFFEF4444)),
+                ),
+              ],
             ),
           ],
         ),

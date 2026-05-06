@@ -252,6 +252,7 @@ class JieliNativeDevicePlugin(
             deviceId = deviceId,
             initialName = (extra["name"] as? String) ?: "",
             capabilities = capabilities,
+            otaCacheDir = context.cacheDir,
         )
         _activeSession = session
 

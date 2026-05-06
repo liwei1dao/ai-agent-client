@@ -60,6 +60,11 @@ class JieliDeviceSession implements DeviceSession {
   @override
   Stream<DeviceSessionEvent> get eventStream => _evt.stream;
 
+  // 该 Dart 侧 session 是历史 facade，不再走 OTA 路径——OTA 由
+  // native-driven `JieliNativeDeviceSession.otaPort()` 提供，这里保持 null。
+  @override
+  DeviceOtaPort? otaPort() => null;
+
   /// `JieliDevicePlugin.connect` 中等待握手完成。
   Future<DeviceSession> waitReady({required Duration timeout}) {
     if (_state == DeviceConnectionState.ready) return Future.value(this);

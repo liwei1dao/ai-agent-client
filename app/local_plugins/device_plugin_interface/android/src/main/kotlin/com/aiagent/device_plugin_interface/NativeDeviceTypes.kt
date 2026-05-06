@@ -194,4 +194,11 @@ object DeviceErrorCode {
     const val NO_ACTIVE_SESSION = "device.no_active_session"
     const val PLUGIN_NOT_INITIALIZED = "device.plugin_not_initialized"
     const val INVALID_ARGUMENT = "device.invalid_argument"
+
+    // OTA
+    const val OTA_BUSY = "device.ota_busy"
+    const val OTA_INQUIRE_REFUSED = "device.ota_inquire_refused"
+    const val OTA_VERIFY_FAILED = "device.ota_verify_failed"
+    const val OTA_FILE_INVALID = "device.ota_file_invalid"
+    const val OTA_TRANSFER_FAILED = "device.ota_transfer_failed"
 }

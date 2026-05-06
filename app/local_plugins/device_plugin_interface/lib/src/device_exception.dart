@@ -26,6 +26,13 @@ class DeviceErrorCode {
   static const String noActiveSession = 'device.no_active_session';
   static const String invalidArgument = 'device.invalid_argument';
   static const String pluginNotInitialized = 'device.plugin_not_initialized';
+
+  // OTA
+  static const String otaBusy = 'device.ota_busy';
+  static const String otaInquireRefused = 'device.ota_inquire_refused';
+  static const String otaVerifyFailed = 'device.ota_verify_failed';
+  static const String otaFileInvalid = 'device.ota_file_invalid';
+  static const String otaTransferFailed = 'device.ota_transfer_failed';
 }
 
 /// 设备域统一异常。

@@ -293,7 +293,61 @@ disconnected → connecting → linkConnected → ready → disconnecting → di
 5. 音频通道：实现 `openMicUplink` / `openSpeakerDownlink`，输出/接受统一 [AudioFormat.standard]；不支持的方向直接抛 `device.not_supported`。
 6. 把私有按键/唤醒事件翻译为 [WakeReason]，通过 `DevicePluginEvent(type: wakeTriggered, wake: ...)` 派发；按键/佩戴/电量翻译为 `DeviceFeatureEvent('common.<name>')`。
 7. 在 [device_manager/](device_manager/) 的注册位置（业务侧统一启动代码）`registerVendor(yourDescriptor)`。
-8. 自测：覆盖 §10.3 状态机、§10.4 音频独占、§10.6 错误码三项。
+8. 自测：覆盖 §10.3 状态机、§10.4 音频独占、§10.6 错误码、§10.9 OTA 端口四项。
+
+### 10.9 OTA 端口规范（强制）
+
+参见 [device_plugin_interface/lib/src/device_ota.dart](device_plugin_interface/lib/src/device_ota.dart) / Kotlin 同名 `Ota.kt`。**所有声明 `DeviceCapability.ota` 的厂商插件必须实现 [DeviceOtaPort]**，路径与 [DeviceCallTranslationPort] 完全对齐：`DeviceSession.otaPort()` 返回端口，业务层不区分厂商。
+
+#### 10.9.1 多态请求
+
+`DeviceOtaRequest` 是 sealed 层级，**禁止**把所有字段堆到一个类里：
+
+| 子类 | 用途 | 谁来实现 |
+| --- | --- | --- |
+| `File(filePath)` | 业务侧或容器层准备好的本地文件 | **厂商插件必须支持** |
+| `Bytes(bytes)` | 内存中固件（小包/动态生成） | 厂商插件必须支持；可落盘 + 走 file 路径 |
+| `Url(url, headers)` | 远程固件 | **由 device_manager 容器层统一下载**到沙盒后转 file 请求转发，厂商插件**看不到** Url 子类（也不应处理） |
+| `Vendor(vendorKey, payload)` | 私有参数（差分包 / fileFlag / 双备份） | 选实现；`vendorKey` 不匹配时抛 `device.invalid_argument` |
+
+**Url 路径的边界**：HTTP 下载、断点、节流、临时文件清理是**容器层职责**——厂商插件不要重复造轮子。容器下载完成派 `inquiring` 进入正常流程；下载失败派 `failed(device.ota_file_invalid)` 终止。Flutter 业务层提交 `DeviceOtaUrlRequest` 即可，**禁止**自己 `http.get` + 写临时文件。
+
+**禁止**厂商插件静默退化：不支持的子类（如 Vendor 子类的 vendorKey 不匹配）必须抛错。
+
+#### 10.9.2 状态机 + 进度
+
+```
+idle
+  → downloading        // 仅 Url 请求，由容器层产生
+  → inquiring → notifyingSize → entering → transferring* → verifying → rebooting
+  → done | failed | cancelled
+```
+
+- `progressStream`（broadcast）每个 `start` 必有终态收尾，**不得**悬挂；
+- `downloading` 阶段由 `device_manager` 容器派发（厂商插件不会看到），`sentBytes/totalBytes` 表示 HTTP 下载进度，未知 totalBytes 时为 `-1`；
+- `transferring` 阶段刷新频率 5–20 Hz；非 transferring/downloading 阶段 sentBytes/totalBytes 可不准确；
+- 终态后短时间内还可能有零星遗留事件，订阅方按 `isTerminal` 过滤；
+- 设备掉线（`disconnected*`）厂商插件必须主动派 `failed(errorCode=device.disconnected_remote)` 收尾，UI 才能解锁锁定态。
+
+#### 10.9.3 错误码
+
+新增于 [DeviceErrorCode]：`device.ota_busy` / `device.ota_inquire_refused` / `device.ota_verify_failed` / `device.ota_file_invalid` / `device.ota_transfer_failed`。`busy` 是同设备并发 start 的固定码，**禁止**用其它通用码代替。
+
+#### 10.9.4 通道与端口
+
+- method 入口走 `device_manager/method`：`otaStart` / `otaCancel` / `otaIsRunning` / `otaSupported`；
+- 进度走**专属** `device_manager/ota` EventChannel——OTA 期间高频刷新，混进通用 `device_manager/events` 会拖累其它订阅者；
+- session 断开时 native 端必须调 `port.shutdown()` 补一帧 `failed`，并解订阅原生事件源。
+
+#### 10.9.5 UI 锁定铁律（业务侧）
+
+`DeviceOtaScreen` 在 `port.isRunning || progress.isTerminal == false` 期间：
+- `PopScope.canPop = false`，AppBar 不显示返回箭头；
+- 所有输入框与"开始升级"按钮 disabled；
+- 仅"取消升级"可点；
+- 终态出现立即解锁。
+
+新增"端到端 OTA UI"时**禁止**绕过本规则——锁定逻辑由 `progress.isTerminal` 单点决定，不要叠加自定义状态。
 
 ---
 

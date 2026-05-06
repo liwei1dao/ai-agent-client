@@ -8,6 +8,7 @@ import com.aiagent.device_plugin_interface.DeviceErrorCode
 import com.aiagent.device_plugin_interface.DeviceException
 import com.aiagent.device_plugin_interface.DeviceFeatureEvent
 import com.aiagent.device_plugin_interface.DeviceInfo
+import com.aiagent.device_plugin_interface.DeviceOtaPort
 import com.aiagent.device_plugin_interface.DeviceSessionEvent
 import com.aiagent.device_plugin_interface.DeviceSessionEventType
 import com.aiagent.device_plugin_interface.NativeDeviceSession
@@ -17,6 +18,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import java.io.File
 
 /**
  * 杰理 [NativeDeviceSession] 实现 —— 包装 [JieliHomeServer] 的连接快照与事件。
@@ -32,6 +34,7 @@ class JieliNativeDeviceSession internal constructor(
     override val deviceId: String,
     initialName: String,
     override val capabilities: Set<DeviceCapability>,
+    private val otaCacheDir: File,
 ) : NativeDeviceSession {
 
     companion object {
@@ -59,6 +62,8 @@ class JieliNativeDeviceSession internal constructor(
 
     // ─── 由 plugin 在事件回调中调用 ─────────────────────────────────────────
 
+    @Volatile private var _otaPort: JieliOtaPort? = null
+
     internal fun setState(s: DeviceConnectionState) {
         if (_state == s) return
         _state = s
@@ -69,6 +74,9 @@ class JieliNativeDeviceSession internal constructor(
         ))
         if (s == DeviceConnectionState.DISCONNECTED) {
             _disposed = true
+            // 端口随 session 收尾：补一帧 FAILED + 解订阅，UI 才能跳出 OTA 锁定。
+            runCatching { _otaPort?.shutdown(DeviceErrorCode.DISCONNECTED_REMOTE) }
+            _otaPort = null
         }
     }
 
@@ -250,6 +258,26 @@ class JieliNativeDeviceSession internal constructor(
     }
 
     override fun callTranslationPort(): DeviceCallTranslationPort = server.callTranslationPort
+
+    override fun otaPort(): DeviceOtaPort? {
+        if (DeviceCapability.OTA !in capabilities) return null
+        // 懒创建：未 ready 时也允许构造（订阅事件流），但 start() 内部会再校验。
+        var port = _otaPort
+        if (port == null) {
+            synchronized(this) {
+                port = _otaPort
+                if (port == null && !_disposed) {
+                    port = JieliOtaPort(
+                        server = server,
+                        deviceId = deviceId,
+                        cacheDir = File(otaCacheDir, "ota"),
+                    )
+                    _otaPort = port
+                }
+            }
+        }
+        return port
+    }
 
     override fun disconnect() {
         if (_disposed) return

@@ -68,5 +68,13 @@ interface NativeDeviceSession {
      */
     fun callTranslationPort(): DeviceCallTranslationPort? = null
 
+    /**
+     * 该 session 暴露的 OTA 端口；vendor 无 [DeviceCapability.OTA] 时返回 null。
+     *
+     * 编排器 / UI 通过本接口拿到 vendor-agnostic 的 OTA 控制；不依赖具体厂商。
+     * 端口生命周期与 session 绑定 —— session disconnect 时端口必须自动收尾。
+     */
+    fun otaPort(): DeviceOtaPort? = null
+
     fun disconnect()
 }

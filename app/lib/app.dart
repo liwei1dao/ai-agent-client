@@ -10,6 +10,7 @@ import 'features/agents/screens/agent_panel_screen.dart';
 import 'features/call_translate/screens/call_translate_screen.dart';
 import 'features/chat/screens/chat_screen.dart';
 import 'features/chat/screens/translate_screen.dart';
+import 'features/devices/screens/device_ota_screen.dart';
 import 'features/devices/screens/device_screen.dart';
 import 'features/home/screens/home_screen.dart';
 import 'features/services/screens/services_screen.dart';
@@ -40,6 +41,12 @@ final _router = GoRouter(
               GoRoute(
                 path: 'devices',
                 builder: (_, __) => const DeviceScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'ota',
+                    builder: (_, __) => const DeviceOtaScreen(),
+                  ),
+                ],
               ),
               GoRoute(
                 path: 'call-translate',
