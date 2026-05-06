@@ -19,6 +19,9 @@ import 'features/chat/screens/chat_screen.dart';
 import 'features/chat/screens/translate_screen.dart';
 import 'features/devices/screens/device_screen.dart';
 import 'features/home/screens/home_screen.dart';
+import 'features/meeting/screens/cloud_screen.dart';
+import 'features/meeting/screens/templates_screen.dart';
+import 'features/meeting/screens/transcription_screen.dart';
 import 'features/profile/screens/profile_screen.dart';
 import 'features/services/screens/services_screen.dart';
 import 'features/settings/screens/settings_screen.dart';
@@ -89,6 +92,20 @@ GoRouter _buildRouter({
                     MeetingBinding().dependencies();
                     return const MeetingView();
                   },
+                  routes: [
+                    GoRoute(
+                      path: 'transcription',
+                      builder: (_, __) => const TranscriptionScreen(),
+                    ),
+                    GoRoute(
+                      path: 'templates',
+                      builder: (_, __) => const TemplatesScreen(),
+                    ),
+                    GoRoute(
+                      path: 'cloud',
+                      builder: (_, __) => const CloudScreen(),
+                    ),
+                  ],
                 ),
               ],
             ),
