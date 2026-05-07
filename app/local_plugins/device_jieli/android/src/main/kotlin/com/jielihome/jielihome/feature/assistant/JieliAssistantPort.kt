@@ -110,10 +110,10 @@ class JieliAssistantPort(
         val lp = LocalPlayer(sampleRate = 16000, channels = 1).also { it.start() }
         player = lp
 
-        // 2. 启动 Opus 解码器：耳机上推的录音流是 OPUS，解码后丢回 SharedFlow
-        // packetSize 临时调成 40：怀疑耳机固件把 5 个 40B 的 OPUS 包拼成 200B 推上来，
-        // OpusManager 把整块当 1 包解，导致丢 80% 数据（10 fps 而非 50 fps）。
-        // 调成 40 验证 OpusManager 是否按此 hint 切包；若帧率提升即证实编码端拼接是元凶。
+        // 2. 启动 Opus 解码器：耳机上推的录音流是 OPUS，解码后丢回 SharedFlow。
+        // packetSize 必须是耳机单个 OPUS 帧的真实大小（16k/16bit/20ms 约 40B），
+        // 不是 SDK 里那种"块大小"。配 200 时 OpusManager 把 5 个拼接帧当 1 帧解，
+        // 1s 只出 10 帧 PCM（应有 50），丢 80% 数据 —— 与"AI 助理 10 fps"问题完全对应。
         val od = OpusStreamDecoder(
             channel = 1,
             packetSize = 40,

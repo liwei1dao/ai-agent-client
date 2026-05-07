@@ -10,7 +10,10 @@ import com.jieli.jl_audio_decode.opus.model.OpusOption
  * 输入：从耳机收到的 OPUS 编码帧
  * 输出：16kHz / mono PCM 流
  *
- * 立体声场景把 [channel] 设 2 + [packetSize] 设 80。
+ * **packetSize 是单个 OPUS 帧的实际字节大小，不是"传输块大小"**。
+ * 16k/16bit/mono/20ms ≈ 40B/帧，stereo ≈ 80B/帧。
+ * 杰理 SDK demo 里用 200/80 这类"块"值会让 OpusManager 把多帧拼包当成 1 帧解，
+ * 直接丢掉后面的帧（mono 200B = 5 帧 → 只解 1 帧，丢 80%）。
  */
 class OpusStreamDecoder(
     private val channel: Int = 1,
