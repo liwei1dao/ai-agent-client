@@ -94,17 +94,31 @@ class RcspTranslationRuntime(
     @Volatile private var rxTypeMismatch = 0L
     @Volatile private var rxNullPayload = 0L
     @Volatile private var rxLastReportMs = 0L
+    /** 首帧 flag：首次收到任意 AudioData 时立即打一条 INFO 级别日志（不受 1s 节流影响）。 */
+    @Volatile private var rxFirstLogged = false
+    /** 首帧（按 source 维度）：uplink / downlink / mix 分别各打一条，确认链路通畅。 */
+    private val rxFirstPerSource = java.util.concurrent.ConcurrentHashMap<Int, Boolean>()
 
     private val translationCallback = object : TranslationCallback {
         override fun onModeChange(d: BluetoothDevice, m: TranslationMode) {
-            Log.d(TAG, "TranslationCallback.onModeChange: mode=${m.mode} type=${m.audioType} sr=${m.sampleRate} ch=${m.channel}")
+            Log.i(TAG, "[SDK<-DEV] onModeChange addr=${d.address} mode=${m.mode} type=${m.audioType} sr=${m.sampleRate} ch=${m.channel} strategy=${m.recordingStrategy}")
         }
 
         override fun onReceiveAudioData(d: BluetoothDevice, data: AudioData) {
             rxCount++
+            val payloadSize = data.audioData?.size ?: 0
+            // 首帧（总）：立即打点，避免节流导致"完全静默"误判
+            if (!rxFirstLogged) {
+                rxFirstLogged = true
+                Log.i(TAG, "[SDK<-DEV] onReceiveAudioData FIRST FRAME addr=${d.address} source=${data.source} type=${data.type} size=$payloadSize expect.type=${mode.audioType}")
+            }
+            // 首帧（按 source）：分别打点，快速判断上行/下行是否都在推
+            if (rxFirstPerSource.putIfAbsent(data.source, true) == null) {
+                Log.i(TAG, "[SDK<-DEV] onReceiveAudioData FIRST source=${data.source} type=${data.type} size=$payloadSize")
+            }
             val now = System.currentTimeMillis()
             if (now - rxLastReportMs >= 1000L) {
-                Log.d(TAG, "RX stats (last 1s): total=$rxCount typeMismatch=$rxTypeMismatch nullPayload=$rxNullPayload  expect.type=${mode.audioType}  last.source=${data.source} last.type=${data.type} payloadSize=${data.audioData?.size ?: 0}")
+                Log.d(TAG, "[SDK<-DEV] RX stats (last 1s): total=$rxCount typeMismatch=$rxTypeMismatch nullPayload=$rxNullPayload  expect.type=${mode.audioType}  last.source=${data.source} last.type=${data.type} payloadSize=$payloadSize")
                 rxCount = 0; rxTypeMismatch = 0; rxNullPayload = 0; rxLastReportMs = now
             }
             if (data.type != mode.audioType) {
@@ -124,11 +138,12 @@ class RcspTranslationRuntime(
                 AudioData.SOURCE_E_SCO_UP_LINK -> upDecoder?.feedEncoded(payload)
                 AudioData.SOURCE_E_SCO_DOWN_LINK -> downDecoder?.feedEncoded(payload)
                 AudioData.SOURCE_E_SCO_MIX -> stereoDecoder?.feedEncoded(payload)
+                else -> Log.w(TAG, "[SDK<-DEV] onReceiveAudioData unknown source=${data.source} dropped")
             }
         }
 
         override fun onError(d: BluetoothDevice, code: Int, msg: String) {
-            Log.e(TAG, "TranslationCallback.onError code=$code msg=$msg")
+            Log.e(TAG, "[SDK<-DEV] TranslationCallback.onError code=$code msg=$msg")
             this@RcspTranslationRuntime.onError(code, msg)
         }
     }
@@ -274,7 +289,7 @@ class RcspTranslationRuntime(
         stereoDecoder?.start()
 
         translationImpl.addTranslationCallback(translationCallback)
-        Log.d(TAG, "enterMode: mode=${mode.mode} type=${mode.audioType} sr=${mode.sampleRate} ch=${mode.channel} strategy=${mode.recordingStrategy} (waiting for onModeChange/onReceiveAudioData)")
+        Log.i(TAG, "[APP->SDK] enterMode addr=${device.address} mode=${mode.mode} type=${mode.audioType} sr=${mode.sampleRate} ch=${mode.channel} strategy=${mode.recordingStrategy} (waiting for onModeChange/onReceiveAudioData)")
         translationImpl.enterMode(mode, translationCallback)
 
         // OPUS 模式启动周期性 flush 巡检：每 [PERIODIC_FLUSH_MS] 切一次缓冲。
@@ -431,9 +446,14 @@ class RcspTranslationRuntime(
         runCatching { flushWatcher?.shutdownNow() }
         flushWatcher = null
         runCatching {
+            Log.i(TAG, "[APP->SDK] exitMode addr=${device.address} mode=${mode.mode}")
             translationImpl.exitMode(object : OnRcspActionCallback<Int> {
-                override fun onSuccess(d: BluetoothDevice?, t: Int?) {}
-                override fun onError(d: BluetoothDevice?, err: com.jieli.bluetooth.bean.base.BaseError?) {}
+                override fun onSuccess(d: BluetoothDevice?, t: Int?) {
+                    Log.i(TAG, "[APP->SDK] exitMode onSuccess addr=${d?.address} t=$t")
+                }
+                override fun onError(d: BluetoothDevice?, err: com.jieli.bluetooth.bean.base.BaseError?) {
+                    Log.w(TAG, "[APP->SDK] exitMode onError addr=${d?.address} code=${err?.code} msg=${err?.message}")
+                }
             })
         }
         runCatching { translationImpl.removeTranslationCallback(translationCallback) }

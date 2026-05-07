@@ -49,6 +49,8 @@ class StsChatAgentSession : NativeAgent {
     @Volatile private var currentAssistantId: String? = null
     /** 暂存部分识别的用户文本 */
     @Volatile private var pendingUserText: String = ""
+    /** 上次已向 UI 发送的累积文本长度，用于计算 delta */
+    @Volatile private var lastSentLength: Int = 0
 
     // ─────────────────────────────────────────────────
     // NativeAgent 接口实现
@@ -149,6 +151,29 @@ class StsChatAgentSession : NativeAgent {
     }
 
     // ─────────────────────────────────────────────────
+    // 外部音频源（AI 助理 / 通话翻译等场景）—— 透传到底层 NativeStsService
+    //
+    // 与 setInputMode("call") 触发的 self-mic 路径互斥；编排器在 AI 助理场景
+    // 显式以 inputMode='external' 初始化，并在 connect 完成后调
+    // startExternalAudio 接管音源，绝不能再走 self-mic（会抢 RECORD_AUDIO 与 SCO）。
+    // ─────────────────────────────────────────────────
+
+    override fun externalAudioCapability(): ExternalAudioCapability =
+        stsService.externalAudioCapability()
+
+    override fun startExternalAudio(format: ExternalAudioFormat, sink: ExternalAudioSink) {
+        stsService.startExternalAudio(format, sink)
+    }
+
+    override fun pushExternalAudioFrame(frame: ByteArray) {
+        stsService.pushExternalAudioFrame(frame)
+    }
+
+    override fun stopExternalAudio() {
+        stsService.stopExternalAudio()
+    }
+
+    // ─────────────────────────────────────────────────
     // STS 回调 → AgentEventSink 事件转换
     // ─────────────────────────────────────────────────
 
@@ -196,35 +221,72 @@ class StsChatAgentSession : NativeAgent {
             // TTS 音频由 STS 服务内部播放
         }
 
-        override fun onSentenceDone(text: String) {
-            // AI 回复一句话 → 累加到同一条 assistant 消息
-            val isNewResponse = currentAssistantId == null
-            val msgId = currentAssistantId ?: UUID.randomUUID().toString()
-            currentAssistantId = msgId
+        override fun onChatPartialResult(cumulativeText: String) {
+            // 流式 token 到来：计算增量并推送到 UI
+            val delta = cumulativeText.substring(lastSentLength)
+            if (delta.isEmpty()) return
 
-            if (isNewResponse) {
-                // 新的 AI 回复 → firstToken 创建气泡
-                eventSink.onLlmEvent(LlmEventData(
-                    config.agentId, requestId = msgId, kind = "firstToken", textDelta = text))
-                // DB: 插入新消息
+            val isNew = currentAssistantId == null
+            val msgId = currentAssistantId ?: UUID.randomUUID().toString().also { currentAssistantId = it }
+
+            if (isNew) {
+                // 首个 token：在 DB 插入 streaming 消息
                 scope.launch {
                     runCatching {
                         val now = System.currentTimeMillis()
                         db.messageDao().insert(MessageEntity(
                             id = msgId, agentId = config.agentId,
-                            role = "assistant", content = text, status = "streaming",
+                            role = "assistant", content = cumulativeText, status = "streaming",
                             createdAt = now, updatedAt = now,
                         ))
                     }
                 }
             } else {
-                // 同一轮回复的后续句子 → 累加到已有气泡
-                eventSink.onLlmEvent(LlmEventData(
-                    config.agentId, requestId = msgId, kind = "firstToken", textDelta = text))
-                // DB: 追加内容
+                // 后续 token：追加内容到 DB
                 scope.launch {
                     runCatching {
-                        db.messageDao().appendContent(msgId, text, System.currentTimeMillis())
+                        db.messageDao().appendContent(msgId, delta, System.currentTimeMillis())
+                    }
+                }
+            }
+
+            lastSentLength = cumulativeText.length
+            eventSink.onLlmEvent(LlmEventData(
+                config.agentId, requestId = msgId, kind = "firstToken", textDelta = delta))
+        }
+
+        override fun onSentenceDone(text: String) {
+            // AI 回复完成：若没有经过流式路径则兜底发完整文本；最终发 done 关闭气泡
+            val msgId = currentAssistantId
+            lastSentLength = 0
+
+            if (msgId == null) {
+                // 无流式更新（兜底）：整句一次性发出
+                val id = UUID.randomUUID().toString()
+                currentAssistantId = id
+                eventSink.onLlmEvent(LlmEventData(
+                    config.agentId, requestId = id, kind = "firstToken", textDelta = text))
+                scope.launch {
+                    runCatching {
+                        val now = System.currentTimeMillis()
+                        db.messageDao().insert(MessageEntity(
+                            id = id, agentId = config.agentId,
+                            role = "assistant", content = text, status = "done",
+                            createdAt = now, updatedAt = now,
+                        ))
+                    }
+                }
+                eventSink.onLlmEvent(LlmEventData(
+                    config.agentId, requestId = id, kind = "done", fullText = text))
+                currentAssistantId = null
+            } else {
+                // 已有流式气泡：直接 done
+                currentAssistantId = null
+                eventSink.onLlmEvent(LlmEventData(
+                    config.agentId, requestId = msgId, kind = "done", fullText = text))
+                scope.launch {
+                    runCatching {
+                        db.messageDao().updateStatus(msgId, "done", System.currentTimeMillis())
                     }
                 }
             }
@@ -244,8 +306,9 @@ class StsChatAgentSession : NativeAgent {
         }
 
         override fun onSpeechStart() {
-            // 用户开口 → 当前 AI 回复结束，标记 done，重置 ID
+            // 用户开口 → 当前 AI 回复被打断，标记 done，重置 ID
             val prevId = currentAssistantId
+            lastSentLength = 0
             if (prevId != null) {
                 eventSink.onLlmEvent(LlmEventData(
                     config.agentId, requestId = prevId, kind = "done"))

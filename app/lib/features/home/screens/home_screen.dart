@@ -64,6 +64,8 @@ class HomeScreen extends ConsumerWidget {
           const SizedBox(height: 8),
           _CallTranslateEntry(onTap: () => context.push('/call-translate')),
           const SizedBox(height: 8),
+          _AssistantEntry(onTap: () => context.push('/ai-assistant')),
+          const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
@@ -351,6 +353,78 @@ class _CallTranslateEntry extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       '双向同传 · 耳机端实时听译',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: colors.text1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.play_circle_outline,
+                  color: accent, size: 26),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AssistantEntry extends StatelessWidget {
+  const _AssistantEntry({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    const accent = Color(0xFF8B5CF6);
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.assistant_outlined,
+                    color: accent, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'AI 助理',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colors.text2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '耳机端语音对话 · 单 chat agent',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,

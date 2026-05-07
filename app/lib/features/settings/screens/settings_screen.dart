@@ -12,6 +12,7 @@ import 'package:tts_azure/tts_azure.dart';
 import '../../../core/security/config_crypto.dart';
 import '../../../core/services/config_service.dart';
 import '../../../core/services/device_service.dart';
+import '../../../core/services/locale_service.dart';
 import '../../../core/services/log_service.dart';
 import '../../../core/services/voitrans_service.dart' show polychatServiceProvider;
 import '../../../shared/themes/app_theme.dart';
@@ -1179,6 +1180,31 @@ class _DeviceSection extends ConsumerWidget {
         ),
         Divider(height: 1, color: colors.border),
 
+        // AI 助理 agent
+        _AgentPickerTile(
+          icon: Icons.assistant_outlined,
+          title: 'AI 助理 Agent',
+          subtitle: '在 AI 助理页通过耳机进行语音对话',
+          options: chatAgents,
+          currentId: config.defaultAssistantAgentId,
+          onChanged: (id) => ref
+              .read(configServiceProvider.notifier)
+              .setDefaultAssistantAgentId(id),
+        ),
+        Divider(height: 1, color: colors.border),
+
+        // AI 助理 用户语言
+        _LangPickerTile(
+          icon: Icons.record_voice_over_outlined,
+          title: 'AI 助理 用户语言',
+          subtitle: '决定 STT 识别与 TTS 朗读语种',
+          currentCode: config.defaultAssistantUserLanguage,
+          onChanged: (code) => ref
+              .read(configServiceProvider.notifier)
+              .setDefaultAssistantUserLanguage(code),
+        ),
+        Divider(height: 1, color: colors.border),
+
         // 进入设备管理页
         ListTile(
           leading: const Icon(Icons.bluetooth_searching,
@@ -1609,6 +1635,69 @@ class _ImportPasswordDialogState extends State<_ImportPasswordDialog> {
           child: const Text('解密导入'),
         ),
       ],
+    );
+  }
+}
+
+class _LangPickerTile extends StatelessWidget {
+  const _LangPickerTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.currentCode,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? currentCode;
+  final ValueChanged<String?> onChanged;
+
+  Future<void> _pick(BuildContext context) async {
+    final colors = context.appColors;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          children: [
+            for (final code in LocaleService.allCodes)
+              ListTile(
+                title: Text(LocaleService.langNames[code] ?? code,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: colors.text1)),
+                subtitle:
+                    Text(code, style: TextStyle(color: colors.text2)),
+                onTap: () => Navigator.pop(context, code),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final code = currentCode;
+    final label = code == null
+        ? '未选择'
+        : (LocaleService.langNames[code] ?? code);
+    return ListTile(
+      leading: Icon(icon, color: AppTheme.primary, size: 20),
+      title: Text(title,
+          style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: colors.text1)),
+      subtitle: Text('$subtitle · $label',
+          style: TextStyle(fontSize: 12, color: colors.text2)),
+      trailing: Icon(Icons.chevron_right, color: colors.text2, size: 20),
+      onTap: () => _pick(context),
     );
   }
 }

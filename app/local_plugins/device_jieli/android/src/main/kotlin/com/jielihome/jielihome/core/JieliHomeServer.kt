@@ -59,6 +59,10 @@ class JieliHomeServer private constructor() {
 
     private lateinit var btManager: JL_BluetoothManager
 
+    /** 模块内访问 btManager 用（如 [com.jielihome.jielihome.feature.assistant.JieliAssistantPort]
+     *  需要直接持有 [com.jieli.bluetooth.impl.rcsp.record.RecordOpImpl] 单例时）。 */
+    internal val internalBtManager: JL_BluetoothManager get() = btManager
+
     private lateinit var bluetoothForwarder: BluetoothEventForwarder
     private lateinit var deviceInfoForwarder: DeviceInfoEventForwarder
     private lateinit var mediaForwarder: MediaEventForwarder
@@ -199,6 +203,17 @@ class JieliHomeServer private constructor() {
      */
     val deviceRecordPort: com.jielihome.jielihome.feature.record.JieliDeviceRecordPort by lazy {
         com.jielihome.jielihome.feature.record.JieliDeviceRecordPort(this)
+    }
+
+    /**
+     * AI 助理能力端口（[com.aiagent.device_plugin_interface.DeviceAssistantPort]
+     * 的杰理实现）。延迟创建；`assistant_server` native 编排器通过
+     * [JieliNativeDeviceSession.assistantPort] 拿引用，与 [callTranslationPort] 语义独立。
+     *
+     * 底层同样依赖 RCSP `MODE_CALL_TRANSLATION`，但接口上已完全隐藏 leg/翻译语义。
+     */
+    val assistantPort: com.jielihome.jielihome.feature.assistant.JieliAssistantPort by lazy {
+        com.jielihome.jielihome.feature.assistant.JieliAssistantPort(this)
     }
 
     fun shutdown() {

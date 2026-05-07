@@ -109,6 +109,22 @@ class JieliNativeDevicePlugin(
         }
 
         override fun onDeviceFound(payload: Map<String, Any?>) {
+            val meta = mutableMapOf<String, Any?>(
+                "edrAddr" to payload["edrAddr"],
+                "deviceType" to payload["deviceType"],
+                "connectWay" to payload["connectWay"],
+            )
+            // 透传 ScanFeature 解析出的广播详情，供 UI 弹窗展示。
+            listOf(
+                "rawAdv",
+                "advRecords",
+                "advFlags",
+                "manufacturerCompanyId",
+                "manufacturerData",
+                "serviceUuids",
+            ).forEach { key ->
+                if (payload.containsKey(key)) meta[key] = payload[key]
+            }
             emit(DevicePluginEvent(
                 type = DevicePluginEventType.DEVICE_DISCOVERED,
                 discovered = DiscoveredDevice(
@@ -116,11 +132,7 @@ class JieliNativeDevicePlugin(
                     name = (payload["name"] as? String) ?: "",
                     rssi = (payload["rssi"] as? Number)?.toInt(),
                     vendor = VENDOR_KEY,
-                    metadata = mapOf(
-                        "edrAddr" to payload["edrAddr"],
-                        "deviceType" to payload["deviceType"],
-                        "connectWay" to payload["connectWay"],
-                    ),
+                    metadata = meta,
                 ),
             ))
         }

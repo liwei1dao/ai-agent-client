@@ -200,6 +200,13 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
     if (mounted) _toast('已断开');
   }
 
+  void _showDeviceInfo(DiscoveredDevice d) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => _DeviceInfoDialog(device: d),
+    );
+  }
+
   void _toast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -269,7 +276,8 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
                         return _ScanTile(
                           device: d,
                           connecting: isConnecting,
-                          onTap: isConnecting ? null : () => _connect(d),
+                          onTap: () => _showDeviceInfo(d),
+                          onConnect: isConnecting ? null : () => _connect(d),
                         );
                       }).toList(),
                     );
@@ -619,10 +627,12 @@ class _ScanTile extends StatelessWidget {
     required this.device,
     required this.connecting,
     required this.onTap,
+    required this.onConnect,
   });
   final DiscoveredDevice device;
   final bool connecting;
   final VoidCallback? onTap;
+  final VoidCallback? onConnect;
 
   @override
   Widget build(BuildContext context) {
@@ -653,8 +663,358 @@ class _ScanTile extends StatelessWidget {
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.chevron_right),
+            : FilledButton(
+                onPressed: onConnect,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                  minimumSize: const Size(0, 32),
+                  textStyle: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                child: const Text('连接'),
+              ),
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 设备广播信息对话框（仿 BLE 调试助手样式）
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DeviceInfoDialog extends StatelessWidget {
+  const _DeviceInfoDialog({required this.device});
+  final DiscoveredDevice device;
+
+  /// 按 BLE 规范解析 AD Type 0x01 Flags 位，生成与 BLE 调试助手一致的描述。
+  static String _flagsDesc(int flags) {
+    final parts = <String>[];
+    if (flags & 0x01 != 0) parts.add('LE Limited Discoverable Mode');
+    if (flags & 0x02 != 0) parts.add('LE General Discoverable Mode');
+    // bit 2: 0 = BR/EDR Supported；1 = BR/EDR Not Supported
+    if (flags & 0x04 != 0) {
+      parts.add('BR/EDR Not Supported');
+    } else {
+      parts.add('BR/EDR Supported');
+    }
+    if (flags & 0x08 != 0) parts.add('LE and BR/EDR Controller');
+    if (flags & 0x10 != 0) parts.add('LE and BR/EDR host');
+    return parts.join('; ');
+  }
+
+  /// 从 Flags 推断设备类型字符串。
+  static String _deviceType(int flags) {
+    final edrSupported = flags & 0x04 == 0;
+    // bit 0/1 = LE discoverable；bit 3/4 = 同时支持 LE+EDR
+    final leCapable = (flags & 0x03 != 0) || (flags & 0x18 != 0);
+    if (edrSupported && leCapable) return 'BR/EDR/LE';
+    if (leCapable) return 'LE Only';
+    return 'BR/EDR';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final m = device.metadata;
+    final rawAdv = m['rawAdv'] as String?;
+    final advFlags = m['advFlags'] as int?;
+    final serviceUuids = (m['serviceUuids'] as List?)?.cast<String>() ?? [];
+    final companyId = m['manufacturerCompanyId'] as int?;
+    final mfrData = m['manufacturerData'] as String?;
+    final advRecords = (m['advRecords'] as List?)
+            ?.whereType<Map>()
+            .map((e) => e.cast<String, String>())
+            .toList() ??
+        [];
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 480,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── 标题栏 ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 8, 0),
+              child: Row(
+                children: [
+                  Text('广播包:',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: colors.text1)),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, size: 20),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: '关闭',
+                  ),
+                ],
+              ),
+            ),
+            // ── 滚动内容区 ──
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── 1. 原始广播数据包（始终置顶）──
+                    if (rawAdv != null && rawAdv.isNotEmpty) ...[
+                      Text('原始广播数据:',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: colors.text1)),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppTheme.primary, width: 1.5),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: SelectableText(
+                          '0x$rawAdv',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              color: colors.text1,
+                              height: 1.5),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
+                    // ── 2. 广播包明细表（Len | Type | Data）──
+                    if (advRecords.isNotEmpty) ...[
+                      Text('广播包解析:',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: colors.text1)),
+                      const SizedBox(height: 6),
+                      _AdvTable(records: advRecords),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // ── 3. 解析摘要（有数据时显示，解析不到则不显示）──
+                    if (advFlags != null) ...[
+                      _AdvInfoLine(
+                        label: 'Device type',
+                        value: _deviceType(advFlags),
+                        primary: true,
+                      ),
+                      _AdvInfoLine(
+                        label: 'Advertising type',
+                        value: 'Legacy',
+                        primary: true,
+                      ),
+                      _AdvInfoLine(
+                        label: 'Flags',
+                        value: _flagsDesc(advFlags),
+                        primary: true,
+                      ),
+                    ],
+
+                    if (companyId != null) ...[
+                      const SizedBox(height: 6),
+                      Text('Manufacturer data:',
+                          style: TextStyle(fontSize: 12, color: colors.text1)),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Company:Reserved ID'
+                        '<0x${companyId.toRadixString(16).toUpperCase().padLeft(4, '0')}>',
+                        style: TextStyle(fontSize: 12, color: colors.text1),
+                      ),
+                      if (mfrData != null && mfrData.isNotEmpty)
+                        SelectableText(
+                          '0x$mfrData',
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.primary,
+                              fontFamily: 'monospace',
+                              height: 1.5),
+                        ),
+                    ],
+
+                    if (serviceUuids.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text('Service UUIDs:',
+                          style: TextStyle(fontSize: 12, color: colors.text1)),
+                      const SizedBox(height: 2),
+                      ...serviceUuids.map((u) => SelectableText(
+                            u,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.primary,
+                                fontFamily: 'monospace'),
+                          )),
+                    ],
+
+                    // ── 4. 基本设备信息 ──
+                    const SizedBox(height: 8),
+                    _AdvInfoLine(
+                      label: 'Device name',
+                      value: device.name.isEmpty ? '(未命名)' : device.name,
+                    ),
+                    _AdvInfoLine(label: 'MAC address', value: device.id),
+                    if (device.rssi != null)
+                      _AdvInfoLine(label: 'RSSI', value: '${device.rssi} dBm'),
+
+                    const SizedBox(height: 10),
+                    RichText(
+                      text: TextSpan(
+                        style: TextStyle(fontSize: 11, color: colors.text2),
+                        children: const [
+                          TextSpan(text: 'Further information see: '),
+                          TextSpan(
+                            text:
+                                'https://www.bluetooth.com/specifications/assigned-numbers/generic-access-profile/',
+                            style: TextStyle(
+                                color: AppTheme.primary,
+                                decoration: TextDecoration.underline),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+            // ── OK 按钮 ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('OK',
+                      style: TextStyle(
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Label: Value" 内联行，与 BLE 调试助手截图格式一致。
+class _AdvInfoLine extends StatelessWidget {
+  const _AdvInfoLine({
+    required this.label,
+    required this.value,
+    this.primary = false,
+  });
+  final String label;
+  final String value;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: RichText(
+        text: TextSpan(
+          style: TextStyle(fontSize: 12, color: colors.text1, height: 1.5),
+          children: [
+            TextSpan(text: '$label: '),
+            TextSpan(
+              text: value,
+              style: TextStyle(
+                color: primary ? AppTheme.primary : colors.text1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Len / Type / Data 广播包明细表。
+/// Data 列使用 [Text] + softWrap 确保长 hex 字符串完整换行显示。
+class _AdvTable extends StatelessWidget {
+  const _AdvTable({required this.records});
+  final List<Map<String, String>> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    const colStyle =
+        TextStyle(fontSize: 11, color: AppTheme.primary, fontFamily: 'monospace');
+    final headerStyle = TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: colors.text1);
+    const divider = Color(0xFFE5E7EB);
+
+    Widget cell(String text, {TextStyle? style, bool header = false}) =>
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          child: Text(
+            text,
+            style: style ?? (header ? headerStyle : colStyle),
+            softWrap: true,
+          ),
+        );
+
+    // 使用 Column + Row 代替 Table，避免 Table 对 Text wrap 的限制
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: divider, width: 0.5),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 表头
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(width: 40, child: cell('Len', header: true)),
+                Container(width: 0.5, color: divider),
+                SizedBox(width: 56, child: cell('Type', header: true)),
+                Container(width: 0.5, color: divider),
+                Expanded(child: cell('Data', header: true)),
+              ],
+            ),
+          ),
+          Container(height: 0.5, color: divider),
+          // 数据行
+          for (int i = 0; i < records.length; i++) ...[
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(width: 40, child: cell(records[i]['len'] ?? '')),
+                  Container(width: 0.5, color: divider),
+                  SizedBox(width: 56, child: cell(records[i]['type'] ?? '')),
+                  Container(width: 0.5, color: divider),
+                  Expanded(child: cell(records[i]['data'] ?? '')),
+                ],
+              ),
+            ),
+            if (i < records.length - 1)
+              Container(height: 0.5, color: divider),
+          ],
+        ],
       ),
     );
   }

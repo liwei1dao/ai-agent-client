@@ -74,6 +74,8 @@ class AppConfig {
     this.defaultCallDownlinkAgentId,
     this.defaultCallUserLanguage,
     this.defaultCallPeerLanguage,
+    this.defaultAssistantAgentId,
+    this.defaultAssistantUserLanguage,
     this.lastDeviceId,
     this.lastDeviceName,
     this.scanNameList = const <String>[],
@@ -110,6 +112,12 @@ class AppConfig {
   /// 通话翻译默认对方侧语言。
   final String? defaultCallPeerLanguage;
 
+  /// AI 助理默认 chat agent id。
+  final String? defaultAssistantAgentId;
+
+  /// AI 助理默认用户语言（IETF BCP-47 / ISO-639）。
+  final String? defaultAssistantUserLanguage;
+
   /// 上次成功连接过的设备 deviceId（用于自动重连）。
   final String? lastDeviceId;
 
@@ -138,6 +146,8 @@ class AppConfig {
     Object? defaultCallDownlinkAgentId = _unset,
     Object? defaultCallUserLanguage = _unset,
     Object? defaultCallPeerLanguage = _unset,
+    Object? defaultAssistantAgentId = _unset,
+    Object? defaultAssistantUserLanguage = _unset,
     Object? lastDeviceId = _unset,
     Object? lastDeviceName = _unset,
     List<String>? scanNameList,
@@ -171,6 +181,13 @@ class AppConfig {
         defaultCallPeerLanguage: identical(defaultCallPeerLanguage, _unset)
             ? this.defaultCallPeerLanguage
             : defaultCallPeerLanguage as String?,
+        defaultAssistantAgentId: identical(defaultAssistantAgentId, _unset)
+            ? this.defaultAssistantAgentId
+            : defaultAssistantAgentId as String?,
+        defaultAssistantUserLanguage:
+            identical(defaultAssistantUserLanguage, _unset)
+                ? this.defaultAssistantUserLanguage
+                : defaultAssistantUserLanguage as String?,
         lastDeviceId: identical(lastDeviceId, _unset)
             ? this.lastDeviceId
             : lastDeviceId as String?,
@@ -234,6 +251,9 @@ class ConfigService extends StateNotifier<AppConfig> {
           prefs.getString('default_call_downlink_agent_id'),
       defaultCallUserLanguage: prefs.getString('default_call_user_language'),
       defaultCallPeerLanguage: prefs.getString('default_call_peer_language'),
+      defaultAssistantAgentId: prefs.getString('default_assistant_agent_id'),
+      defaultAssistantUserLanguage:
+          prefs.getString('default_assistant_user_language'),
       lastDeviceId: prefs.getString('last_device_id'),
       lastDeviceName: prefs.getString('last_device_name'),
       scanNameList: prefs.getStringList('scan_name_list') ?? const <String>[],
@@ -332,6 +352,14 @@ class ConfigService extends StateNotifier<AppConfig> {
   Future<void> setDefaultCallPeerLanguage(String? lang) =>
       _setOptionalString('default_call_peer_language', lang, (v) =>
           state.copyWith(defaultCallPeerLanguage: v));
+
+  Future<void> setDefaultAssistantAgentId(String? id) =>
+      _setOptionalString('default_assistant_agent_id', id, (v) =>
+          state.copyWith(defaultAssistantAgentId: v));
+
+  Future<void> setDefaultAssistantUserLanguage(String? lang) =>
+      _setOptionalString('default_assistant_user_language', lang, (v) =>
+          state.copyWith(defaultAssistantUserLanguage: v));
 
   Future<void> _setOptionalString(
     String key,

@@ -17,6 +17,12 @@ class JieliDevice {
     this.deviceType,
     this.connectWay,
     this.rssi,
+    this.rawAdv,
+    this.advFlags,
+    this.manufacturerCompanyId,
+    this.manufacturerData,
+    this.serviceUuids = const [],
+    this.advRecords = const [],
   });
 
   final String name;
@@ -26,6 +32,24 @@ class JieliDevice {
   final int? connectWay;
   final int? rssi;
 
+  /// 原始广播包 hex（不含 "0x" 前缀）。
+  final String? rawAdv;
+
+  /// AD Type 0x01 Flags 字节值。
+  final int? advFlags;
+
+  /// AD Type 0xFF 厂商数据的前两字节（小端）解析出的 Company ID。
+  final int? manufacturerCompanyId;
+
+  /// AD Type 0xFF 厂商数据去掉 Company ID 后剩余字节的 hex（不含 "0x"）。
+  final String? manufacturerData;
+
+  /// ScanRecord.serviceUuids 列表（大写字符串）。
+  final List<String> serviceUuids;
+
+  /// 按 BLE Core Spec §11 解析的每条 AD 记录：{len, type, data}。
+  final List<Map<String, String>> advRecords;
+
   factory JieliDevice.fromMap(Map<dynamic, dynamic> m) => JieliDevice(
         name: (m['name'] as String?) ?? '',
         address: m['address'] as String,
@@ -33,6 +57,19 @@ class JieliDevice {
         deviceType: m['deviceType'] as int?,
         connectWay: m['connectWay'] as int?,
         rssi: m['rssi'] as int?,
+        rawAdv: m['rawAdv'] as String?,
+        advFlags: m['advFlags'] as int?,
+        manufacturerCompanyId: m['manufacturerCompanyId'] as int?,
+        manufacturerData: m['manufacturerData'] as String?,
+        serviceUuids:
+            (m['serviceUuids'] as List?)?.cast<String>() ?? const [],
+        advRecords: (m['advRecords'] as List?)
+                ?.whereType<Map>()
+                .map((e) => e.map(
+                      (k, v) => MapEntry(k.toString(), v?.toString() ?? ''),
+                    ))
+                .toList() ??
+            const [],
       );
 
   @override

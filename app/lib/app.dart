@@ -7,6 +7,7 @@ import 'package:tts_azure/tts_azure.dart';
 import 'core/services/config_service.dart';
 import 'core/services/device_service.dart';
 import 'features/agents/screens/agent_panel_screen.dart';
+import 'features/assistant/screens/assistant_screen.dart';
 import 'features/call_translate/screens/call_translate_screen.dart';
 import 'features/chat/screens/chat_screen.dart';
 import 'features/chat/screens/translate_screen.dart';
@@ -51,6 +52,10 @@ final _router = GoRouter(
               GoRoute(
                 path: 'call-translate',
                 builder: (_, __) => const CallTranslateScreen(),
+              ),
+              GoRoute(
+                path: 'ai-assistant',
+                builder: (_, __) => const AssistantScreen(),
               ),
             ],
           ),

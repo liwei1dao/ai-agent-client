@@ -63,7 +63,13 @@ class TranslationFeature(
         // + OPUS + 设备支持立体声方案时，自动升级到 MODE_CALL_TRANSLATION_WITH_STEREO
         // (channel=2)。很多固件版本下 mono CALL_TRANSLATION 通路实际上不出帧，
         // 真正出数据的是立体声方案——上下行 mix 成一路立体声 PCM 上推。
+        //
+        // 例外：AI 助理 / 纯上行录音 场景没有真实通话事件，固件不会下发 SCO_MIX，
+        // 升级到 stereo 反而会"零帧"。这种调用方应在 args 里传
+        // "bypassStereoUpgrade"=true，强制走 mono mode=5 + ALWAYS_RECORDING。
+        val bypassStereo = args["bypassStereoUpgrade"] == true
         val effectiveModeId = if (
+            !bypassStereo &&
             modeId == TranslationModeIds.MODE_CALL_TRANSLATION &&
             (args["audioType"] == null ||
                 args["audioType"] == com.jieli.bluetooth.constant.Constants.AUDIO_TYPE_OPUS ||
@@ -76,6 +82,12 @@ class TranslationFeature(
             )
             TranslationModeIds.MODE_CALL_TRANSLATION_WITH_STEREO
         } else modeId
+        if (bypassStereo) {
+            android.util.Log.d(
+                "TranslationFeature",
+                "bypassStereoUpgrade=true → keep mono MODE_CALL_TRANSLATION (no real phone-call scenario)",
+            )
+        }
 
         val handler = handlers[effectiveModeId]
             ?: return Result.failure(IllegalArgumentException("unknown modeId=$effectiveModeId"))

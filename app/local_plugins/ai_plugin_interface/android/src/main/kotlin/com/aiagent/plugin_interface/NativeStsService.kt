@@ -75,6 +75,9 @@ interface StsCallback {
     /** 收到 TTS 音频数据（PCM） */
     fun onTtsAudioChunk(pcmData: ByteArray)
 
+    /** AI 回复流式文本（累积快照，每次都是从本轮开头到当前的完整文本） */
+    fun onChatPartialResult(cumulativeText: String) {}
+
     /** 一句话回复结束 */
     fun onSentenceDone(text: String)
 

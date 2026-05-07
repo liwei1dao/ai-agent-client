@@ -95,6 +95,10 @@ dependencies:
   translate_server:
     path: local_plugins/translate_server
 
+  # AI assistant (single chat agent + headset RCSP audio loop)
+  assistant_server:
+    path: local_plugins/assistant_server
+
   # Data layer
   local_db:
     path: local_plugins/local_db

@@ -4,13 +4,11 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.os.ParcelUuid
 import android.util.Log
 import com.jieli.bluetooth.bean.BluetoothOption
 import com.jieli.bluetooth.utils.ParseDataUtil
@@ -22,12 +20,14 @@ import java.util.UUID
  *
  * 不再走 Jieli SDK 的 `btManager.scan()`（受其内置 ParseDataUtil 的
  * flagContent / strategy 限制），改为直接用 Android 原生
- * [BluetoothLeScanner] + [ScanFilter] 扫描，复合过滤：
+ * [BluetoothLeScanner] 扫描，过滤在应用层完成：
  *
  * - [nameList]：对 `BluetoothDevice.name` 精确匹配（忽略大小写），空 = 不按名过滤
- * - [uuidList]：构造 `ScanFilter.setServiceUuid(...)`，由 OS 过滤；空 = 不按 UUID 过滤
+ * - [uuidList]：对 `ScanRecord.serviceUuids` 逐个匹配；空 = 不按 UUID 过滤。
+ *   其中 16-bit UUID 做字节序容错（big-endian / little-endian 都命中），
+ *   规避部分固件广播字节序与 Android 解析方向不一致导致漏筛的问题。
  *
- * 两者同时设置时按 (UUID 由 OS 过滤后) AND (名字命中) 上报。
+ * 两者同时设置时按 (UUID 命中) AND (名字命中) 上报。
  *
  * 由于不再依赖 Jieli SDK 的 `BleScanMessage`，发出的 `deviceFound` 事件里
  * `edrAddr` / `deviceType` / `connectWay` 三个字段为 null —— 后续连接由
@@ -58,6 +58,7 @@ class ScanFeature(
     private var stopRunnable: Runnable? = null
 
     @Volatile private var currentNameList: List<String> = emptyList()
+    @Volatile private var currentUuidList: List<UUID> = emptyList()
     @Volatile private var currentSkipUnnamed: Boolean = true
 
     @SuppressLint("MissingPermission")
@@ -74,18 +75,8 @@ class ScanFeature(
         if (scanning) doStop(scanner)
 
         currentNameList = nameList.filter { it.isNotEmpty() }
+        currentUuidList = uuidList.mapNotNull { parseUuid(it) }
         currentSkipUnnamed = skipUnnamed
-
-        val filters = mutableListOf<ScanFilter>()
-        uuidList.forEach { raw ->
-            val uuid = parseUuid(raw) ?: return@forEach
-            filters.add(
-                ScanFilter.Builder()
-                    .setServiceUuid(ParcelUuid(uuid))
-                    .build()
-            )
-            Log.d(TAG, "add ScanFilter serviceUuid=$uuid")
-        }
 
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
@@ -115,15 +106,10 @@ class ScanFeature(
         }
 
         return try {
-            // filters 为空时传 null（"扫描所有 BLE 广播"）
-            scanner.startScan(filters.takeIf { it.isNotEmpty() }, settings, cb)
+            // 应用层做 UUID 过滤：始终传 null filters（扫描所有 BLE 广播）
+            scanner.startScan(null, settings, cb)
             scanCallback = cb
             scanning = true
-            Log.d(
-                TAG,
-                "startScan timeoutMs=$timeoutMs filters=${filters.size} " +
-                        "nameList=$currentNameList"
-            )
             dispatcher.send(
                 mapOf("type" to "scanStatus", "ble" to true, "started" to true)
             )
@@ -163,6 +149,7 @@ class ScanFeature(
         stopRunnable = null
         scanning = false
         currentNameList = emptyList()
+        currentUuidList = emptyList()
         dispatcher.send(
             mapOf("type" to "scanStatus", "ble" to true, "started" to false)
         )
@@ -187,6 +174,17 @@ class ScanFeature(
             ) return
         }
 
+        // 应用层 UUID 过滤（带 16-bit 字节序容错）
+        val uuids = currentUuidList
+        if (uuids.isNotEmpty()) {
+            val advertised = result.scanRecord?.serviceUuids?.map { it.uuid } ?: emptyList()
+            if (advertised.isEmpty()) return
+            val hit = uuids.any { target ->
+                advertised.any { adv -> uuidMatchesWith16BitTolerance(target, adv) }
+            }
+            if (!hit) return
+        }
+
         // 用 Jieli SDK 的 ParseDataUtil 解一次原始 ScanRecord，能解出来就拿到
         // edrAddr / pid / deviceType / connectWay 等私有字段；解不出来就当作普通
         // BLE 设备（这些字段为 null，连接时走 BLE-only fallback）。
@@ -199,12 +197,26 @@ class ScanFeature(
             }
         } else null
 
-        Log.d(
-            TAG,
-            "result name=${name ?: "<null>"} addr=${device.address} rssi=${result.rssi} " +
-                    "jieli=${msg != null} edr=${msg?.edrAddr ?: "-"} " +
-                    "pid=${msg?.pid ?: "-"} dt=${msg?.deviceType ?: "-"} cw=${msg?.connectWay ?: "-"}"
-        )
+        // 解析出给 Flutter 侧 "广播详情" 弹窗用的结构化字段。
+        val adRecords = if (rawBytes != null) parseAdRecords(rawBytes) else emptyList()
+        val advRecordsPayload = adRecords.map { r ->
+            mapOf(
+                "len" to "%02d".format(r.len),
+                "type" to "0x%02X".format(r.type),
+                "data" to "0x" + r.data.toUpperHex(),
+            )
+        }
+        val advFlags = adRecords.firstOrNull { it.type == 0x01 }
+            ?.data?.takeIf { it.isNotEmpty() }
+            ?.let { it[0].toInt() and 0xFF }
+        val mfrRecord = adRecords.firstOrNull { it.type == 0xFF }
+        val manufacturerCompanyId = mfrRecord?.data?.takeIf { it.size >= 2 }?.let {
+            ((it[1].toInt() and 0xFF) shl 8) or (it[0].toInt() and 0xFF)
+        }
+        val manufacturerData = mfrRecord?.data?.takeIf { it.size > 2 }
+            ?.let { it.copyOfRange(2, it.size).toUpperHex() }
+        val serviceUuidStrings = result.scanRecord?.serviceUuids
+            ?.map { it.uuid.toString().uppercase() } ?: emptyList()
 
         dispatcher.send(
             mapOf(
@@ -214,7 +226,13 @@ class ScanFeature(
                 "edrAddr" to msg?.edrAddr,
                 "deviceType" to msg?.deviceType,
                 "connectWay" to msg?.connectWay,
-                "rssi" to result.rssi
+                "rssi" to result.rssi,
+                "rawAdv" to rawBytes?.toUpperHex(),
+                "advRecords" to advRecordsPayload,
+                "advFlags" to advFlags,
+                "manufacturerCompanyId" to manufacturerCompanyId,
+                "manufacturerData" to manufacturerData,
+                "serviceUuids" to serviceUuidStrings,
             )
         )
     }
@@ -223,6 +241,56 @@ class ScanFeature(
         val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             ?: return null
         return mgr.adapter?.bluetoothLeScanner
+    }
+
+    /** 单个 AD (Advertising Data) 结构：len 为 "type + data" 的字节数，不含 len 字节自身。 */
+    private data class AdRecord(val len: Int, val type: Int, val data: ByteArray)
+
+    /**
+     * 按 BLE Core Spec §11（AD structure）解析 ScanRecord 字节。
+     * 每条记录：`[len:1][type:1][data:len-1]`；遇到 len==0 视为 padding 结束。
+     */
+    private fun parseAdRecords(bytes: ByteArray): List<AdRecord> {
+        val out = mutableListOf<AdRecord>()
+        var i = 0
+        while (i < bytes.size) {
+            val len = bytes[i].toInt() and 0xFF
+            if (len == 0) break
+            if (i + len >= bytes.size) break // 畸形包：data 越界，丢弃尾部
+            val type = bytes[i + 1].toInt() and 0xFF
+            val data = bytes.copyOfRange(i + 2, i + 1 + len)
+            out.add(AdRecord(len, type, data))
+            i += 1 + len
+        }
+        return out
+    }
+
+    private fun ByteArray.toUpperHex(): String =
+        joinToString("") { "%02X".format(it) }
+
+    /**
+     * 16-bit UUID 字节序容错匹配：两者若都在蓝牙 Base UUID 家族内，除原值匹配外，
+     * 额外尝试把 16-bit short 高低字节交换再匹配，规避 big-endian / little-endian
+     * 不一致导致的漏筛。非 Base UUID 走普通 equals。
+     */
+    private fun uuidMatchesWith16BitTolerance(target: UUID, advertised: UUID): Boolean {
+        if (target == advertised) return true
+        val t = toBluetoothShortUuid(target) ?: return false
+        val a = toBluetoothShortUuid(advertised) ?: return false
+        if (t == a) return true
+        val swapped = ((t and 0xFF) shl 8) or ((t ushr 8) and 0xFF)
+        return swapped == a
+    }
+
+    /** 若 UUID 落在蓝牙 Base UUID 家族，返回其 16-bit short；否则 null。 */
+    private fun toBluetoothShortUuid(uuid: UUID): Int? {
+        if (uuid.leastSignificantBits != BT_BASE_LSB) return null
+        val msb = uuid.mostSignificantBits
+        // 低 48 位必须与 Base UUID 的低 48 位一致（= 0x0000_0000_1000）
+        if ((msb and 0x0000_FFFF_FFFF_FFFFL) !=
+            (BT_BASE_MSB and 0x0000_FFFF_FFFF_FFFFL)
+        ) return null
+        return ((msb ushr 32) and 0xFFFFL).toInt()
     }
 
     private fun parseUuid(raw: String): UUID? {
@@ -249,5 +317,9 @@ class ScanFeature(
 
     private companion object {
         const val TAG = "JieliScan"
+        // Bluetooth Base UUID = 00000000-0000-1000-8000-00805F9B34FB
+        private val BT_BASE_UUID: UUID = UUID.fromString("00000000-0000-1000-8000-00805F9B34FB")
+        val BT_BASE_MSB: Long = BT_BASE_UUID.mostSignificantBits
+        val BT_BASE_LSB: Long = BT_BASE_UUID.leastSignificantBits
     }
 }

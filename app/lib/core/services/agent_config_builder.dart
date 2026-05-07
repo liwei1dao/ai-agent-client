@@ -20,14 +20,33 @@ class AgentConfigBuilder {
   })  : srcLang = LocaleService.toCanonical(srcLang),
         dstLang = LocaleService.toCanonical(dstLang);
 
+  /// AI 助理（chat agent）专用：单语场景，dstLang 沿用 srcLang。
+  factory AgentConfigBuilder.forChat({
+    required AgentDto agent,
+    required List<ServiceConfigDto> allServices,
+    required String userLanguage,
+    String inputMode = 'call',
+  }) =>
+      AgentConfigBuilder(
+        agent: agent,
+        allServices: allServices,
+        srcLang: userLanguage,
+        dstLang: userLanguage,
+        inputMode: inputMode,
+      );
+
   final AgentDto agent;
   final List<ServiceConfigDto> allServices;
   final String srcLang;
   final String dstLang;
   final String inputMode;
 
-  /// 当前实现：仅生成 `ast-translate` / `translate` 类型 agent 的 config（通话翻译
-  /// 只支持这两类）。其它 agent type 请走 `agent_screen_provider` 的等价代码。
+  /// 生成 `NativeAgentConfig.fromMap` 接受的 map：
+  ///  - chat：用到 sttVendor / ttsVendor / llmVendor + 对应 configJson；
+  ///  - translate：同 chat，再加 translationVendor / translationConfigJson；
+  ///  - ast-translate：用到 astVendor + astConfigJson（注入 srcLang/dstLang/agentId）；
+  ///  - sts-chat：用到 stsVendor + stsConfigJson（同上）。
+  /// 多余字段（其它 type 不用的 vendor）会是 null；native 端按需忽略。
   Map<String, Object?> build() {
     final cfg = jsonDecode(agent.configJson) as Map<String, dynamic>;
 

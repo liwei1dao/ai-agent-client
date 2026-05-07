@@ -69,6 +69,14 @@ interface NativeDeviceSession {
     fun callTranslationPort(): DeviceCallTranslationPort? = null
 
     /**
+     * 该 session 暴露的 AI 助理端口；vendor 无该能力时返回 null。
+     *
+     * 给 native 编排器（assistant_server）vendor-agnostic 拿端口的入口——
+     * 与 [callTranslationPort] 语义独立（AI 助理为单向对话，无 UPLINK/DOWNLINK 两条腿）。
+     */
+    fun assistantPort(): DeviceAssistantPort? = null
+
+    /**
      * 该 session 暴露的 OTA 端口；vendor 无 [DeviceCapability.OTA] 时返回 null。
      *
      * 编排器 / UI 通过本接口拿到 vendor-agnostic 的 OTA 控制；不依赖具体厂商。

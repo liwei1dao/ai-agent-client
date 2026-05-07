@@ -2,6 +2,7 @@ package com.jielihome.jielihome.event
 
 import android.bluetooth.BluetoothDevice
 import android.util.Base64
+import android.util.Log
 import com.jieli.bluetooth.impl.JL_BluetoothManager
 import com.jieli.bluetooth.interfaces.rcsp.callback.OnRcspEventListener
 import com.jielihome.jielihome.bridge.EventDispatcher
@@ -17,8 +18,13 @@ class CustomEventForwarder(
     private val btManager: JL_BluetoothManager,
     private val dispatcher: EventDispatcher,
 ) {
+    companion object {
+        private const val TAG = "CustomEventForwarder"
+    }
+
     private val listener = object : OnRcspEventListener() {
         override fun onExpandFunction(device: BluetoothDevice?, opCode: Int, payload: ByteArray?) {
+            Log.i(TAG, "[SDK<-DEV] onExpandFunction addr=${device?.address} opCode=$opCode(0x${String.format("%02X", opCode)}) payloadSize=${payload?.size ?: 0}")
             dispatcher.send(
                 mapOf(
                     "type" to "expandFunction",

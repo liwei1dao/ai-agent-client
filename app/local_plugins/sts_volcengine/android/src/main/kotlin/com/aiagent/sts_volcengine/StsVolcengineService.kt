@@ -11,6 +11,10 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.util.Log
 import com.aiagent.plugin_interface.AudioOutputManager
+import com.aiagent.plugin_interface.ExternalAudioCapability
+import com.aiagent.plugin_interface.ExternalAudioFormat
+import com.aiagent.plugin_interface.ExternalAudioFrame
+import com.aiagent.plugin_interface.ExternalAudioSink
 import com.aiagent.plugin_interface.NativeStsService
 import com.aiagent.plugin_interface.StsCallback
 import kotlinx.coroutines.*
@@ -36,17 +40,26 @@ import java.util.zip.GZIPOutputStream
  * 流程：
  *   1. 连接 WebSocket（X-Api-* 鉴权头，X-Api-App-Key 为固定平台常量）
  *   2. 发送 StartConnection (event=1)，无 sessionId 字段
- *      → 收到 ConnectionStarted (event=50)，从二进制字段获取 sessionId
- *   3. 发送 StartSession (event=100)，携带 sessionId + gzip(payload)
+ *      → 收到 ConnectionStarted (event=50)
+ *   3. 发送 StartSession (event=100)，携带客户端生成的 sessionId + gzip(payload)
  *      → 收到 SessionStarted (event=150)
  *   4. 持续发送音频帧 (event=200)，携带 sessionId + gzip(PCM)
  *   5. 结束时发送 FinishSession (event=102) + FinishConnection (event=2)
  *
  * 关键：
  *   - X-Api-App-Key 是固定的 SDK 平台常量，不是用户配置项
- *   - sessionId 从 ConnectionStarted(50) 响应的二进制字段获取
+ *   - sessionId **由客户端生成 UUID**，在 StartSession 时携带；服务端响应仅
+ *     回显此 id，不会自行下发——切勿等待 ConnectionStarted 解析 sessionId
+ *     （会以空 sessionId 发 StartSession → server 报 45000000
+ *     "session ID length is zero"）。
  *   - 所有 payload（JSON 和音频）均需 gzip 压缩
- *   - 服务端 TTS 输出 24kHz PCM，AudioTrack 需配置 24000 Hz
+ *   - 服务端 TTS 输出 24kHz PCM，AudioTrack 需配置 24000 Hz；外部音频模式下
+ *     在 service 内做 24k→16k 降采样后通过 [ExternalAudioSink] 回写编排器。
+ *
+ * 外部音频模式（与 ast_volcengine 一致）：
+ *   - [externalAudioCapability] = PCM_S16LE / 16 kHz / mono / 20 ms
+ *   - 与 self-mic（[startAudio]/[stopAudio]）互斥；[startExternalAudio] 接管后
+ *     不再启用本地 AudioRecord/AudioTrack，TTS 帧通过 sink 回写。
  */
 class StsVolcengineService(private val appContext: Context) : NativeStsService {
 
@@ -141,7 +154,20 @@ class StsVolcengineService(private val appContext: Context) : NativeStsService {
     @Volatile private var isRunning = false       // WebSocket 连接存活
     @Volatile private var isConnected = false     // 握手完成（SessionStarted 收到）
     @Volatile private var isAudioRunning = false  // 麦克风采集 + 音频推流中
-    @Volatile private var remoteSessionId: String = ""  // 从 ConnectionStarted 获取
+    @Volatile private var remoteSessionId: String = ""  // 客户端生成 UUID，整条会话固定不变
+
+    // ── 外部音频源模式（通话翻译 / AI 助理）────────────────────────────────
+    // 与 self-mic 模式（startAudio/stopAudio）互斥；externalMode=true 时
+    //   - startAudio 跳过；
+    //   - 服务端 TTS PCM 不写本地 AudioTrack，转而 24k→16k 降采样后通过
+    //     externalSink.onTtsFrame 回写给上游编排器。
+    @Volatile private var externalMode = false
+    @Volatile private var externalSink: ExternalAudioSink? = null
+    @Volatile private var externalPushCount = 0L
+    @Volatile private var externalPushReportMs = 0L
+
+    // 累积当前轮 AI 回复的流式文本（EVT_CHAT_RESPONSE 逐 token 追加，EVT_CHAT_ENDED 消费并清空）
+    private val chatResponseBuffer = StringBuilder()
 
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pumpJob: Job? = null
@@ -182,12 +208,20 @@ class StsVolcengineService(private val appContext: Context) : NativeStsService {
 
         scope.launch {
             try {
-                Log.d(TAG, "connect(): appId=$appId  speaker=$speaker")
+                Log.d(TAG, "connect(): appId=$appId  speaker=$speaker  externalMode=$externalMode")
                 isRunning = true
-                remoteSessionId = ""
+                // 客户端生成 sessionId，整条会话使用同一个 UUID。
+                // 切勿等服务端在 ConnectionStarted 回写——V3 dialogue 协议下
+                // ConnectionStarted 不带 sessionId，等下去 StartSession 会带空
+                // 串报 45000000 "session ID length is zero"。
+                remoteSessionId = java.util.UUID.randomUUID().toString()
 
-                setupAudioRecord()
-                setupAudioTrack()
+                // 注意：connect() 阶段**不**碰本地音频硬件。
+                // setupAudioRecord/setupAudioTrack 会触发
+                // AudioManager.MODE_IN_COMMUNICATION + clearCommunicationDevice，
+                // 把系统蓝牙 SCO 通道抢走，与 AI 助理 / call-translation external
+                // 模式下杰理 RCSP MODE_CALL_TRANSLATION 互斥；耳机推不上 PCM。
+                // 因此把硬件初始化推迟到 startAudio()（仅 self-mic 模式调用）。
 
                 wsReady           = CompletableDeferred()
                 connectionStarted = CompletableDeferred()
@@ -243,7 +277,15 @@ class StsVolcengineService(private val appContext: Context) : NativeStsService {
             Log.d(TAG, "startAudio: skip (connected=$isConnected, audioRunning=$isAudioRunning)")
             return
         }
+        if (externalMode) {
+            Log.w(TAG, "startAudio: skip (externalMode active — call startExternalAudio path)")
+            return
+        }
         Log.d(TAG, "startAudio()")
+        // self-mic 模式才需要本地 AudioRecord/AudioTrack；外部音频模式由编排器
+        // 提供 PCM 帧并通过 sink 拿回 TTS PCM，不创建本地硬件。
+        if (audioRecord == null) setupAudioRecord()
+        if (audioTrack == null) setupAudioTrack()
         // 确保音频输出路由在开始音频前是正确的
         AudioOutputManager.applyMode()
         isAudioRunning = true
@@ -281,14 +323,18 @@ class StsVolcengineService(private val appContext: Context) : NativeStsService {
     override fun release() {
         Log.d(TAG, "release()")
         stopAudio()
+        stopExternalAudio()
         isRunning = false
         isConnected = false
-        val sid = remoteSessionId
-        remoteSessionId = ""
+        val hasSid = remoteSessionId.isNotBlank()
         try {
-            if (sid.isNotBlank()) sendJsonFrame(EVT_FINISH_SESSION, "{}")
+            if (hasSid) sendJsonFrame(EVT_FINISH_SESSION, "{}")
+            // 在清空 sessionId 之前发完 FinishSession，否则 sidBytes 会是空的。
+            remoteSessionId = ""
             sendJsonFrame(EVT_FINISH_CONNECTION, "{}")
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            remoteSessionId = ""
+        }
         try { webSocket?.close(1000, "released") } catch (_: Exception) {}
         webSocket = null
         scope.cancel()
@@ -397,17 +443,13 @@ class StsVolcengineService(private val appContext: Context) : NativeStsService {
         when (msgType) {
 
             TYPE_FULL_SERVER, TYPE_AUDIO_SERVER -> {
-                // session_id（服务端响应始终包含此字段）
+                // session_id（服务端始终携带此字段，仅用于回显客户端在 StartSession
+                // 中提供的 UUID；不再据此更新 remoteSessionId）。
                 if (pos + 4 > data.size) return
                 val sidLen = ByteBuffer.wrap(data, pos, 4).order(ByteOrder.BIG_ENDIAN).int
                 pos += 4
                 if (sidLen > 0) {
                     if (pos + sidLen > data.size) return
-                    val sid = String(data, pos, sidLen, Charsets.UTF_8)
-                    if (remoteSessionId.isBlank() && sid.isNotBlank()) {
-                        remoteSessionId = sid
-                        Log.d(TAG, "Got remoteSessionId: $remoteSessionId")
-                    }
                     pos += sidLen
                 }
 
@@ -433,12 +475,8 @@ class StsVolcengineService(private val appContext: Context) : NativeStsService {
                 if (msgType == TYPE_FULL_SERVER) {
                     handleServerEvent(event, payload, serType, compress)
                 } else {
-                    // TYPE_AUDIO_SERVER: PCM 增益后写入 AudioTrack + 回调
-                    if (payload.isNotEmpty()) {
-                        val amplified = amplifyPcm(payload)
-                        audioTrack?.write(amplified, 0, amplified.size)
-                        callback?.onTtsAudioChunk(amplified)
-                    }
+                    // TYPE_AUDIO_SERVER：服务端 TTS PCM（24 kHz mono S16LE）
+                    if (payload.isNotEmpty()) writeTtsAudio(payload)
                 }
             }
 
@@ -483,6 +521,7 @@ class StsVolcengineService(private val appContext: Context) : NativeStsService {
                 // 用户开始说话，清空 AudioTrack 缓冲区，触发打断
                 Log.d(TAG, "ClearAudio (user speaking)")
                 runCatching { audioTrack?.flush() }
+                chatResponseBuffer.clear()
                 callback?.onSpeechStart()
                 callback?.onStateChanged("listening")
             }
@@ -509,22 +548,26 @@ class StsVolcengineService(private val appContext: Context) : NativeStsService {
             }
 
             EVT_CHAT_RESPONSE -> {
-                // AI 回复流式文本（逐字/逐词推送）
+                // AI 回复流式文本（逐 token 推送）：累积并通知上层实时渲染
                 val content = json?.optString("content") ?: ""
                 if (content.isNotBlank()) {
-                    Log.v(TAG, "ChatResponse content=\"$content\"")
+                    chatResponseBuffer.append(content)
+                    Log.v(TAG, "ChatResponse cumulative=\"${chatResponseBuffer.take(60)}\"")
+                    callback?.onChatPartialResult(chatResponseBuffer.toString())
                     callback?.onStateChanged("playing")
                 }
             }
 
             EVT_CHAT_ENDED -> {
-                // AI 回复完成
+                // AI 回复完成：优先使用 EVT_CHAT_ENDED 的 content，否则用累积 buffer
                 val replyId = json?.optString("reply_id") ?: ""
-                Log.d(TAG, "ChatEnded replyId=$replyId")
-                // Notify sentence done with the full reply text if available
-                val content = json?.optString("content") ?: ""
-                if (content.isNotBlank()) {
-                    callback?.onSentenceDone(content)
+                val directContent = json?.optString("content") ?: ""
+                val fullText = if (directContent.isNotBlank()) directContent
+                               else chatResponseBuffer.toString()
+                chatResponseBuffer.clear()
+                Log.d(TAG, "ChatEnded replyId=$replyId text=\"${fullText.take(80)}\"")
+                if (fullText.isNotBlank()) {
+                    callback?.onSentenceDone(fullText)
                 }
             }
 
@@ -704,6 +747,123 @@ class StsVolcengineService(private val appContext: Context) : NativeStsService {
         )
         audioTrack?.play()
         Log.d(TAG, "AudioTrack created sampleRate=$TTS_SAMPLE_RATE")
+    }
+
+    // ─── 外部音频源（AI 助理 / 通话翻译等场景）────────────────────────────────
+    //
+    // 与 startAudio()/stopAudio()（self-mic 模式）互斥：编排器从耳机 RCSP 拿到
+    // 用户麦克风 PCM（16 kHz mono 20 ms）→ pushExternalAudioFrame；服务端 TTS
+    // PCM（24 kHz）经 service 内 24k→16k 降采样后通过 sink 回写编排器。
+
+    override fun externalAudioCapability(): ExternalAudioCapability =
+        ExternalAudioCapability(
+            acceptsOpus = false,
+            acceptsPcm = true,
+            preferredSampleRate = MIC_SAMPLE_RATE,
+            preferredChannels = 1,
+            preferredFrameMs = 20,
+        )
+
+    override fun startExternalAudio(format: ExternalAudioFormat, sink: ExternalAudioSink) {
+        if (format.codec != ExternalAudioFormat.Codec.PCM_S16LE) {
+            throw IllegalArgumentException(
+                "sts_volcengine accepts only PCM_S16LE (got ${format.codec})")
+        }
+        if (format.sampleRate != MIC_SAMPLE_RATE || format.channels != 1) {
+            throw IllegalArgumentException(
+                "sts_volcengine requires ${MIC_SAMPLE_RATE}Hz mono " +
+                    "(got ${format.sampleRate}Hz/${format.channels}ch)")
+        }
+        if (!isConnected) {
+            throw IllegalStateException(
+                "sts_volcengine not connected; call connect() first")
+        }
+        if (isAudioRunning) {
+            // self-mic 当前在跑：external 路径主动接管，先停 self-mic 再切外部源，
+            // 避免两个 PCM 源同时灌进同一个 WS。
+            Log.d(TAG, "startExternalAudio: stopping self-mic before takeover")
+            stopAudio()
+        }
+        if (externalMode) {
+            Log.d(TAG, "startExternalAudio: already active, replacing sink")
+        }
+        externalSink = sink
+        externalMode = true
+        Log.d(TAG, "startExternalAudio: PCM_S16LE ${format.sampleRate}Hz mono ${format.frameMs}ms")
+    }
+
+    override fun pushExternalAudioFrame(frame: ByteArray) {
+        if (!externalMode || !isConnected || frame.isEmpty()) return
+        externalPushCount++
+        val now = System.currentTimeMillis()
+        if (now - externalPushReportMs >= 1000L) {
+            Log.d(TAG, "pushExternalAudioFrame stats (last 1s): count=$externalPushCount bytes=${frame.size}")
+            externalPushCount = 0
+            externalPushReportMs = now
+        }
+        // 复用与 self-mic 相同的二进制封包路径（event=200 + 客户端 sessionId + gzip(PCM)）
+        sendAudioFrame(frame, frame.size)
+    }
+
+    override fun stopExternalAudio() {
+        if (!externalMode) return
+        externalMode = false
+        externalSink = null
+        Log.d(TAG, "stopExternalAudio")
+    }
+
+    /**
+     * 服务端 TTS PCM 帧的统一落地：
+     *  - 外部音频模式 → 24 kHz → 16 kHz 降采样后通过 sink 回写编排器（不放本地扬声器，
+     *    不应用软件增益——耳机端通常自带输出增益，避免重复放大产生 clipping）；
+     *  - self-mic 模式 → 软件增益后写入本地 AudioTrack + 回调 onTtsAudioChunk。
+     */
+    private fun writeTtsAudio(payload: ByteArray) {
+        if (externalMode) {
+            val sink = externalSink
+            if (sink == null) {
+                Log.w(TAG, "writeTtsAudio: externalMode but sink is null — TTS frame dropped (${payload.size}B)")
+                return
+            }
+            val pcm16k = downsample24kTo16k(payload)
+            sink.onTtsFrame(
+                ExternalAudioFrame(
+                    codec = ExternalAudioFormat.Codec.PCM_S16LE,
+                    sampleRate = MIC_SAMPLE_RATE, // 16000
+                    channels = 1,
+                    bytes = pcm16k,
+                )
+            )
+            return
+        }
+        val amplified = amplifyPcm(payload)
+        audioTrack?.write(amplified, 0, amplified.size)
+        callback?.onTtsAudioChunk(amplified)
+    }
+
+    /**
+     * 24 kHz mono PCM_S16LE → 16 kHz mono PCM_S16LE 线性插值降采样（3:2）。
+     * 简单 lerp，无 LPF——会引入轻微高频混叠，但语音 (<4 kHz) 可接受；
+     * AI 助理耳机端要求 16 kHz 输入，必须做这一步。与 ast_volcengine 同款。
+     */
+    private fun downsample24kTo16k(input: ByteArray): ByteArray {
+        if (input.size < 2) return input
+        val inSamples = input.size / 2
+        val outSamples = (inSamples * 2) / 3
+        if (outSamples <= 0) return ByteArray(0)
+        val out = ByteArray(outSamples * 2)
+        val inBuf = ByteBuffer.wrap(input).order(ByteOrder.LITTLE_ENDIAN)
+        val outBuf = ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until outSamples) {
+            val srcIdx2 = i * 3                    // src 索引 = i*1.5（用整数 *2 表示）
+            val baseIdx = srcIdx2 / 2
+            val frac = (srcIdx2 % 2)               // 0 → frac=0, 1 → frac=0.5
+            val s0 = inBuf.getShort(baseIdx * 2).toInt()
+            val s1 = if (baseIdx + 1 < inSamples) inBuf.getShort((baseIdx + 1) * 2).toInt() else s0
+            val interp = if (frac == 0) s0 else (s0 + s1) / 2
+            outBuf.putShort(i * 2, interp.toShort())
+        }
+        return out
     }
 
     // ─── 音量增益 ──────────────────────────────────────────────────────────────

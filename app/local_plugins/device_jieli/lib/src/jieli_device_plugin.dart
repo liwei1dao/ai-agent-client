@@ -215,17 +215,26 @@ class JieliDevicePlugin implements DevicePlugin {
       return;
     }
     if (raw is DeviceFoundEvent) {
+      final d = raw.device;
       _emit(DevicePluginEvent(
         type: DevicePluginEventType.deviceDiscovered,
         discovered: DiscoveredDevice(
-          id: raw.device.address,
-          name: raw.device.name,
-          rssi: raw.device.rssi,
+          id: d.address,
+          name: d.name,
+          rssi: d.rssi,
           vendor: kVendor,
           metadata: {
-            if (raw.device.edrAddr != null) 'edrAddr': raw.device.edrAddr,
-            if (raw.device.deviceType != null) 'deviceType': raw.device.deviceType,
-            if (raw.device.connectWay != null) 'connectWay': raw.device.connectWay,
+            if (d.edrAddr != null) 'edrAddr': d.edrAddr,
+            if (d.deviceType != null) 'deviceType': d.deviceType,
+            if (d.connectWay != null) 'connectWay': d.connectWay,
+            if (d.rawAdv != null) 'rawAdv': d.rawAdv,
+            if (d.advFlags != null) 'advFlags': d.advFlags,
+            if (d.manufacturerCompanyId != null)
+              'manufacturerCompanyId': d.manufacturerCompanyId,
+            if (d.manufacturerData != null)
+              'manufacturerData': d.manufacturerData,
+            if (d.serviceUuids.isNotEmpty) 'serviceUuids': d.serviceUuids,
+            if (d.advRecords.isNotEmpty) 'advRecords': d.advRecords,
           },
         ),
       ));

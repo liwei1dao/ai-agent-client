@@ -1,6 +1,7 @@
 package com.jielihome.jielihome.integration
 
 import android.util.Log
+import com.aiagent.device_plugin_interface.DeviceAssistantPort
 import com.aiagent.device_plugin_interface.DeviceCallTranslationPort
 import com.aiagent.device_plugin_interface.DeviceCapability
 import com.aiagent.device_plugin_interface.DeviceConnectionState
@@ -283,6 +284,8 @@ class JieliNativeDeviceSession internal constructor(
     }
 
     override fun callTranslationPort(): DeviceCallTranslationPort = server.callTranslationPort
+
+    override fun assistantPort(): DeviceAssistantPort = server.assistantPort
 
     override fun otaPort(): DeviceOtaPort? {
         if (DeviceCapability.OTA !in capabilities) return null
