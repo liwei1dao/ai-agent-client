@@ -111,9 +111,12 @@ class JieliAssistantPort(
         player = lp
 
         // 2. 启动 Opus 解码器：耳机上推的录音流是 OPUS，解码后丢回 SharedFlow
+        // packetSize 临时调成 40：怀疑耳机固件把 5 个 40B 的 OPUS 包拼成 200B 推上来，
+        // OpusManager 把整块当 1 包解，导致丢 80% 数据（10 fps 而非 50 fps）。
+        // 调成 40 验证 OpusManager 是否按此 hint 切包；若帧率提升即证实编码端拼接是元凶。
         val od = OpusStreamDecoder(
             channel = 1,
-            packetSize = 200,
+            packetSize = 40,
             sampleRate = 16000,
             onPcm = { pcm -> emitUplinkFrame(pcm) },
             onError = { c, m ->
