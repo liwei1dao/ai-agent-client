@@ -157,10 +157,11 @@ class RcspTranslationRuntime(
         /**
          * 周期性 flush 间隔：每隔此毫秒数巡检一次 buffer，**只要非空就 flush**。
          *
-         * 实测：低于 1s（试过 200ms）耳机端 RCSP 解码器会被频繁 reset 直至死机，
-         * 因此周期上限只能保持 1s。降低段间延迟改走"首段优先 flush"路线（B）。
+         * 历史实测：200ms 时耳机端 RCSP 解码器会被频繁 reset 直至死机；1s 长期稳定。
+         * 当前实验：500ms —— 通话翻译"播报中间断一下"的优化尝试。需真机长时压测
+         * （≥10 分钟连续讲话）确认无解码器 reset 风暴，否则回退到 1_000L。
          */
-        private const val PERIODIC_FLUSH_MS = 1_000L
+        private const val PERIODIC_FLUSH_MS = 1000L
         /**
          * 首段优先 flush 阈值（路线 B）：每个 utterance 的**首段**达到此毫秒数对应字节量
          * 就立即 flush，不等周期。让用户开口到对方听到的延迟尽可能小（< 200ms）。
@@ -383,16 +384,21 @@ class RcspTranslationRuntime(
                 buf.reset()
                 return@synchronized if (out.isEmpty()) null else out
             }
-            // 2) 首段优先：仅当 leg 处于 pending 状态（首次 utterance 起始或 isFinal 重置后）。
-            val pending = firstSegmentPending.getOrDefault(outputStreamId, true)
-            if (pending) {
-                val firstFlushBytes = (sampleRateHz * 2 * FIRST_SEGMENT_FLUSH_MS / 1000L).toInt()
-                if (buf.size() >= firstFlushBytes) {
-                    firstSegmentPending[outputStreamId] = false
-                    val out = buf.toByteArray()
-                    buf.reset()
-                    Log.d(TAG, "firstSegmentFlush: leg=$outputStreamId bytes=${out.size}")
-                    return@synchronized if (out.isEmpty()) null else out
+            // 2) 首段优先（路线 B）：当前**实验中临时屏蔽**——为观察 500ms 周期 flush 的纯效果。
+            //    屏蔽后所有 flush 走两条路：a) isFinal=true 短路；b) PERIODIC_FLUSH_MS 周期。
+            //    实验完成后若需恢复，把下面 if (false) 改回 if (pending) 即可。
+            @Suppress("ConstantConditionIf")
+            if (false) {
+                val pending = firstSegmentPending.getOrDefault(outputStreamId, true)
+                if (pending) {
+                    val firstFlushBytes = (sampleRateHz * 2 * FIRST_SEGMENT_FLUSH_MS / 1000L).toInt()
+                    if (buf.size() >= firstFlushBytes) {
+                        firstSegmentPending[outputStreamId] = false
+                        val out = buf.toByteArray()
+                        buf.reset()
+                        Log.d(TAG, "firstSegmentFlush: leg=$outputStreamId bytes=${out.size}")
+                        return@synchronized if (out.isEmpty()) null else out
+                    }
                 }
             }
             null
