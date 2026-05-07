@@ -189,7 +189,7 @@ class JieliAssistantPort(
         //    - mode=1：与 demo 录音模式对齐，耳机 RCSP 状态机进入 MODE_RECORD
         //    - STRATEGY_DEVICE_ALWAYS_RECORDING=1：耳机固件自主采集并持续上推，APP 不用手机麦
         val sdkMode = TranslationMode(
-            TranslationMode.MODE_CALL_TRANSLATION,
+            TranslationMode.MODE_RECORD,
             Constants.AUDIO_TYPE_OPUS,
             1,
             16000,
