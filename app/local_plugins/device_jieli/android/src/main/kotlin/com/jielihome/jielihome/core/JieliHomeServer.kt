@@ -4,6 +4,7 @@ import android.content.Context
 import com.jieli.bluetooth.bean.BluetoothOption
 import com.jieli.bluetooth.impl.JL_BluetoothManager
 import com.jieli.bluetooth.impl.rcsp.RCSPController
+import com.jieli.bluetooth.interfaces.rcsp.ITwsOp
 import com.jieli.bluetooth.utils.JL_Log
 import com.jielihome.jielihome.api.JieliEventListener
 import com.jielihome.jielihome.bridge.EventDispatcher
@@ -62,6 +63,20 @@ class JieliHomeServer private constructor() {
     /** 模块内访问 btManager 用（如 [com.jielihome.jielihome.feature.assistant.JieliAssistantPort]
      *  需要直接持有 [com.jieli.bluetooth.impl.rcsp.record.RecordOpImpl] 单例时）。 */
     internal val internalBtManager: JL_BluetoothManager get() = btManager
+
+    /**
+     * 杰理 TWS 操作接口 —— 提供左右耳 / 电仓独立电量与充电状态、ADV 广播订阅、
+     * Voice Mode 等高级 API。
+     *
+     * 实现说明：`RCSPController` 通过多层继承（PCSlaveImpl → SPDIFImpl →
+     * SoundCardImpl → TwsOpImpl）实现了 [ITwsOp]，强转拿到接口即可。SDK 没暴露
+     * 显式 getter，但 `getInstance()` 在 [initialize] 之后保证非 null。
+     *
+     * 调用方需要做空检查 / `getADVInfo` 返回 null 兜底——单耳设备 / 旧固件可能
+     * 不响应 ADV 协议，此时回退到 [DeviceInfoFeature.snapshot] 的 `battery` 字段。
+     */
+    val twsOp: ITwsOp
+        get() = RCSPController.getInstance() as ITwsOp
 
     private lateinit var bluetoothForwarder: BluetoothEventForwarder
     private lateinit var deviceInfoForwarder: DeviceInfoEventForwarder

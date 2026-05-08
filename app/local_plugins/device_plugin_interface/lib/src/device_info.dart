@@ -36,6 +36,12 @@ class DiscoveredDevice {
 }
 
 /// 已连接设备的信息快照。
+///
+/// **电量字段约定**（重要，UI 渲染依赖）：
+/// - 单一电量设备（眼镜 / 手环 / 单耳设备）只填 [batteryLeft]，其余两个为 null；
+/// - TWS 双耳耳机填 [batteryLeft] + [batteryRight]，带充电盒再加 [batteryCase]；
+/// - 充电状态按位置独立给：左/右/仓任一可独立处于充电态（如左耳在仓里充、右耳
+///   在用）。设备 / SDK 不支持上报充电态时三个字段都默认 false。
 @immutable
 class DeviceInfo {
   const DeviceInfo({
@@ -47,7 +53,12 @@ class DeviceInfo {
     this.serialNumber,
     this.manufacturer,
     this.model,
-    this.batteryPercent,
+    this.batteryLeft,
+    this.batteryRight,
+    this.batteryCase,
+    this.chargingLeft = false,
+    this.chargingRight = false,
+    this.chargingCase = false,
     this.metadata = const {},
   });
 
@@ -61,8 +72,23 @@ class DeviceInfo {
   final String? manufacturer;
   final String? model;
 
-  /// 0..100；未知为 null。
-  final int? batteryPercent;
+  /// 左耳 / 单设备主体电量。0..100；未知或无该位置 = null。
+  final int? batteryLeft;
+
+  /// 右耳电量；仅 TWS 双耳设备使用，其余 null。
+  final int? batteryRight;
+
+  /// 电仓电量；仅带充电盒的耳机使用，其余 null。
+  final int? batteryCase;
+
+  /// 左耳 / 单设备是否在充电。
+  final bool chargingLeft;
+
+  /// 右耳是否在充电。
+  final bool chargingRight;
+
+  /// 电仓是否在充电（接通外部电源）。
+  final bool chargingCase;
 
   final Map<String, Object?> metadata;
 
@@ -73,7 +99,12 @@ class DeviceInfo {
     String? serialNumber,
     String? manufacturer,
     String? model,
-    int? batteryPercent,
+    int? batteryLeft,
+    int? batteryRight,
+    int? batteryCase,
+    bool? chargingLeft,
+    bool? chargingRight,
+    bool? chargingCase,
     Map<String, Object?>? metadata,
   }) {
     return DeviceInfo(
@@ -85,7 +116,12 @@ class DeviceInfo {
       serialNumber: serialNumber ?? this.serialNumber,
       manufacturer: manufacturer ?? this.manufacturer,
       model: model ?? this.model,
-      batteryPercent: batteryPercent ?? this.batteryPercent,
+      batteryLeft: batteryLeft ?? this.batteryLeft,
+      batteryRight: batteryRight ?? this.batteryRight,
+      batteryCase: batteryCase ?? this.batteryCase,
+      chargingLeft: chargingLeft ?? this.chargingLeft,
+      chargingRight: chargingRight ?? this.chargingRight,
+      chargingCase: chargingCase ?? this.chargingCase,
       metadata: metadata ?? this.metadata,
     );
   }

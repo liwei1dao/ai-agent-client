@@ -478,7 +478,14 @@ class _ConnectedTileState extends ConsumerState<_ConnectedTile> {
     final name = (info?.name.isNotEmpty ?? false)
         ? info!.name
         : (session.info.name.isEmpty ? '设备' : session.info.name);
-    final battery = info?.batteryPercent ?? session.info.batteryPercent;
+    final activeInfo = info ?? session.info;
+    final batteryLeft = activeInfo.batteryLeft;
+    final batteryRight = activeInfo.batteryRight;
+    final batteryCase = activeInfo.batteryCase;
+    final hasMulti = [batteryLeft, batteryRight, batteryCase]
+            .where((e) => e != null)
+            .length >
+        1;
     final fw = info?.firmwareVersion ?? session.info.firmwareVersion;
     final (statusLabel, statusColor) = switch (_state) {
       DeviceConnectionState.connecting => ('正在连接…', AppTheme.primary),
@@ -546,7 +553,25 @@ class _ConnectedTileState extends ConsumerState<_ConnectedTile> {
                                 color: statusColor,
                                 fontWeight: FontWeight.w600)),
                       ),
-                      if (battery != null) _BatteryChip(percent: battery),
+                      if (batteryLeft != null)
+                        _BatteryChip(
+                          percent: batteryLeft,
+                          charging: activeInfo.chargingLeft,
+                          // 单一电量设备（眼镜/手环）不展示位置标签
+                          label: hasMulti ? 'L' : null,
+                        ),
+                      if (batteryRight != null)
+                        _BatteryChip(
+                          percent: batteryRight,
+                          charging: activeInfo.chargingRight,
+                          label: 'R',
+                        ),
+                      if (batteryCase != null)
+                        _BatteryChip(
+                          percent: batteryCase,
+                          charging: activeInfo.chargingCase,
+                          label: '仓',
+                        ),
                       if (fw != null && fw.isNotEmpty)
                         Text('FW $fw',
                             style: TextStyle(
@@ -587,8 +612,16 @@ class _ConnectedTileState extends ConsumerState<_ConnectedTile> {
 }
 
 class _BatteryChip extends StatelessWidget {
-  const _BatteryChip({required this.percent});
+  const _BatteryChip({
+    required this.percent,
+    this.charging = false,
+    this.label,
+  });
   final int percent;
+  final bool charging;
+
+  /// 多电量位时的位置标签（L / R / 仓）；单一电量设备传 null。
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -596,7 +629,10 @@ class _BatteryChip extends StatelessWidget {
     final clamped = percent.clamp(0, 100);
     final IconData icon;
     final Color color;
-    if (clamped <= 15) {
+    if (charging) {
+      icon = Icons.battery_charging_full;
+      color = const Color(0xFF22C55E);
+    } else if (clamped <= 15) {
       icon = Icons.battery_alert;
       color = const Color(0xFFEF4444);
     } else if (clamped <= 40) {
@@ -612,8 +648,16 @@ class _BatteryChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (label != null) ...[
+          Text(label!,
+              style: TextStyle(
+                  fontSize: 10,
+                  color: colors.text2,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(width: 2),
+        ],
         Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
+        const SizedBox(width: 2),
         Text('$clamped%',
             style: TextStyle(
                 fontSize: 11, color: color, fontWeight: FontWeight.w600)),

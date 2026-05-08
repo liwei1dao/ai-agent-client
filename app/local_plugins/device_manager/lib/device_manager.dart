@@ -530,7 +530,12 @@ class MethodChannelDeviceManager implements DeviceManager {
         serialNumber: m['serialNumber'] as String?,
         manufacturer: m['manufacturer'] as String?,
         model: m['model'] as String?,
-        batteryPercent: (m['batteryPercent'] as num?)?.toInt(),
+        batteryLeft: (m['batteryLeft'] as num?)?.toInt(),
+        batteryRight: (m['batteryRight'] as num?)?.toInt(),
+        batteryCase: (m['batteryCase'] as num?)?.toInt(),
+        chargingLeft: (m['chargingLeft'] as bool?) ?? false,
+        chargingRight: (m['chargingRight'] as bool?) ?? false,
+        chargingCase: (m['chargingCase'] as bool?) ?? false,
         metadata: ((m['metadata'] as Map?) ?? const {})
             .cast<String, Object?>(),
       );
@@ -603,11 +608,18 @@ class _MethodChannelSession implements DeviceSession {
     if (raw['info'] is Map) {
       _info = MethodChannelDeviceManager._parseDeviceInfo(raw['info'] as Map);
     }
-    final caps = (raw['capabilities'] as List?)?.cast<String>() ?? const [];
-    _capabilities = caps
-        .map(_parseCapability)
-        .whereType<DeviceCapability>()
-        .toSet();
+    // 字段缺失（"未携带"）与显式空数组（"无 capability"）语义不同：
+    // 前者保留旧值，后者才清空。否则任何漏带 capabilities 字段的快照都会
+    // 把已 ready session 的 OTA / battery 等能力抹成空，UI 上的升级按钮等
+    // 跟着抖动。所有 native 快照路径都已带齐字段，这里做防御性兜底。
+    final capsRaw = raw['capabilities'];
+    if (capsRaw is List) {
+      _capabilities = capsRaw
+          .cast<String>()
+          .map(_parseCapability)
+          .whereType<DeviceCapability>()
+          .toSet();
+    }
   }
 
   /// 把 native 推上来的 session_event 原样转发给低层订阅者（_ConnectedTile

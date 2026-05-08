@@ -196,6 +196,17 @@ class JieliNativeDevicePlugin(
             runCatching { session.refreshInfo() }
         }
 
+        override fun onTwsBroadcast(payload: Map<String, Any?>) {
+            // TWS 设备主动推左右耳 / 电仓电量变化（佩戴 / 取出 / 充电态）。
+            // 真值已经在 JieliNativeDeviceSession.applySnapshot 里映射好——这里直接
+            // refreshInfo 让它重新合并 [DeviceInfoFeature.snapshot] 的最新数据并
+            // 派 deviceInfoUpdated 事件，UI 上的电量 chip 自动刷新。
+            val address = payload["address"] as? String
+            val session = _activeSession ?: return
+            if (address != null && session.deviceId != address) return
+            runCatching { session.refreshInfo() }
+        }
+
         override fun onTranslationAudio(payload: Map<String, Any?>) {
             _activeSession?.emitFeature("jieli.translation.audio", payload)
         }

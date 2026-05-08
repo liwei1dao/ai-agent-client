@@ -247,6 +247,7 @@ class JieliDeviceSession implements DeviceSession {
       {'address': deviceId},
     );
     if (snapshot == null) return _info;
+    // 杰理 RCSP 当前只给一个总电量；按接口约定映射到 batteryLeft。
     _info = _info.copyWith(
       name: snapshot['name'] as String? ?? _info.name,
       firmwareVersion: snapshot['firmwareVersion'] as String?,
@@ -254,7 +255,7 @@ class JieliDeviceSession implements DeviceSession {
       serialNumber: snapshot['serialNumber'] as String?,
       manufacturer: snapshot['manufacturer'] as String?,
       model: snapshot['model'] as String?,
-      batteryPercent: snapshot['battery'] as int?,
+      batteryLeft: snapshot['battery'] as int?,
       metadata: Map<String, Object?>.from(snapshot),
     );
     _evt.add(DeviceSessionEvent(

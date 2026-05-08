@@ -112,7 +112,14 @@ data class DiscoveredDevice(
     )
 }
 
-/** 已连接设备的信息快照。 */
+/**
+ * 已连接设备的信息快照。
+ *
+ * 电量字段约定（与 Dart 侧 DeviceInfo 一致）：
+ * - 单一电量设备（眼镜 / 手环 / 单耳）只填 batteryLeft；
+ * - TWS 双耳填 batteryLeft + batteryRight，带充电盒再加 batteryCase；
+ * - 充电态按位置独立。SDK 不上报充电态时全部默认 false。
+ */
 data class DeviceInfo(
     val id: String,
     val name: String,
@@ -122,7 +129,12 @@ data class DeviceInfo(
     val serialNumber: String? = null,
     val manufacturer: String? = null,
     val model: String? = null,
-    val batteryPercent: Int? = null,
+    val batteryLeft: Int? = null,
+    val batteryRight: Int? = null,
+    val batteryCase: Int? = null,
+    val chargingLeft: Boolean = false,
+    val chargingRight: Boolean = false,
+    val chargingCase: Boolean = false,
     val metadata: Map<String, Any?> = emptyMap(),
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
@@ -134,7 +146,12 @@ data class DeviceInfo(
         "serialNumber" to serialNumber,
         "manufacturer" to manufacturer,
         "model" to model,
-        "batteryPercent" to batteryPercent,
+        "batteryLeft" to batteryLeft,
+        "batteryRight" to batteryRight,
+        "batteryCase" to batteryCase,
+        "chargingLeft" to chargingLeft,
+        "chargingRight" to chargingRight,
+        "chargingCase" to chargingCase,
         "metadata" to metadata,
     )
 
@@ -145,7 +162,12 @@ data class DeviceInfo(
         serialNumber: String? = null,
         manufacturer: String? = null,
         model: String? = null,
-        batteryPercent: Int? = null,
+        batteryLeft: Int? = null,
+        batteryRight: Int? = null,
+        batteryCase: Int? = null,
+        chargingLeft: Boolean? = null,
+        chargingRight: Boolean? = null,
+        chargingCase: Boolean? = null,
         metadata: Map<String, Any?>? = null,
     ): DeviceInfo = DeviceInfo(
         id = id,
@@ -156,7 +178,12 @@ data class DeviceInfo(
         serialNumber = serialNumber ?: this.serialNumber,
         manufacturer = manufacturer ?: this.manufacturer,
         model = model ?: this.model,
-        batteryPercent = batteryPercent ?: this.batteryPercent,
+        batteryLeft = batteryLeft ?: this.batteryLeft,
+        batteryRight = batteryRight ?: this.batteryRight,
+        batteryCase = batteryCase ?: this.batteryCase,
+        chargingLeft = chargingLeft ?: this.chargingLeft,
+        chargingRight = chargingRight ?: this.chargingRight,
+        chargingCase = chargingCase ?: this.chargingCase,
         metadata = metadata ?: this.metadata,
     )
 }

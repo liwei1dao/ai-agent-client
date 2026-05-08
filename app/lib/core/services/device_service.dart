@@ -150,7 +150,12 @@ class DeviceSnapshot {
 
   String get name => info.name;
   String get mac => deviceId;
-  int? get battery => info.batteryPercent;
+  int? get batteryLeft => info.batteryLeft;
+  int? get batteryRight => info.batteryRight;
+  int? get batteryCase => info.batteryCase;
+  bool get chargingLeft => info.chargingLeft;
+  bool get chargingRight => info.chargingRight;
+  bool get chargingCase => info.chargingCase;
   String? get firmwareVersion => info.firmwareVersion;
   String? get hardwareVersion => info.hardwareVersion;
   String? get serialNumber => info.serialNumber;

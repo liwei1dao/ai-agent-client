@@ -105,12 +105,32 @@ class JieliNativeDeviceSession internal constructor(
     }
 
     private fun applySnapshot(snapshot: Map<String, Any?>) {
-        _info = _info.copyWith(
+        // 电量字段映射：
+        //  - TWS 双耳 + 电仓：用 ADV 拆分后的 batteryLeft / batteryRight / batteryCase
+        //    + chargingLeft / chargingRight / chargingCase（[DeviceInfoFeature] 已合并）。
+        //  - 单耳 / 非 TWS 设备：ADV 拉不回（feature 那边 batteryRight/Case 都是 null），
+        //    fallback 到 SDK 聚合的 `battery`（quantity）填到 batteryLeft，与接口
+        //    `DeviceInfo` 关于"单一电量设备只填 batteryLeft"的约定对齐。
+        //
+        // 直接走 data class 自带的 [DeviceInfo.copy] 而不是 [DeviceInfo.copyWith]：
+        // 后者把 null 当作"保留旧值"，导致 batteryRight 一旦填过 80 就再也清不掉，
+        // 但右耳从仓里取出又收回时我们需要让 UI 隐藏右耳条目，所以必须能显式写 null。
+        val advLeft = (snapshot["batteryLeft"] as? Number)?.toInt()
+        val advRight = (snapshot["batteryRight"] as? Number)?.toInt()
+        val advCase = (snapshot["batteryCase"] as? Number)?.toInt()
+        val totalBattery = (snapshot["battery"] as? Number)?.toInt()?.takeIf { it in 0..100 }
+        val isTws = advLeft != null || advRight != null || advCase != null
+        _info = _info.copy(
             name = (snapshot["name"] as? String).takeIf { !it.isNullOrEmpty() }
                 ?: _info.name,
             firmwareVersion = (snapshot["versionName"] as? String)
                 ?: _info.firmwareVersion,
-            batteryPercent = (snapshot["battery"] as? Number)?.toInt(),
+            batteryLeft = if (isTws) advLeft else totalBattery,
+            batteryRight = if (isTws) advRight else null,
+            batteryCase = if (isTws) advCase else null,
+            chargingLeft = (snapshot["chargingLeft"] as? Boolean) ?: false,
+            chargingRight = (snapshot["chargingRight"] as? Boolean) ?: false,
+            chargingCase = (snapshot["chargingCase"] as? Boolean) ?: false,
             metadata = snapshot,
         )
         emit(DeviceSessionEvent(

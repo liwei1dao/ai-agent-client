@@ -239,11 +239,17 @@ class DeviceManagerPlugin : FlutterPlugin {
                     call.argument<Map<*, *>>("options")
                 )
                 val session = manager.connect(deviceId, opts)
-                mapOf(
+                // 用 currentSnapshot() 保证字段集（含 capabilities）与
+                // activeSession / SNAPSHOT_UPDATED / SESSION_EVENT 完全一致。
+                // currentSnapshot() == null 仅发生在 ready 后立刻被对端断开，
+                // 此时 activeSession 已被清；返回 session 自身的快照让 Dart 端
+                // 仍能看到 DISCONNECTED 状态，避免界面卡在 connecting。
+                manager.currentSnapshot() ?: mapOf(
                     "deviceId" to session.deviceId,
                     "vendor" to session.vendor,
                     "state" to session.state.name,
                     "info" to session.info.toMap(),
+                    "capabilities" to session.capabilities.map { it.name },
                 )
             }
 
