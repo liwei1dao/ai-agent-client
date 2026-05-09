@@ -1,0 +1,33 @@
+name: stt_azure
+description: Azure Speech-to-Text plugin
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  ai_plugin_interface:
+    path: ../../core/ai_plugin_interface
+  web: ^1.0.0
+  web_socket_channel: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.stt_azure
+        pluginClass: SttAzurePlugin
+      ios:
+        pluginClass: SttAzurePlugin
+      web:
+        pluginClass: SttAzureWeb
+        fileName: stt_azure_web.dart

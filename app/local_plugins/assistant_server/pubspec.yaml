@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   device_plugin_interface:
-    path: ../device_plugin_interface
+    path: ../core/device_plugin_interface
 
 dev_dependencies:
   flutter_test:

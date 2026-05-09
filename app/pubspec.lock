@@ -12,42 +12,42 @@ packages:
   agent_ast_translate:
     dependency: "direct main"
     description:
-      path: "local_plugins/agent_ast_translate"
+      path: "local_plugins/agents/agent_ast_translate"
       relative: true
     source: path
     version: "0.1.0"
   agent_chat:
     dependency: "direct main"
     description:
-      path: "local_plugins/agent_chat"
+      path: "local_plugins/agents/agent_chat"
       relative: true
     source: path
     version: "0.1.0"
   agent_sts_chat:
     dependency: "direct main"
     description:
-      path: "local_plugins/agent_sts_chat"
+      path: "local_plugins/agents/agent_sts_chat"
       relative: true
     source: path
     version: "0.1.0"
   agent_translate:
     dependency: "direct main"
     description:
-      path: "local_plugins/agent_translate"
+      path: "local_plugins/agents/agent_translate"
       relative: true
     source: path
     version: "0.1.0"
   agents_server:
     dependency: "direct main"
     description:
-      path: "local_plugins/agents_server"
+      path: "local_plugins/agents/agents_server"
       relative: true
     source: path
     version: "0.1.0"
   ai_plugin_interface:
     dependency: "direct main"
     description:
-      path: "local_plugins/ai_plugin_interface"
+      path: "local_plugins/core/ai_plugin_interface"
       relative: true
     source: path
     version: "0.1.0"
@@ -109,14 +109,14 @@ packages:
   ast_polychat:
     dependency: "direct main"
     description:
-      path: "local_plugins/ast_polychat"
+      path: "local_plugins/vendors/ast_polychat"
       relative: true
     source: path
     version: "0.1.0"
   ast_volcengine:
     dependency: "direct main"
     description:
-      path: "local_plugins/ast_volcengine"
+      path: "local_plugins/vendors/ast_volcengine"
       relative: true
     source: path
     version: "0.1.0"
@@ -371,21 +371,21 @@ packages:
   device_jieli:
     dependency: "direct main"
     description:
-      path: "local_plugins/device_jieli"
+      path: "local_plugins/devices/device_jieli"
       relative: true
     source: path
     version: "0.0.1"
   device_manager:
     dependency: "direct main"
     description:
-      path: "local_plugins/device_manager"
+      path: "local_plugins/devices/device_manager"
       relative: true
     source: path
     version: "0.1.0"
   device_plugin_interface:
     dependency: "direct main"
     description:
-      path: "local_plugins/device_plugin_interface"
+      path: "local_plugins/core/device_plugin_interface"
       relative: true
     source: path
     version: "0.1.0"
@@ -631,21 +631,21 @@ packages:
   llm_openai:
     dependency: "direct main"
     description:
-      path: "local_plugins/llm_openai"
+      path: "local_plugins/vendors/llm_openai"
       relative: true
     source: path
     version: "0.1.0"
   llm_volcengine:
     dependency: "direct main"
     description:
-      path: "local_plugins/llm_volcengine"
+      path: "local_plugins/vendors/llm_volcengine"
       relative: true
     source: path
     version: "0.1.0"
   local_db:
     dependency: "direct main"
     description:
-      path: "local_plugins/local_db"
+      path: "local_plugins/core/local_db"
       relative: true
     source: path
     version: "0.1.0"
@@ -908,7 +908,7 @@ packages:
   service_manager:
     dependency: "direct main"
     description:
-      path: "local_plugins/service_manager"
+      path: "local_plugins/agents/service_manager"
       relative: true
     source: path
     version: "0.1.0"
@@ -1064,21 +1064,21 @@ packages:
   sts_polychat:
     dependency: "direct main"
     description:
-      path: "local_plugins/sts_polychat"
+      path: "local_plugins/vendors/sts_polychat"
       relative: true
     source: path
     version: "0.1.0"
   sts_volcengine:
     dependency: "direct main"
     description:
-      path: "local_plugins/sts_volcengine"
+      path: "local_plugins/vendors/sts_volcengine"
       relative: true
     source: path
     version: "0.1.0"
   stt_azure:
     dependency: "direct main"
     description:
-      path: "local_plugins/stt_azure"
+      path: "local_plugins/vendors/stt_azure"
       relative: true
     source: path
     version: "0.1.0"
@@ -1148,28 +1148,28 @@ packages:
   translation_aliyun:
     dependency: "direct main"
     description:
-      path: "local_plugins/translation_aliyun"
+      path: "local_plugins/vendors/translation_aliyun"
       relative: true
     source: path
     version: "0.1.0"
   translation_azure:
     dependency: "direct main"
     description:
-      path: "local_plugins/translation_azure"
+      path: "local_plugins/vendors/translation_azure"
       relative: true
     source: path
     version: "0.1.0"
   translation_deepl:
     dependency: "direct main"
     description:
-      path: "local_plugins/translation_deepl"
+      path: "local_plugins/vendors/translation_deepl"
       relative: true
     source: path
     version: "0.1.0"
   tts_azure:
     dependency: "direct main"
     description:
-      path: "local_plugins/tts_azure"
+      path: "local_plugins/vendors/tts_azure"
       relative: true
     source: path
     version: "0.1.0"

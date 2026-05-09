@@ -16,10 +16,10 @@ if (keystorePropertiesFile.exists()) {
 
 // device_jieli 的 4 个 AAR (jl_bluetooth_rcsp / jl_audio_decode / jl_audio_v2 /
 // jldecryption) 在子模块里是 compileOnly，宿主 app 必须 runtime implementation 才会
-// 被打进 APK（参见 local_plugins/device_jieli/android/build.gradle 注释）。
+// 被打进 APK（参见 local_plugins/devices/device_jieli/android/build.gradle 注释）。
 repositories {
     flatDir {
-        dirs("../../local_plugins/device_jieli/android/libs")
+        dirs("../../local_plugins/devices/device_jieli/android/libs")
     }
 }
 

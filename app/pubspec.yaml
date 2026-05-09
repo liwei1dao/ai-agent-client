@@ -39,58 +39,59 @@ dependencies:
   # Persistence
   shared_preferences: ^2.3.4
 
-  # Local plugins — Interface layer
+  # Local plugins — Interface layer (local_plugins/core/)
   ai_plugin_interface:
-    path: local_plugins/ai_plugin_interface
+    path: local_plugins/core/ai_plugin_interface
 
-  # Container / management layer
+  # Container / management layer (local_plugins/agents/)
   agents_server:
-    path: local_plugins/agents_server
+    path: local_plugins/agents/agents_server
   service_manager:
-    path: local_plugins/service_manager
+    path: local_plugins/agents/service_manager
 
   # Agent type plugins (register to NativeAgentRegistry on attach)
   agent_chat:
-    path: local_plugins/agent_chat
+    path: local_plugins/agents/agent_chat
   agent_sts_chat:
-    path: local_plugins/agent_sts_chat
+    path: local_plugins/agents/agent_sts_chat
   agent_translate:
-    path: local_plugins/agent_translate
+    path: local_plugins/agents/agent_translate
   agent_ast_translate:
-    path: local_plugins/agent_ast_translate
+    path: local_plugins/agents/agent_ast_translate
 
-  # Service plugins (register to NativeServiceRegistry on attach)
+  # Service plugins (local_plugins/vendors/, register to NativeServiceRegistry on attach)
   stt_azure:
-    path: local_plugins/stt_azure
+    path: local_plugins/vendors/stt_azure
   tts_azure:
-    path: local_plugins/tts_azure
+    path: local_plugins/vendors/tts_azure
   llm_openai:
-    path: local_plugins/llm_openai
+    path: local_plugins/vendors/llm_openai
   llm_volcengine:
-    path: local_plugins/llm_volcengine
+    path: local_plugins/vendors/llm_volcengine
   sts_volcengine:
-    path: local_plugins/sts_volcengine
+    path: local_plugins/vendors/sts_volcengine
   ast_volcengine:
-    path: local_plugins/ast_volcengine
+    path: local_plugins/vendors/ast_volcengine
   sts_polychat:
-    path: local_plugins/sts_polychat
+    path: local_plugins/vendors/sts_polychat
   ast_polychat:
-    path: local_plugins/ast_polychat
+    path: local_plugins/vendors/ast_polychat
   translation_deepl:
-    path: local_plugins/translation_deepl
+    path: local_plugins/vendors/translation_deepl
   translation_aliyun:
-    path: local_plugins/translation_aliyun
+    path: local_plugins/vendors/translation_aliyun
   translation_azure:
-    path: local_plugins/translation_azure
+    path: local_plugins/vendors/translation_azure
 
-  # Device layer (hardware vendor SDK plugins)
+  # Device layer (interface in core/, container + vendor SDKs in devices/)
   device_plugin_interface:
-    path: local_plugins/device_plugin_interface
+    path: local_plugins/core/device_plugin_interface
   device_manager:
-    path: local_plugins/device_manager
+    path: local_plugins/devices/device_manager
   device_jieli:
-    path: local_plugins/device_jieli
+    path: local_plugins/devices/device_jieli
 
+  # Business services (top-level local_plugins/, not core scheduling)
   # Composite scenarios (call / face-to-face / audio translation)
   translate_server:
     path: local_plugins/translate_server
@@ -101,7 +102,7 @@ dependencies:
 
   # Data layer
   local_db:
-    path: local_plugins/local_db
+    path: local_plugins/core/local_db
   file_picker: ^10.3.10
   web: ^1.1.1
   web_socket_channel: ^3.0.3

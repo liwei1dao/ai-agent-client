@@ -1,0 +1,50 @@
+name: agents_server
+description: Agent container and lifecycle manager - manages multiple native agent instances
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  ai_plugin_interface:
+    path: ../../core/ai_plugin_interface
+  local_db:
+    path: ../../core/local_db
+  llm_openai:
+    path: ../../vendors/llm_openai
+  stt_azure:
+    path: ../../vendors/stt_azure
+  tts_azure:
+    path: ../../vendors/tts_azure
+  sts_volcengine:
+    path: ../../vendors/sts_volcengine
+  ast_volcengine:
+    path: ../../vendors/ast_volcengine
+  sts_polychat:
+    path: ../../vendors/sts_polychat
+  ast_polychat:
+    path: ../../vendors/ast_polychat
+  translation_deepl:
+    path: ../../vendors/translation_deepl
+  translation_aliyun:
+    path: ../../vendors/translation_aliyun
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.agents_server
+        pluginClass: AgentsServerPlugin
+      web:
+        pluginClass: AgentsServerWeb
+        fileName: agents_server_web.dart

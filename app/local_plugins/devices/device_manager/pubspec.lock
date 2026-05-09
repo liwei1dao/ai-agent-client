@@ -44,7 +44,7 @@ packages:
   device_plugin_interface:
     dependency: "direct main"
     description:
-      path: "../core/device_plugin_interface"
+      path: "../../core/device_plugin_interface"
       relative: true
     source: path
     version: "0.1.0"
