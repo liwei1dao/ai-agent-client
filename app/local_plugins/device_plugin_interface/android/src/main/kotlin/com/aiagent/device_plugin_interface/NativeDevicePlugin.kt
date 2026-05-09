@@ -83,6 +83,24 @@ interface NativeDevicePlugin {
     /** 全局事件流：扫描/连接/蓝牙开关/错误等。 */
     val eventStream: Flow<DevicePluginEvent>
 
+    /**
+     * 让厂商插件主动从底层 SDK 实际状态核对 active session（兜底用）。
+     *
+     * 触发场景：app 进入设备扫描页等"重新跟 SDK 对账"的时机。如果 SDK 仍持有
+     * 一条物理连接但本插件因事件丢失/Activity 重建等原因把 [activeSession]
+     * 清空了，UI 会出现"已连接设备消失但又扫不到"的死锁；本方法用于打破它。
+     *
+     * 实现要求（缺一不可）：
+     *  - SDK 有连接但 [activeSession] == null：用 SDK 当前连接的设备重建 session
+     *    并设为 READY，必须 emit 一次 snapshot 让容器/Dart 看到。
+     *  - SDK 无连接但 [activeSession] != null 且非 DISCONNECTED：把 session 标
+     *    DISCONNECTED 并清掉。
+     *  - SDK / 插件状态一致：no-op，不要派多余事件。
+     *
+     * 默认空实现：尚未支持的厂商插件可以暂不实现。
+     */
+    fun syncActiveFromSdk() {}
+
     /** 释放 SDK + 断开所有 session + close stream。 */
     fun dispose()
 }

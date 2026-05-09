@@ -317,6 +317,17 @@ class MethodChannelDeviceManager implements DeviceManager {
     await _hydrateFromNative();
   }
 
+  @override
+  Future<void> refresh() async {
+    if (_disposed) return;
+    // 让 native 先与底层 SDK 对账（修复"SDK 还连着 / app 失忆"造成的扫描页
+    // 死锁），再回拉一次 vendor / capabilities / activeSession。
+    try {
+      await _method.invokeMethod('syncActive');
+    } on PlatformException catch (_) {/* best effort */}
+    await _hydrateFromNative();
+  }
+
   /// 从 native 侧拉一次：activeVendor / activeCapabilities / activeSession。
   /// 失败一律静默——这只是缓存预热，不该让 facade 初始化失败。
   Future<void> _hydrateFromNative() async {

@@ -24,11 +24,12 @@ import java.io.File
 /**
  * 杰理 [NativeDeviceSession] 实现 —— 包装 [JieliHomeServer] 的连接快照与事件。
  *
- * 状态机由 [JieliNativeDevicePlugin] 在 RCSP 事件回调里推动：
- *   - ConnectionStateEvent.state == CONNECTING(2) → connecting
- *   - state == OK(1) + RcspInit 未到 → linkConnected
+ * 状态机由 [JieliNativeDevicePlugin] 在 RCSP 事件回调里推动（值对应
+ * `com.jieli.bluetooth.constant.StateCode`）：
+ *   - state == CONNECTING(3) → connecting
+ *   - state == OK(1) / CONNECTED(4)，且 RcspInit 未到 → linkConnected
  *   - RcspInit(success=true) → ready
- *   - state == DISCONNECT(0) → disconnected
+ *   - state == DISCONNECT(0) / FAILED(2) → disconnected
  */
 class JieliNativeDeviceSession internal constructor(
     private val server: JieliHomeServer,
@@ -67,6 +68,7 @@ class JieliNativeDeviceSession internal constructor(
 
     internal fun setState(s: DeviceConnectionState) {
         if (_state == s) return
+        Log.d(TAG, "setState $deviceId: $_state -> $s")
         _state = s
         emit(DeviceSessionEvent(
             type = DeviceSessionEventType.CONNECTION_STATE_CHANGED,

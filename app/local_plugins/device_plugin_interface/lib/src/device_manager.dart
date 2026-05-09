@@ -84,6 +84,18 @@ abstract class DeviceManager {
 
   Future<void> initialize();
   Future<void> dispose();
+
+  /// 与底层 SDK 实际状态对账一次（兜底用），修复"SDK 还连着但 app 失忆"
+  /// 造成的扫描页死锁——已连接设备在 UI 消失，又因为设备在线不再广播所以
+  /// 也扫不到。
+  ///
+  /// 实现需保证：
+  ///  - 调用 native 让 active plugin 与厂商 SDK 对账（重建 / 标断开 / no-op）；
+  ///  - 拉一次最新 snapshot 同步到 Dart 缓存，并派 `snapshotUpdated`；
+  ///  - 失败一律静默——这是兜底，不应让调用方报错。
+  ///
+  /// 默认空实现：纯 Dart 注册的 manager（测试桩等）可以不实现。
+  Future<void> refresh() async {}
 }
 
 /// 厂商描述符（用于注册表 / 设置 UI 列表）。

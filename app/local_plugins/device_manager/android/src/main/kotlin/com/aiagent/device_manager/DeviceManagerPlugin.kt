@@ -211,6 +211,14 @@ class DeviceManagerPlugin : FlutterPlugin {
                 )
             }
 
+            // 让 active plugin 跟底层 SDK 对账一次，修复"SDK 还连着 / app 失忆"
+            // 造成的扫描页死锁。返回最新 snapshot（可能为 null）供 Dart 端
+            // 同步落库，而不必等 EventChannel。
+            "syncActive" -> {
+                manager.syncActiveFromSdk()
+                manager.currentSnapshot()
+            }
+
             "startScan" -> {
                 val filter = DeviceScanFilter.fromMap(
                     call.argument<Map<*, *>>("filter")

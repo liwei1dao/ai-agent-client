@@ -1,5 +1,6 @@
 package com.aiagent.device_manager
 
+import android.util.Log
 import com.aiagent.device_plugin_interface.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
@@ -18,6 +19,8 @@ import kotlinx.coroutines.flow.*
 class DefaultNativeDeviceManager : NativeDeviceManager {
 
     companion object {
+        private const val TAG = "DefaultNativeDevMgr"
+
         @Volatile
         private var instance: DefaultNativeDeviceManager? = null
 
@@ -153,6 +156,42 @@ class DefaultNativeDeviceManager : NativeDeviceManager {
         teardownSessionLocked(s)
     }
 
+    /**
+     * 让 active plugin 与底层 SDK 对账一次（兜底用）。流程：
+     *
+     *  1. 委托给 plugin 的 [NativeDevicePlugin.syncActiveFromSdk]，它就地修复
+     *     plugin 的 active session（重建 / 标断开 / no-op）。
+     *  2. 对照 sync 前后的 session 引用变化做容器侧补救：
+     *     - 出现新 session（之前为空 / 不同 deviceId）→ 重新 [bindSession] +
+     *       派 ACTIVE_SESSION_CHANGED；
+     *     - session 消失（之前有，现在为空）→ 取消订阅 + 派 ACTIVE_SESSION_CHANGED(null)。
+     *  3. 不论哪种情况都补一次 SNAPSHOT_UPDATED，保证 Dart 端拿到最新真相。
+     *
+     * 调用方：Dart facade 的 refresh()（进设备扫描页 / 应用回前台时使用）。
+     */
+    @Synchronized
+    override fun syncActiveFromSdk() {
+        checkAlive()
+        val plugin = _activePlugin ?: return
+        val before = plugin.activeSession
+        runCatching { plugin.syncActiveFromSdk() }.onFailure {
+            Log.w(TAG, "plugin.syncActiveFromSdk failed", it)
+        }
+        val after = plugin.activeSession
+        if (before !== after) {
+            // 旧的 session 流不需要再监听
+            sessionEventJob?.cancel()
+            sessionEventJob = null
+            if (after != null) bindSession(after)
+            emit(DeviceManagerEvent(
+                type = DeviceManagerEventType.ACTIVE_SESSION_CHANGED,
+                activeDeviceId = after?.deviceId,
+                sessionSnapshot = currentSnapshot(),
+            ))
+        }
+        emitSnapshot()
+    }
+
     override fun dispose() {
         if (_disposed) return
         _disposed = true
@@ -202,11 +241,16 @@ class DefaultNativeDeviceManager : NativeDeviceManager {
         sessionEventJob?.cancel()
         sessionEventJob = scope.launch {
             s.eventStream.collect { evt ->
-                // 任意 session 内部变化都重新整理一份 full snapshot 推上去。
+                val snap = currentSnapshot()
+                // 诊断：把"snapshot 被推为 null"的瞬间记到 log，方便排查"已链接设备一闪而过"。
+                if (snap == null) {
+                    Log.w(TAG, "bindSession.collect: snapshot=null on ${evt.type} " +
+                        "(session=${s.deviceId} state=${s.state}); will clear Dart cache")
+                }
                 emit(DeviceManagerEvent(
                     type = DeviceManagerEventType.SESSION_EVENT,
                     sessionEvent = evt,
-                    sessionSnapshot = currentSnapshot(),
+                    sessionSnapshot = snap,
                 ))
                 emitSnapshot()
                 if (evt.type == DeviceSessionEventType.CONNECTION_STATE_CHANGED &&

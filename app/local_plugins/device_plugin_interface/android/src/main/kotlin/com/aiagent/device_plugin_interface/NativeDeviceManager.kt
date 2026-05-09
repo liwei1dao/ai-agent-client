@@ -82,6 +82,16 @@ interface NativeDeviceManager {
     fun connect(deviceId: String, options: DeviceConnectOptions? = null): NativeDeviceSession
     fun disconnect()
 
+    /**
+     * 让 active plugin 主动跟底层 SDK 对账一次（兜底用）：SDK 还连着但容器
+     * 失忆 → 重建 active session 并 emit snapshot；SDK 不连了但容器残留 →
+     * 标 disconnected。详见 [NativeDevicePlugin.syncActiveFromSdk]。
+     *
+     * 默认空实现：上层（Dart facade refresh / 进入扫描页等）调用即可，无
+     * active vendor 时为 no-op。
+     */
+    fun syncActiveFromSdk() {}
+
     /** 容器级聚合事件流（多订阅安全）。 */
     val eventStream: Flow<DeviceManagerEvent>
 

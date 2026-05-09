@@ -21,6 +21,14 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
   bool _scanning = false;
   String? _connectingId;
 
+  @override
+  void initState() {
+    super.initState();
+    // 进扫描页时主动跟底层 SDK 对账一次：修复"耳机仍保持连接但 app 失忆"
+    // 造成的「已连接设备消失 + 又扫不到（设备在线不广播）」死锁。
+    unawaited(ref.read(deviceManagerProvider).refresh());
+  }
+
   Future<void> _toggleScan() async {
     final manager = ref.read(deviceManagerProvider);
     if (_scanning) {
