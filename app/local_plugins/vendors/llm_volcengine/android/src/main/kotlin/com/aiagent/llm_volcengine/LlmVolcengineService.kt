@@ -114,6 +114,11 @@ class LlmVolcengineService : NativeLlmService {
             }
 
             val source = response.body?.source() ?: return ""
+            // 跨 chunk 跟踪每个 tool_call 是否已经派发过 Start —— OpenAI 流式
+            // 协议里同一 tool_call 通过 `index` 复用，第一帧带 id+name，后续
+            // 帧只追加 arguments delta。
+            val toolStarted = mutableMapOf<Int, Boolean>()
+
             while (!source.exhausted()) {
                 if (!coroutineContext.isActive) break
 
@@ -122,19 +127,39 @@ class LlmVolcengineService : NativeLlmService {
                 val data = line.removePrefix("data: ").trim()
                 if (data == "[DONE]") break
 
-                val delta = parseTextDelta(data) ?: continue
-                if (delta.isEmpty()) continue
+                val chunk = parseDelta(data) ?: continue
 
-                fullText.append(delta)
+                // 文本
+                if (chunk.content.isNotEmpty()) {
+                    fullText.append(chunk.content)
+                    if (isFirstToken) {
+                        isFirstToken = false
+                        callback.onFirstToken(chunk.content)
+                    } else {
+                        callback.onTextDelta(chunk.content)
+                    }
+                }
 
-                if (isFirstToken) {
-                    isFirstToken = false
-                    callback.onFirstToken(delta)
-                } else {
-                    callback.onTextDelta(delta)
+                // 推理（doubao thinking 模型走 reasoning_content）
+                if (chunk.thinking.isNotEmpty()) {
+                    callback.onThinkingDelta(chunk.thinking)
+                }
+
+                // tool_calls：首帧带 id+name → onToolCallStart；
+                // 后续帧只有 arguments delta → onToolCallArguments
+                for (tc in chunk.toolCalls) {
+                    val started = toolStarted[tc.index] == true
+                    if (!started && !tc.id.isNullOrBlank() && !tc.name.isNullOrBlank()) {
+                        callback.onToolCallStart(tc.id, tc.name)
+                        toolStarted[tc.index] = true
+                    }
+                    if (tc.argsDelta.isNotEmpty()) {
+                        callback.onToolCallArguments(tc.argsDelta)
+                    }
                 }
             }
 
+            Log.d(TAG, "stream done: textLen=${fullText.length} toolCalls=${toolStarted.size}")
             callback.onDone(fullText.toString())
             fullText.toString()
 
@@ -178,11 +203,48 @@ class LlmVolcengineService : NativeLlmService {
         }
     }
 
-    private fun parseTextDelta(json: String): String? = try {
-        JSONObject(json)
-            .getJSONArray("choices")
-            .getJSONObject(0)
-            .getJSONObject("delta")
-            .optString("content", "")
-    } catch (_: Exception) { null }
+    /**
+     * 解析单帧 SSE delta。OpenAI 兼容格式：
+     * - delta.content：文本增量
+     * - delta.reasoning_content：思维链增量（doubao thinking 模型）
+     * - delta.tool_calls[]：工具调用片段；首帧 `{index, id, function:{name, arguments:""}}`，
+     *   后续帧 `{index, function:{arguments:"...delta..."}}`
+     */
+    private fun parseDelta(json: String): DeltaChunk? = try {
+        val choice = JSONObject(json).getJSONArray("choices").getJSONObject(0)
+        val delta = choice.optJSONObject("delta") ?: JSONObject()
+
+        val content = delta.optString("content", "")
+        val thinking = delta.optString("reasoning_content", "")
+
+        val toolCalls = mutableListOf<ToolCallChunk>()
+        delta.optJSONArray("tool_calls")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val tc = arr.optJSONObject(i) ?: continue
+                val index = tc.optInt("index", i)
+                val id = tc.optString("id", "").ifBlank { null }
+                val func = tc.optJSONObject("function")
+                val name = func?.optString("name", "")?.ifBlank { null }
+                val args = func?.optString("arguments", "") ?: ""
+                toolCalls.add(ToolCallChunk(index, id, name, args))
+            }
+        }
+
+        DeltaChunk(content, thinking, toolCalls)
+    } catch (_: Exception) {
+        null
+    }
+
+    private data class DeltaChunk(
+        val content: String,
+        val thinking: String,
+        val toolCalls: List<ToolCallChunk>,
+    )
+
+    private data class ToolCallChunk(
+        val index: Int,
+        val id: String?,
+        val name: String?,
+        val argsDelta: String,
+    )
 }

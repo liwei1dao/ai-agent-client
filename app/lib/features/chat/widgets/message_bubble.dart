@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../../../core/services/locale_service.dart';
 import '../../../shared/themes/app_theme.dart';
@@ -311,34 +313,54 @@ class _ChatBubble extends StatelessWidget {
                     ),
                   ),
 
-                // Bubble
-                Container(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.68,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 13, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: isUser ? AppTheme.primary : Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(isUser ? 16 : 4),
-                      topRight: Radius.circular(isUser ? 4 : 16),
-                      bottomLeft: const Radius.circular(16),
-                      bottomRight: const Radius.circular(16),
+                // 工具调用 / thinking 等过程事件 — 仅 AI 侧渲染，置于气泡上方
+                if (!isUser && message.events.isNotEmpty) ...[
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.78,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                    border: isUser
-                        ? null
-                        : Border.all(color: AppTheme.borderColor),
+                    child: _MessageEventsList(events: message.events),
                   ),
-                  child: _buildContent(isUser),
-                ),
+                  if (message.content.isNotEmpty ||
+                      message.status == 'error' ||
+                      message.status == 'cancelled')
+                    const SizedBox(height: 6),
+                ],
+
+                // Bubble — 仅当有内容或处于显式 error/cancelled 时渲染。
+                // streaming 阶段如果只有事件没有文本，气泡先不出现，避免空白。
+                if (message.content.isNotEmpty ||
+                    message.status == 'error' ||
+                    message.status == 'cancelled' ||
+                    (isUser) ||
+                    message.events.isEmpty)
+                  Container(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.68,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 13, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: isUser ? AppTheme.primary : Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(isUser ? 16 : 4),
+                        topRight: Radius.circular(isUser ? 4 : 16),
+                        bottomLeft: const Radius.circular(16),
+                        bottomRight: const Radius.circular(16),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                      border: isUser
+                          ? null
+                          : Border.all(color: AppTheme.borderColor),
+                    ),
+                    child: _buildContent(isUser),
+                  ),
 
                 Padding(
                   padding: const EdgeInsets.only(top: 3, left: 2, right: 2),
@@ -477,7 +499,9 @@ class _RecordingContentState extends State<_RecordingContent>
 
   @override
   void dispose() {
-    for (final c in _dots) c.dispose();
+    for (final c in _dots) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -590,6 +614,324 @@ class _StreamingContentState extends State<_StreamingContent>
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── 工具调用 / thinking 等过程事件：Inline pill 风格 ─────────────────────────
+//
+// 设计：
+// - 默认态 = 一行小 pill，横向 Wrap，密集、不抢戏
+// - 点击 pill → 在 pill 区域下方展开一个详情卡（参数 / 结果），同时只能展开一个
+// - 再点同一个 pill / 点其它 pill 切换；点空白处不收起（避免误触）
+
+class _MessageEventsList extends StatefulWidget {
+  const _MessageEventsList({required this.events});
+  final List<MessageEvent> events;
+
+  @override
+  State<_MessageEventsList> createState() => _MessageEventsListState();
+}
+
+class _MessageEventsListState extends State<_MessageEventsList> {
+  String? _expandedId;
+
+  @override
+  Widget build(BuildContext context) {
+    MessageEvent? expanded;
+    if (_expandedId != null) {
+      for (final e in widget.events) {
+        if (e.id == _expandedId) { expanded = e; break; }
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: [
+            for (final e in widget.events)
+              _EventPill(
+                event: e,
+                expanded: e.id == _expandedId,
+                onTap: () {
+                  final hasDetails =
+                      e.input.isNotEmpty || (e.output?.isNotEmpty ?? false);
+                  if (!hasDetails) return;
+                  setState(() {
+                    _expandedId = (_expandedId == e.id) ? null : e.id;
+                  });
+                },
+              ),
+          ],
+        ),
+        if (expanded != null) ...[
+          const SizedBox(height: 6),
+          _EventDetailCard(event: expanded),
+        ],
+      ],
+    );
+  }
+}
+
+/// 单行 pill —— 状态 icon + 名称 + 用时，圆角到底。
+class _EventPill extends StatelessWidget {
+  const _EventPill({
+    required this.event,
+    required this.expanded,
+    required this.onTap,
+  });
+  final MessageEvent event;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = event;
+    final running = e.status == 'running';
+    final isErr = e.status == 'error';
+
+    final accent = switch (e.kind) {
+      MessageEventKind.toolCall => isErr
+          ? AppTheme.danger
+          : (running ? AppTheme.primary : AppTheme.success),
+      MessageEventKind.thinking => const Color(0xFF8B5CF6),
+      // 指令事件：橙色暖色调，区别于工具调用（绿）/ 思考（紫）。
+      MessageEventKind.instruction =>
+          isErr ? AppTheme.danger : const Color(0xFFEA580C),
+      MessageEventKind.custom => AppTheme.text2,
+    };
+
+    final bg = isErr
+        ? const Color(0xFFFEF2F2)
+        : (e.kind == MessageEventKind.thinking
+            ? const Color(0xFFF5F3FF)
+            : (e.kind == MessageEventKind.instruction
+                ? const Color(0xFFFFF7ED)
+                : (running
+                    ? const Color(0xFFEEF0FF)
+                    : const Color(0xFFF1F5F9))));
+    final borderColor = isErr
+        ? const Color(0xFFFECACA)
+        : (e.kind == MessageEventKind.thinking
+            ? const Color(0xFFE9D5FF)
+            : (e.kind == MessageEventKind.instruction
+                ? const Color(0xFFFED7AA)
+                : (running
+                    ? const Color(0xFFC7D2FE)
+                    : const Color(0xFFE2E8F0))));
+
+    final label = switch (e.kind) {
+      MessageEventKind.toolCall => e.label,
+      MessageEventKind.thinking => running ? '思考中…' : '思考',
+      MessageEventKind.instruction => '指令 · ${e.label}',
+      MessageEventKind.custom => e.label,
+    };
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _StatusIcon(
+                kind: e.kind,
+                running: running,
+                isError: isErr,
+                color: accent,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: accent,
+                  height: 1.1,
+                ),
+              ),
+              if (e.duration != null) ...[
+                const SizedBox(width: 5),
+                Text(
+                  '· ${_formatDuration(e.duration!)}',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    color: AppTheme.text2,
+                    height: 1.1,
+                  ),
+                ),
+              ],
+              const SizedBox(width: 3),
+              AnimatedRotation(
+                turns: expanded ? -0.25 : 0.25,
+                duration: const Duration(milliseconds: 120),
+                child: Icon(
+                  Icons.chevron_right,
+                  size: 13,
+                  color: accent.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 展开的详情卡：参数 / 结果 用等宽字体显示，可复制。
+class _EventDetailCard extends StatelessWidget {
+  const _EventDetailCard({required this.event});
+  final MessageEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = event;
+    final isErr = e.status == 'error';
+    final borderColor =
+        isErr ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isErr ? const Color(0xFFFEF2F2) : const Color(0xFFFAFBFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (e.input.isNotEmpty)
+            _DetailBlock(
+              label: (e.kind == MessageEventKind.toolCall ||
+                      e.kind == MessageEventKind.instruction)
+                  ? '参数'
+                  : '内容',
+              text: _prettyJson(e.input),
+            ),
+          if ((e.output ?? '').isNotEmpty) ...[
+            if (e.input.isNotEmpty) const SizedBox(height: 8),
+            _DetailBlock(
+              label: isErr ? '错误' : '结果',
+              text: e.output!,
+              danger: isErr,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _formatDuration(Duration d) {
+  if (d.inMilliseconds < 1000) return '${d.inMilliseconds}ms';
+  final s = (d.inMilliseconds / 1000).toStringAsFixed(d.inSeconds < 10 ? 1 : 0);
+  return '${s}s';
+}
+
+/// 尽力把 JSON 串美化；不是 JSON 就原样回。
+String _prettyJson(String raw) {
+  final t = raw.trim();
+  if (t.isEmpty) return raw;
+  if (!t.startsWith('{') && !t.startsWith('[')) return raw;
+  try {
+    final obj = const JsonDecoder().convert(t);
+    return const JsonEncoder.withIndent('  ').convert(obj);
+  } catch (_) {
+    return raw;
+  }
+}
+
+class _StatusIcon extends StatelessWidget {
+  const _StatusIcon({
+    required this.kind,
+    required this.running,
+    required this.isError,
+    required this.color,
+  });
+  final MessageEventKind kind;
+  final bool running;
+  final bool isError;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (running) {
+      return SizedBox(
+        width: 11,
+        height: 11,
+        child: CircularProgressIndicator(strokeWidth: 1.5, color: color),
+      );
+    }
+    final icon = isError
+        ? Icons.error_outline
+        : switch (kind) {
+            MessageEventKind.toolCall => Icons.check_circle,
+            MessageEventKind.thinking => Icons.psychology_outlined,
+            MessageEventKind.instruction => Icons.bolt,
+            MessageEventKind.custom => Icons.bolt,
+          };
+    return Icon(icon, size: 12, color: color);
+  }
+}
+
+class _DetailBlock extends StatelessWidget {
+  const _DetailBlock({
+    required this.label,
+    required this.text,
+    this.danger = false,
+  });
+  final String label;
+  final String text;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: danger ? AppTheme.danger : AppTheme.text2,
+            letterSpacing: 0.3,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          child: SelectableText(
+            text,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontFamily: 'monospace',
+              height: 1.4,
+              color: danger ? AppTheme.danger : AppTheme.text1,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

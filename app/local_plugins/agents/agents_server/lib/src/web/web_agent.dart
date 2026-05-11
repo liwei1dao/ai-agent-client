@@ -90,6 +90,21 @@ class WebConfigParser {
 
   static ai.LlmConfig parseLlm(String json) {
     final m = _decode(json);
+    final rawInstr = m['instructions'];
+    final instructions = <ai.LlmInstructionDef>[];
+    if (rawInstr is List) {
+      for (final entry in rawInstr) {
+        if (entry is! Map) continue;
+        try {
+          final def = ai.LlmInstructionDef.fromJson(
+            entry.cast<String, dynamic>(),
+          );
+          if (def.name.isNotEmpty) instructions.add(def);
+        } catch (_) {
+          // skip malformed entry
+        }
+      }
+    }
     return ai.LlmConfig(
       apiKey: (m['apiKey'] as String?) ?? '',
       baseUrl: (m['baseUrl'] as String?) ?? 'https://api.openai.com/v1',
@@ -101,6 +116,7 @@ class WebConfigParser {
         ...?(m['extra'] as Map?),
         if (m['enableThinking'] != null) 'enableThinking': m['enableThinking'],
       }),
+      instructions: instructions,
     );
   }
 

@@ -82,6 +82,20 @@ class ChatAgentSession : NativeAgent {
     /** MCP 工具路由器；无 MCP server 配置时为 null */
     private var mcpRouter: NativeMcpRouter? = null
 
+    /**
+     * 用户在 LLM 服务配置里注册的"指令"映射（name -> 定义）。
+     * 这些 name 会以 tool 形式传给 LLM；LLM 调用时由调度层拦截，派发
+     * instructionTriggered 事件而不走 MCP 执行链。
+     */
+    private var instructionDefs: Map<String, LlmInstructionDef> = emptyMap()
+
+    /**
+     * MCP 异步加载 Job：HTTP 连接 + listTools 在后台完成。
+     * `onUserInput` 在拿 `openAiTools()` 之前 join 一下，避免首条消息
+     * 在 MCP 还没就绪时拿到空 tools 数组（表现就是"绑定 MCP 没生效"）。
+     */
+    private var mcpLoadJob: Job? = null
+
     /** 单次用户输入 → LLM 多轮 tool loop 的上限，防止死循环 */
     private val maxToolIterations = 5
 
@@ -119,11 +133,16 @@ class ChatAgentSession : NativeAgent {
         if (!config.mcpServersJson.isNullOrBlank()) {
             val router = NativeMcpRouter()
             mcpRouter = router
-            scope.launch {
+            mcpLoadJob = scope.launch {
                 runCatching { router.loadFromJson(config.mcpServersJson) }
                 router.warnings().forEach { Log.w(TAG, "[mcp] $it") }
             }
         }
+
+        // LLM 服务配置里的指令列表（key = name）。
+        instructionDefs = LlmInstructionDef
+            .listFromLlmConfigJson(config.llmConfigJson)
+            .associateBy { it.name }
 
         Log.d(TAG, "initialized: agentId=${config.agentId} stt=${config.sttVendor} llm=${config.llmVendor} tts=${config.ttsVendor} mcp=${config.mcpServersJson != null}")
     }
@@ -178,6 +197,8 @@ class ChatAgentSession : NativeAgent {
     }
 
     override fun release() {
+        mcpLoadJob?.cancel()
+        mcpLoadJob = null
         mcpRouter?.dispose()
         mcpRouter = null
         scope.cancel()
@@ -392,7 +413,23 @@ class ChatAgentSession : NativeAgent {
                 // OpenAI 标准：assistant 用 tool_calls 决定调工具 → 拿结果 →
                 // 再次 chat → ... 直到 LLM 给最终文本（无 tool_calls）。
                 val currentMessages: MutableList<Map<String, Any>> = messages.toMutableList()
-                val tools = mcpRouter?.openAiTools() ?: emptyList()
+                // 等 MCP 加载完成（首条消息可能在 router 还没 listTools 完时进来；
+                // 不 join 会拿到空 tools，LLM 永远不会发 tool_calls）。
+                mcpLoadJob?.join()
+                val mcpTools = mcpRouter?.openAiTools() ?: emptyList()
+                // 合并指令 tools；MCP 同名优先，避免覆盖真实工具。
+                val mcpToolNames: Set<String> = mcpTools.mapNotNull {
+                    @Suppress("UNCHECKED_CAST")
+                    (it["function"] as? Map<String, Any?>)?.get("name") as? String
+                }.toSet()
+                val instructionTools = instructionDefs.values
+                    .filter { it.name !in mcpToolNames }
+                    .map { it.toOpenAiTool() }
+                val tools = mcpTools + instructionTools
+                Log.d(
+                    TAG,
+                    "LLM call: mcpTools=${mcpTools.size} instructionTools=${instructionTools.size} mcpRouter=${mcpRouter != null} mcpLoadDone=${mcpLoadJob?.isCompleted}"
+                )
 
                 loop@ for (iter in 0 until maxToolIterations) {
                     if (!isActive || activeRequestId != requestId) break@loop
@@ -490,6 +527,25 @@ class ChatAgentSession : NativeAgent {
                         val id = tc["id"] ?: ""
                         val name = tc["name"] ?: ""
                         val args = tc["args"] ?: ""
+
+                        // 指令路径：派发 instructionTriggered，**不**走 MCP 执行。
+                        if (instructionDefs.containsKey(name)) {
+                            val handlerResult = InstructionHandlerRegistry.dispatch(name, args)
+                            val content = handlerResult
+                                ?: "{\"status\":\"ok\",\"instruction\":\"$name\"}"
+                            eventSink.onLlmEvent(LlmEventData(
+                                config.agentId, requestId, kind = "instructionTriggered",
+                                toolCallId = id, toolName = name,
+                                toolArgumentsDelta = args, toolResult = content))
+                            currentMessages.add(mapOf(
+                                "role" to "tool",
+                                "tool_call_id" to id,
+                                "name" to name,
+                                "content" to content,
+                            ))
+                            continue
+                        }
+
                         val result = router?.callTool(name, args) ?: mapOf(
                             "content" to "Error: no MCP servers configured",
                             "isError" to true,

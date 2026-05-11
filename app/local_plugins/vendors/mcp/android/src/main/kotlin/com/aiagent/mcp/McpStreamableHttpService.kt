@@ -205,8 +205,13 @@ class McpStreamableHttpService : NativeMcpService {
     }
 
     private suspend fun postWithBody(body: JSONObject): _RpcResponse {
+        // 用 ByteArray.toRequestBody 而不是 String.toRequestBody —— 后者会
+        // 强行把 Content-Type 改成 "application/json; charset=utf-8"，部分
+        // MCP server（如严格匹配的实现）会因此回 400 "Invalid content type:
+        // must be 'application/json'"。ByteArray 版本保留纯 "application/json"。
+        val bodyBytes = body.toString().toByteArray(Charsets.UTF_8)
         val req = Request.Builder().url(url).also { buildHeaders(it) }
-            .post(body.toString().toRequestBody(JSON_MEDIA))
+            .post(bodyBytes.toRequestBody(JSON_MEDIA))
             .build()
         val response = enqueue(req)
         try {

@@ -12,6 +12,10 @@ import org.json.JSONObject
  * - 按 toolName 路由 callTool
  *
  * 由 agent 容器（如 ChatAgentSession）独占持有，生命周期与 agent 一致。
+ *
+ * 注：进程级缓存在 [NativeMcpServiceCache] —— 但当前 addServer 走直连，
+ * 不查缓存。之前曾接进缓存但触发了"LLM 看不到工具"的回归，先回退到稳定版，
+ * 缓存优化留待后续单独验证。
  */
 class NativeMcpRouter {
 
@@ -73,9 +77,10 @@ class NativeMcpRouter {
                     serverId = serverId,
                 )
             }
-            Log.d(TAG, "addServer($serverId): ${tools.size} tools")
+            Log.d(TAG, "addServer($serverId): ${tools.size} tools loaded, toolByName.size=${toolByName.size}")
         } catch (e: Exception) {
             warnings.add("connect server \"$serverId\" failed: ${e.message}")
+            Log.w(TAG, "addServer($serverId) failed", e)
             try {
                 service.dispose()
             } catch (_: Exception) {}

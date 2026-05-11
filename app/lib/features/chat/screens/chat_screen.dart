@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -153,6 +154,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 connectionState: state.connectionState,
                 onTap: _toggleConnection,
               ),
+            ),
+          // Debug only — 注入演示事件，预览 chip 渲染效果。Release 包不显示。
+          if (kDebugMode)
+            IconButton(
+              icon: Icon(Icons.science_outlined, color: colors.text2),
+              tooltip: '注入演示事件',
+              onPressed: () => ref
+                  .read(agentScreenProvider(widget.agentId).notifier)
+                  .injectDemoEvents(),
             ),
           IconButton(
             icon: Icon(Icons.more_horiz, color: colors.text2),

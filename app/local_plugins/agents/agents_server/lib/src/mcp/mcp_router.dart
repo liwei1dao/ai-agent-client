@@ -10,6 +10,9 @@ import 'package:ai_plugin_interface/ai_plugin_interface.dart';
 ///
 /// 单 chat agent 实例独占一个 router；router 的生命周期与 agent 一致：
 /// `addServer × N → listAllTools → callTool* → dispose`
+///
+/// 注：进程级缓存在 [McpServiceCache]（保留备用）—— 当前 router 走直连，
+/// 之前接进缓存触发了"LLM 看不到工具"的回归，先回退到稳定版。
 class McpRouter {
   McpRouter({required this.pluginFactory});
 

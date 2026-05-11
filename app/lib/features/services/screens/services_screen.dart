@@ -285,6 +285,10 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
   late Map<String, TextEditingController> _cfgCtrls;
   bool _dirty = false;
 
+  /// LLM 服务的"指令"列表（仅 type == 'llm' 时使用）。
+  /// 持久化到 configJson 的 `instructions` 数组字段。
+  List<LlmInstructionDef> _instructions = [];
+
   // Config fields to show per vendor (field key → display label)
   static const _vendorFields = <String, List<(String, String, bool)>>{
     // (key, label, obscure)
@@ -327,6 +331,18 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
         else
           key: TextEditingController(),
     };
+
+    // LLM 服务：把 cfg.instructions 读成强类型列表。
+    if (_svc.type == 'llm') {
+      final raw = cfg['instructions'];
+      if (raw is List) {
+        _instructions = [
+          for (final entry in raw)
+            if (entry is Map)
+              LlmInstructionDef.fromJson(entry.cast<String, dynamic>()),
+        ];
+      }
+    }
   }
 
   /// Resolve fields by (vendor, type). volcengine differs by type; others are type-agnostic.
@@ -383,6 +399,13 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
         cfg[entry.key] = v;
       } else {
         cfg.remove(entry.key);
+      }
+    }
+    if (_svc.type == 'llm') {
+      if (_instructions.isEmpty) {
+        cfg.remove('instructions');
+      } else {
+        cfg['instructions'] = _instructions.map((i) => i.toJson()).toList();
       }
     }
     await ref.read(serviceLibraryProvider.notifier).updateService(
@@ -540,6 +563,22 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
                     ],
                   ],
 
+                  // LLM 服务专属：指令配置（内部 function call 占位）
+                  if (_svc.type == 'llm') ...[
+                    const SizedBox(height: 4),
+                    _InstructionsEditor(
+                      instructions: _instructions,
+                      accentColor: accentColor,
+                      onChanged: (next) {
+                        setState(() {
+                          _instructions = next;
+                        });
+                        _markDirty();
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+
                   // Save button
                   SizedBox(
                     width: double.infinity,
@@ -584,6 +623,356 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── LLM 指令编辑器 ──────────────────────────────────────────────────────────
+//
+// 让用户在 LLM 服务配置里登记"指令"——本质是一组空的 function call 占位。
+// 这些定义会以 tool 的形式传给 LLM；LLM 触发后由调度层（agent_chat 等）
+// 派发 instructionTriggered 事件而不走 MCP 执行，业务侧通过
+// InstructionHandlerRegistry 挂副作用。
+
+class _InstructionsEditor extends StatelessWidget {
+  const _InstructionsEditor({
+    required this.instructions,
+    required this.accentColor,
+    required this.onChanged,
+  });
+
+  final List<LlmInstructionDef> instructions;
+  final Color accentColor;
+  final ValueChanged<List<LlmInstructionDef>> onChanged;
+
+  Future<void> _openEditor(BuildContext context, {int? index}) async {
+    final existing = index != null ? instructions[index] : null;
+    final result = await showDialog<LlmInstructionDef?>(
+      context: context,
+      builder: (_) => _InstructionEditDialog(
+        initial: existing,
+        accentColor: accentColor,
+      ),
+    );
+    if (result == null) return;
+    final next = List<LlmInstructionDef>.from(instructions);
+    if (index != null) {
+      next[index] = result;
+    } else {
+      next.add(result);
+    }
+    onChanged(next);
+  }
+
+  void _remove(int index) {
+    final next = List<LlmInstructionDef>.from(instructions)..removeAt(index);
+    onChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bolt, size: 14, color: Color(0xFFB45309)),
+              const SizedBox(width: 5),
+              const Text(
+                '指令配置',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF92400E),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '${instructions.length}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFFB45309),
+                ),
+              ),
+              const Spacer(),
+              InkWell(
+                onTap: () => _openEditor(context),
+                borderRadius: BorderRadius.circular(6),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add, size: 12, color: Color(0xFFB45309)),
+                      SizedBox(width: 3),
+                      Text(
+                        '添加指令',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFB45309),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '注册供 LLM 调用的内部指令（如 media.next_track）。\n触发后会以事件卡片展示，业务侧可通过 InstructionHandlerRegistry 挂回调。',
+            style: TextStyle(fontSize: 10.5, height: 1.4, color: Color(0xFF92400E)),
+          ),
+          if (instructions.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (int i = 0; i < instructions.length; i++) ...[
+              _InstructionRow(
+                def: instructions[i],
+                onTap: () => _openEditor(context, index: i),
+                onDelete: () => _remove(i),
+              ),
+              if (i < instructions.length - 1) const SizedBox(height: 6),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _InstructionRow extends StatelessWidget {
+  const _InstructionRow({
+    required this.def,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final LlmInstructionDef def;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      def.name,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.text1,
+                        fontFamily: 'monospace',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (def.description.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        def.description,
+                        style: const TextStyle(fontSize: 11, color: AppTheme.text2),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (def.parameters != null)
+                Container(
+                  margin: const EdgeInsets.only(left: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    '带参',
+                    style: TextStyle(fontSize: 9, color: AppTheme.text2),
+                  ),
+                ),
+              IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.close, size: 14, color: AppTheme.text2),
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InstructionEditDialog extends StatefulWidget {
+  const _InstructionEditDialog({
+    required this.initial,
+    required this.accentColor,
+  });
+
+  final LlmInstructionDef? initial;
+  final Color accentColor;
+
+  @override
+  State<_InstructionEditDialog> createState() => _InstructionEditDialogState();
+}
+
+class _InstructionEditDialogState extends State<_InstructionEditDialog> {
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _descCtrl;
+  late final TextEditingController _paramsCtrl;
+  String? _paramsError;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.initial?.name ?? '');
+    _descCtrl = TextEditingController(text: widget.initial?.description ?? '');
+    _paramsCtrl = TextEditingController(
+      text: widget.initial?.parameters == null
+          ? ''
+          : const JsonEncoder.withIndent('  ').convert(widget.initial!.parameters),
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _descCtrl.dispose();
+    _paramsCtrl.dispose();
+    super.dispose();
+  }
+
+  void _confirm() {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _paramsError = '指令名不能为空');
+      return;
+    }
+    Map<String, dynamic>? params;
+    final raw = _paramsCtrl.text.trim();
+    if (raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is! Map) {
+          setState(() => _paramsError = '参数 schema 必须是 JSON 对象');
+          return;
+        }
+        params = decoded.cast<String, dynamic>();
+      } catch (e) {
+        setState(() => _paramsError = 'JSON 解析失败：${e.toString()}');
+        return;
+      }
+    }
+    Navigator.pop(
+      context,
+      LlmInstructionDef(
+        name: name,
+        description: _descCtrl.text.trim(),
+        parameters: params,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.initial == null ? '添加指令' : '编辑指令'),
+      content: SizedBox(
+        width: 320,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('指令名 *',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.text2)),
+              const SizedBox(height: 4),
+              TextField(
+                controller: _nameCtrl,
+                style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'media.next_track',
+                  hintStyle: TextStyle(fontSize: 12, color: AppTheme.text2),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text('描述（给 LLM 看，决定何时触发）',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.text2)),
+              const SizedBox(height: 4),
+              TextField(
+                controller: _descCtrl,
+                style: const TextStyle(fontSize: 12),
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: '切换到下一曲',
+                  hintStyle: TextStyle(fontSize: 12, color: AppTheme.text2),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text('参数 JSON Schema（可选）',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.text2)),
+              const SizedBox(height: 4),
+              TextField(
+                controller: _paramsCtrl,
+                style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace'),
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: '{\n  "type": "object",\n  "properties": {}\n}',
+                  hintStyle: TextStyle(fontSize: 11, color: AppTheme.text2),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (_paramsError != null) ...[
+                const SizedBox(height: 4),
+                Text(_paramsError!,
+                    style: const TextStyle(fontSize: 11, color: AppTheme.danger)),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _confirm,
+          style: FilledButton.styleFrom(backgroundColor: widget.accentColor),
+          child: const Text('保存'),
+        ),
+      ],
     );
   }
 }

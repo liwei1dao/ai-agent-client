@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 /// LLM 配置
@@ -10,6 +12,7 @@ class LlmConfig {
     this.maxTokens = 2048,
     this.systemPrompt,
     this.extraParams = const {},
+    this.instructions = const [],
   });
 
   final String apiKey;
@@ -19,6 +22,101 @@ class LlmConfig {
   final int maxTokens;
   final String? systemPrompt;
   final Map<String, dynamic> extraParams;
+
+  /// 用户在 LLM 服务配置界面注册的"指令"——本质是 LLM 可见的 function call 占位。
+  /// 调度层（agent_chat 等）会把它们当作 tool 传给 LLM；LLM 触发后调度层不再走
+  /// MCP 执行链，而是派发 [LlmEventType.instructionTriggered] 给上层 UI/外设处理。
+  final List<LlmInstructionDef> instructions;
+}
+
+/// 用户注册的"指令"占位定义。
+///
+/// 不携带任何实际执行逻辑——只是一个 LLM 可见的 function 名 + 描述（+ 可选参数 schema）。
+/// 触发后由调度层派发事件，**真正的副作用**（播放下一曲、设备控制等）由
+/// [InstructionHandlerRegistry] 中注册的处理器完成；未注册时只发事件不执行动作。
+@immutable
+class LlmInstructionDef {
+  const LlmInstructionDef({
+    required this.name,
+    required this.description,
+    this.parameters,
+  });
+
+  /// function 名（建议形如 `media.next_track`），LLM 会原样回填到 tool_call。
+  final String name;
+
+  /// 给 LLM 看的描述（决定何时触发，写清楚语义）。
+  final String description;
+
+  /// 可选 JSON Schema；为 null 时视为无参函数。
+  final Map<String, dynamic>? parameters;
+
+  /// 转为 LLM 可识别的 tool 定义。
+  LlmTool toLlmTool() => LlmTool(
+        name: name,
+        description: description,
+        parameters: parameters ??
+            const {
+              'type': 'object',
+              'properties': <String, dynamic>{},
+            },
+      );
+
+  factory LlmInstructionDef.fromJson(Map<String, dynamic> j) =>
+      LlmInstructionDef(
+        name: (j['name'] as String?) ?? '',
+        description: (j['description'] as String?) ?? '',
+        parameters: j['parameters'] is Map
+            ? (j['parameters'] as Map).cast<String, dynamic>()
+            : null,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'description': description,
+        if (parameters != null) 'parameters': parameters,
+      };
+}
+
+/// 指令处理器签名：拿到解析后的参数，返回 LLM 期望的"调用结果"字符串。
+///
+/// 返回 null 表示用户没注册副作用，调度层会回填一段默认 "ok" 文本给 LLM，
+/// 让对话能继续；返回非空字符串则会原样作为 tool result 回灌到 LLM 历史。
+typedef InstructionHandler = FutureOr<String?> Function(
+  String name,
+  Map<String, dynamic> args,
+);
+
+/// 全局指令处理器注册表。
+///
+/// 调度层（agent_chat / agent_sts_chat 等）会在派发 [LlmEventType.instructionTriggered]
+/// 之后尝试 [dispatch] 同名 handler；底层 agent 对象只需在 app 启动期间
+/// `InstructionHandlerRegistry.instance.register('media.next_track', ...)` 即可挂逻辑。
+class InstructionHandlerRegistry {
+  InstructionHandlerRegistry._();
+  static final InstructionHandlerRegistry instance =
+      InstructionHandlerRegistry._();
+
+  final Map<String, InstructionHandler> _handlers = {};
+
+  void register(String name, InstructionHandler handler) {
+    _handlers[name] = handler;
+  }
+
+  void unregister(String name) => _handlers.remove(name);
+
+  bool has(String name) => _handlers.containsKey(name);
+
+  /// 找到对应 handler 并执行。无匹配时返回 null。
+  Future<String?> dispatch(String name, Map<String, dynamic> args) async {
+    final h = _handlers[name];
+    if (h == null) return null;
+    try {
+      return await h(name, args);
+    } catch (e) {
+      return 'Error: ${e.toString()}';
+    }
+  }
 }
 
 /// 聊天消息角色

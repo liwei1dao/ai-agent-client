@@ -27,6 +27,11 @@ enum LlmEventKind {
   toolCallStart,
   toolCallArguments,
   toolCallResult,
+
+  /// 用户在 LLM 服务配置里注册的"指令"被 LLM 触发。
+  /// 调度层不会走 MCP 执行链；上层 UI 据此渲染指令事件卡片，
+  /// 业务也可通过 [InstructionHandlerRegistry] 挂载实际副作用。
+  instructionTriggered,
   done,
   cancelled,
   error,
@@ -265,6 +270,7 @@ LlmEventKind _parseLlmKind(String? s) => switch (s) {
       'toolCallStart' => LlmEventKind.toolCallStart,
       'toolCallArguments' => LlmEventKind.toolCallArguments,
       'toolCallResult' => LlmEventKind.toolCallResult,
+      'instructionTriggered' => LlmEventKind.instructionTriggered,
       'done' => LlmEventKind.done,
       'cancelled' => LlmEventKind.cancelled,
       _ => LlmEventKind.error,

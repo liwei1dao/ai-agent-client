@@ -21,6 +21,12 @@ class WebChatAgent implements WebAgent {
   late ai.TtsPlugin _tts;
   McpRouter? _mcp;
 
+  /// 由 LLM 服务配置带入的指令列表（name -> def），用于 tool 路由分流。
+  final Map<String, ai.LlmInstructionDef> _instructions = {};
+
+  /// 合并后的 LLM tools 缓存（MCP tools + 指令转换出的 tools）。
+  List<ai.LlmTool> _mergedTools = const [];
+
   StreamSubscription<ai.SttEvent>? _sttSub;
   StreamSubscription<ai.TtsEvent>? _ttsSub;
 
@@ -66,6 +72,12 @@ class WebChatAgent implements WebAgent {
       _history.add(ai.LlmMessage(role: ai.MessageRole.system, content: sys));
     }
 
+    // 加载用户在 LLM 服务里登记的指令（指令名 -> 定义）。
+    for (final def in llmCfg.instructions) {
+      if (def.name.isEmpty) continue;
+      _instructions[def.name] = def;
+    }
+
     // 连接 MCP 服务器（每个 server 独立失败容忍）。
     final servers = WebConfigParser.parseMcpServers(config.mcpServersJson);
     if (servers.isNotEmpty) {
@@ -76,6 +88,21 @@ class WebChatAgent implements WebAgent {
         await _mcp!.addServer(s);
       }
     }
+
+    _rebuildMergedTools();
+  }
+
+  void _rebuildMergedTools() {
+    final out = <ai.LlmTool>[];
+    final mcpTools = _mcp?.llmTools ?? const <ai.LlmTool>[];
+    out.addAll(mcpTools);
+    // 指令同名时 MCP 优先（避免覆盖真实工具）。
+    final mcpNames = mcpTools.map((t) => t.name).toSet();
+    for (final def in _instructions.values) {
+      if (mcpNames.contains(def.name)) continue;
+      out.add(def.toLlmTool());
+    }
+    _mergedTools = out;
   }
 
   @override
@@ -241,7 +268,7 @@ class WebChatAgent implements WebAgent {
         await for (final event in _llm.chat(
           requestId: requestId,
           messages: _history,
-          tools: _mcp?.llmTools ?? const [],
+          tools: _mergedTools,
         )) {
           if (!_gate.isActive(requestId)) return;
           switch (event.type) {
@@ -340,6 +367,44 @@ class WebChatAgent implements WebAgent {
       for (final tc in pendingToolCalls) {
         if (!_gate.isActive(requestId)) return;
 
+        Map<String, dynamic> args = const {};
+        try {
+          if (tc.argumentsJson.isNotEmpty) {
+            final decoded = jsonDecode(tc.argumentsJson);
+            if (decoded is Map) args = decoded.cast<String, dynamic>();
+          }
+        } catch (_) {
+          // 无效 JSON 参数：留空交给 handler / MCP server 自行处理 / 报错
+        }
+
+        final instructionDef = _instructions[tc.name];
+        if (instructionDef != null) {
+          // 指令路径：派发 instructionTriggered 事件，由 InstructionHandlerRegistry
+          // 处理副作用（未注册时填默认 "ok" 让 LLM 对话能继续）。
+          final handlerResult = await ai.InstructionHandlerRegistry.instance
+              .dispatch(tc.name, args);
+          final resultText = handlerResult ??
+              '{"status":"ok","instruction":"${tc.name}"}';
+
+          _emit(LlmEvent(
+            sessionId: _config.agentId,
+            requestId: requestId,
+            kind: LlmEventKind.instructionTriggered,
+            toolCallId: tc.id,
+            toolName: tc.name,
+            toolArgumentsDelta: tc.argumentsJson,
+            toolResult: resultText,
+          ));
+
+          _history.add(ai.LlmMessage(
+            role: ai.MessageRole.tool,
+            content: resultText,
+            toolCallId: tc.id,
+            name: tc.name,
+          ));
+          continue;
+        }
+
         _emit(LlmEvent(
           sessionId: _config.agentId,
           requestId: requestId,
@@ -348,16 +413,6 @@ class WebChatAgent implements WebAgent {
           toolName: tc.name,
           toolArgumentsDelta: tc.argumentsJson,
         ));
-
-        Map<String, dynamic> args = const {};
-        try {
-          if (tc.argumentsJson.isNotEmpty) {
-            final decoded = jsonDecode(tc.argumentsJson);
-            if (decoded is Map) args = decoded.cast<String, dynamic>();
-          }
-        } catch (_) {
-          // 无效 JSON 参数：留空交给 server 自行处理 / 报错
-        }
 
         final result = _mcp == null
             ? ai.McpToolResult(

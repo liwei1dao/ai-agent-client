@@ -18,7 +18,9 @@ class AgentMessage {
     this.translatedContent,
     this.detectedLang,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    List<MessageEvent>? events,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        events = events ?? <MessageEvent>[];
   final String id;
   final String role;
   String content;
@@ -27,8 +29,55 @@ class AgentMessage {
   String? detectedLang;      // 检测到的源语言代码（用于翻译模式对齐）
   final DateTime createdAt;
 
+  /// 与本条消息绑定的过程事件（MCP 工具调用 / thinking / 自定义钩子）。
+  /// UI 在气泡上方按 [MessageEvent.startedAt] 顺序渲染。
+  final List<MessageEvent> events;
+
   /// 是否为翻译配对消息（同时包含原文和译文）
   bool get isTranslationPair => translatedContent != null;
+}
+
+/// 一条 [AgentMessage] 关联的过程事件。
+///
+/// 不同 kind 字段含义：
+/// - [MessageEventKind.toolCall]：`label` = 工具名，`input` = 参数 JSON（流式累加），
+///   `output` = 工具返回（一次性写入）
+/// - [MessageEventKind.thinking]：`label` 留空或 "思考中"，`input` = 思考文本（流式累加）
+/// - [MessageEventKind.custom]：业务自定义，`label` 自描述
+class MessageEvent {
+  MessageEvent({
+    required this.id,
+    required this.kind,
+    required this.label,
+    this.input = '',
+    this.output,
+    this.status = 'running',
+    DateTime? startedAt,
+    this.completedAt,
+  }) : startedAt = startedAt ?? DateTime.now();
+
+  final String id;
+  final MessageEventKind kind;
+  String label;
+  String input;
+  String? output;
+
+  /// `running` | `success` | `error`
+  String status;
+  final DateTime startedAt;
+  DateTime? completedAt;
+
+  Duration? get duration => completedAt?.difference(startedAt);
+}
+
+enum MessageEventKind {
+  toolCall,
+  thinking,
+
+  /// 用户在 LLM 服务里登记的"指令"被 LLM 触发（如多媒体上一曲/下一曲）。
+  /// 与 toolCall 走同一气泡 events 列表，但用独立配色/图标提示业务侧 hook。
+  instruction,
+  custom,
 }
 
 class AgentScreenState {
@@ -662,18 +711,124 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
           _voiceCancelled = false;
         }
 
-      case LlmEvent(:final kind, :final requestId, :final textDelta, :final fullText, :final errorMessage):
+      case LlmEvent(
+          :final kind,
+          :final requestId,
+          :final textDelta,
+          :final thinkingDelta,
+          :final toolCallId,
+          :final toolName,
+          :final toolArgumentsDelta,
+          :final toolResult,
+          :final fullText,
+          :final errorMessage):
         final msgs = List<AgentMessage>.from(state.messages);
-        final idx = msgs.indexWhere((m) => m.id == requestId && m.role == 'assistant');
+        var idx = msgs.indexWhere((m) => m.id == requestId && m.role == 'assistant');
 
         // Helper: ensure assistant placeholder exists for this request
         void ensureAssistant(String status, String content) {
           if (idx == -1) {
             msgs.add(AgentMessage(id: requestId, role: 'assistant', content: content, status: status));
+            idx = msgs.length - 1;
           } else {
             msgs[idx].content = content.isNotEmpty ? msgs[idx].content + content : msgs[idx].content;
             msgs[idx].status = status;
           }
+        }
+
+        // ── 工具调用 / thinking 事件 → 挂到 assistant 消息的 events 列表 ──
+        if (kind == LlmEventKind.toolCallStart) {
+          ensureAssistant('streaming', '');
+          msgs[idx].events.add(MessageEvent(
+            id: toolCallId ?? 'tc_${DateTime.now().microsecondsSinceEpoch}',
+            kind: MessageEventKind.toolCall,
+            label: toolName ?? 'tool',
+            status: 'running',
+          ));
+          state = state.copyWith(messages: msgs);
+          break;
+        }
+        if (kind == LlmEventKind.toolCallArguments) {
+          if (idx != -1 && toolArgumentsDelta != null) {
+            // arguments 流式 delta 不带 id，归属到最近一个 running 工具调用。
+            final running = msgs[idx].events.lastWhere(
+              (e) => e.kind == MessageEventKind.toolCall && e.status == 'running',
+              orElse: () => MessageEvent(id: '', kind: MessageEventKind.toolCall, label: ''),
+            );
+            if (running.id.isNotEmpty) {
+              running.input += toolArgumentsDelta;
+              state = state.copyWith(messages: msgs);
+            }
+          }
+          break;
+        }
+        if (kind == LlmEventKind.instructionTriggered) {
+          // 指令事件是一次性合成事件（无 start/args/result 三段），
+          // 直接挂一条 success/error event card。
+          ensureAssistant('streaming', '');
+          final isErr = (toolResult ?? '').toLowerCase().startsWith('error');
+          msgs[idx].events.add(MessageEvent(
+            id: toolCallId ?? 'instr_${DateTime.now().microsecondsSinceEpoch}',
+            kind: MessageEventKind.instruction,
+            label: toolName ?? 'instruction',
+            input: toolArgumentsDelta ?? '',
+            output: toolResult,
+            status: isErr ? 'error' : 'success',
+            completedAt: DateTime.now(),
+          ));
+          state = state.copyWith(messages: msgs);
+          break;
+        }
+        if (kind == LlmEventKind.toolCallResult) {
+          if (idx != -1) {
+            // 优先按 toolCallId 精确定位；找不到则取最近一个 running 工具调用。
+            MessageEvent? target;
+            if (toolCallId != null) {
+              for (final e in msgs[idx].events.reversed) {
+                if (e.kind == MessageEventKind.toolCall && e.id == toolCallId) {
+                  target = e;
+                  break;
+                }
+              }
+            }
+            target ??= msgs[idx].events.cast<MessageEvent?>().lastWhere(
+                  (e) => e!.kind == MessageEventKind.toolCall && e.status == 'running',
+                  orElse: () => null,
+                );
+            if (target != null) {
+              if (toolResult != null) target.output = toolResult;
+              final isErr = (toolResult ?? '').toLowerCase().startsWith('error');
+              target.status = isErr ? 'error' : 'success';
+              target.completedAt = DateTime.now();
+              state = state.copyWith(messages: msgs);
+            }
+          }
+          break;
+        }
+        if (kind == LlmEventKind.thinking) {
+          if (thinkingDelta != null && thinkingDelta.isNotEmpty) {
+            ensureAssistant('streaming', '');
+            // 累积到最近一个 running thinking event；没有就新建
+            MessageEvent? thinking;
+            for (final e in msgs[idx].events.reversed) {
+              if (e.kind == MessageEventKind.thinking && e.status == 'running') {
+                thinking = e;
+                break;
+              }
+            }
+            if (thinking == null) {
+              thinking = MessageEvent(
+                id: 'think_${DateTime.now().microsecondsSinceEpoch}',
+                kind: MessageEventKind.thinking,
+                label: '思考中',
+                status: 'running',
+              );
+              msgs[idx].events.add(thinking);
+            }
+            thinking.input += thinkingDelta;
+            state = state.copyWith(messages: msgs);
+          }
+          break;
         }
 
         if (kind == LlmEventKind.firstToken && textDelta != null) {
@@ -731,6 +886,20 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
           if (idx != -1) msgs[idx].status = 'cancelled';
         } else if (kind == LlmEventKind.error) {
           ensureAssistant('error', errorMessage ?? '');
+        }
+        // 收尾仍在 running 的事件（thinking 主要靠这里闭合，工具调用 normally
+        // 由 toolCallResult 闭合，但兜底防 LLM 异常退出导致 chip 永远转圈）。
+        if (idx != -1 &&
+            (kind == LlmEventKind.done ||
+                kind == LlmEventKind.cancelled ||
+                kind == LlmEventKind.error)) {
+          final terminal = kind == LlmEventKind.done ? 'success' : 'error';
+          for (final e in msgs[idx].events) {
+            if (e.status == 'running') {
+              e.status = terminal;
+              e.completedAt = DateTime.now();
+            }
+          }
         }
         state = state.copyWith(messages: msgs);
 
@@ -796,6 +965,145 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
     if (!state.isEndToEnd) return;
     await _bridge.resumeAudio(_agentId);
     state = state.copyWith(inputMode: 'call');
+  }
+
+  /// 调试用：注入一组演示用的 user/assistant 消息 + 工具调用事件，
+  /// 用于在没有真实 MCP server 的情况下预览气泡上的事件 chip 渲染效果。
+  /// 仅在 debug 模式下从 UI 触发。
+  Future<void> injectDemoEvents() async {
+    final now = DateTime.now();
+    String genId(String prefix) =>
+        '${prefix}_${now.microsecondsSinceEpoch}_${state.messages.length}';
+
+    // 1) 单个工具调用：成功
+    final user1 = AgentMessage(
+      id: genId('u'), role: 'user',
+      content: '帮我看下 /tmp 下有什么文件', status: 'done',
+    );
+    final ai1 = AgentMessage(
+      id: genId('a'), role: 'assistant',
+      content: '/tmp 目录下有 3 项：build.log、session_2026.json，以及 ai-agent-cache 子目录。需要我打开哪个吗？',
+      status: 'done',
+      events: [
+        MessageEvent(
+          id: 'tc_demo_1', kind: MessageEventKind.toolCall,
+          label: 'list_files', status: 'success',
+          input: '{"path":"/tmp","recursive":false}',
+          output: 'build.log\nsession_2026.json\nai-agent-cache/',
+          startedAt: now, completedAt: now.add(const Duration(milliseconds: 234)),
+        ),
+      ],
+    );
+
+    // 2) 多步串行：3 个工具
+    final user2 = AgentMessage(
+      id: genId('u'), role: 'user',
+      content: '帮我搜一下 OPUS 编码相关的文档，挑一篇总结', status: 'done',
+    );
+    final ai2 = AgentMessage(
+      id: genId('a'), role: 'assistant',
+      content: '我从知识库里找到 4 篇相关文档，最新的是《OPUS 1.5 在弱网下的表现》。文章测试了 5%/10%/20% 丢包场景，得出三个核心结论：1) FEC 对 < 10% 丢包改善明显；2) PLC 在突发丢包下优于线性插值；3) DTX 节省 30% 带宽。',
+      status: 'done',
+      events: [
+        MessageEvent(
+          id: 'tc_demo_2a', kind: MessageEventKind.toolCall,
+          label: 'search_docs', status: 'success',
+          input: '{"query":"OPUS 编码","top_k":5}',
+          output: '4 results: opus_v1_5.md, opus_fec.md, opus_plc.md, opus_dtx.md',
+          startedAt: now, completedAt: now.add(const Duration(milliseconds: 1200)),
+        ),
+        MessageEvent(
+          id: 'tc_demo_2b', kind: MessageEventKind.toolCall,
+          label: 'read_file', status: 'success',
+          input: '{"path":"opus_v1_5.md"}',
+          output: '## OPUS 1.5 在弱网下的表现\n本文测试了…',
+          startedAt: now, completedAt: now.add(const Duration(milliseconds: 89)),
+        ),
+        MessageEvent(
+          id: 'tc_demo_2c', kind: MessageEventKind.toolCall,
+          label: 'summarize', status: 'success',
+          input: '{"max_tokens":300}',
+          output: 'FEC 改善 < 10% 丢包；PLC 优于线性插值；DTX 节省 30% 带宽。',
+          startedAt: now, completedAt: now.add(const Duration(milliseconds: 540)),
+        ),
+      ],
+    );
+
+    // 3) 错误状态
+    final user3 = AgentMessage(
+      id: genId('u'), role: 'user',
+      content: '访问 https://x.invalid/api 拿一下数据', status: 'done',
+    );
+    final ai3 = AgentMessage(
+      id: genId('a'), role: 'assistant',
+      content: '抱歉，我尝试访问该 URL 时超时了，请检查链接是否正确。',
+      status: 'done',
+      events: [
+        MessageEvent(
+          id: 'tc_demo_3', kind: MessageEventKind.toolCall,
+          label: 'fetch_url', status: 'error',
+          input: '{"url":"https://x.invalid/api","timeout":3000}',
+          output: 'Error: tool "fetch_url" timeout after 3s',
+          startedAt: now, completedAt: now.add(const Duration(milliseconds: 3200)),
+        ),
+      ],
+    );
+
+    // 4) Thinking + 工具组合
+    final user4 = AgentMessage(
+      id: genId('u'), role: 'user',
+      content: '我应该先升级 Flutter 还是先迁移 Riverpod？', status: 'done',
+    );
+    final ai4 = AgentMessage(
+      id: genId('a'), role: 'assistant',
+      content: '建议先升 Flutter。理由：Riverpod 3.x 对新 Dart 模式匹配语法支持更好，先升 Flutter 能减少二次返工。',
+      status: 'done',
+      events: [
+        MessageEvent(
+          id: 'th_demo_4', kind: MessageEventKind.thinking,
+          label: '思考', status: 'success',
+          input: '用户在做架构决策，我需要权衡：\n- 先升 Flutter：解锁新语言特性，但可能引入兼容问题\n- 先迁 Riverpod：状态管理更稳定，但要再次适配新 SDK\n综合评估，先升 Flutter 更优…',
+          startedAt: now, completedAt: now.add(const Duration(seconds: 8, milliseconds: 400)),
+        ),
+        MessageEvent(
+          id: 'tc_demo_4', kind: MessageEventKind.toolCall,
+          label: 'check_pubspec', status: 'success',
+          input: '{"path":"app/pubspec.yaml"}',
+          output: 'flutter: 3.27.0\nriverpod: 2.6.1',
+          startedAt: now, completedAt: now.add(const Duration(milliseconds: 60)),
+        ),
+      ],
+    );
+
+    // 5) 进行中（流式）：第一个工具已成功，第二个仍在跑
+    final user5 = AgentMessage(
+      id: genId('u'), role: 'user',
+      content: '查一下今天的天气并安排日程', status: 'done',
+    );
+    final ai5 = AgentMessage(
+      id: genId('a'), role: 'assistant',
+      content: '杭州今天多云转晴，最高 22°C。我在帮你查日历…',
+      status: 'streaming',
+      events: [
+        MessageEvent(
+          id: 'tc_demo_5a', kind: MessageEventKind.toolCall,
+          label: 'get_weather', status: 'success',
+          input: '{"city":"hangzhou"}',
+          output: '{"temp":22,"condition":"cloudy_to_sunny"}',
+          startedAt: now, completedAt: now.add(const Duration(milliseconds: 380)),
+        ),
+        MessageEvent(
+          id: 'tc_demo_5b', kind: MessageEventKind.toolCall,
+          label: 'list_calendar_events', status: 'running',
+          input: '{"date":"today"}',
+          startedAt: now,
+        ),
+      ],
+    );
+
+    final newMsgs = List<AgentMessage>.from(state.messages)
+      ..addAll([user1, ai1, user2, ai2, user3, ai3, user4, ai4, user5, ai5]);
+    state = state.copyWith(messages: newMsgs);
   }
 
   Future<void> sendText(String requestId, String text) async {
