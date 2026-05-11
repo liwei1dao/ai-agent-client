@@ -7,8 +7,9 @@ import 'package:ai_plugin_interface/ai_plugin_interface.dart';
 ///
 /// 支持：
 ///   - streaming chat completions（SSE）
-///   - MCP/function tool calls（通过 McpManager 路由）
-///   - requestId 取消检测（activeRequestId 比对）
+///   - tool_calls SSE 增量解析（按 index 累积 id/name/arguments）
+///   - 在 done 事件携带完整 toolCalls 列表，多轮 loop 由 chat agent 容器在外层做
+///   - cancel(requestId) 取消
 class LlmOpenaiPlugin implements LlmPlugin {
   LlmConfig? _config;
   final Map<String, http.Client> _activeClients = {};
@@ -34,8 +35,7 @@ class LlmOpenaiPlugin implements LlmPlugin {
       'messages': messages.map((m) => m.toJson()).toList(),
       if (config.temperature != 0.7) 'temperature': config.temperature,
       if (config.maxTokens != 2048) 'max_tokens': config.maxTokens,
-      if (tools.isNotEmpty)
-        'tools': tools.map((t) => t.toJson()).toList(),
+      if (tools.isNotEmpty) 'tools': tools.map((t) => t.toJson()).toList(),
     };
 
     final uri = Uri.parse(
@@ -61,48 +61,67 @@ class LlmOpenaiPlugin implements LlmPlugin {
       }
 
       final fullText = StringBuffer();
+      // tool_calls 累积器：index → 渐进 state
+      final toolBuilders = <int, _ToolCallBuilder>{};
       bool firstToken = true;
+      String pending = ''; // 跨 chunk 行缓冲
 
       await for (final chunk in response.stream.transform(utf8.decoder)) {
-        for (final line in chunk.split('\n')) {
-          final trimmed = line.trim();
-          if (!trimmed.startsWith('data: ')) continue;
-          final data = trimmed.substring(6);
-          if (data == '[DONE]') {
+        pending += chunk;
+        // SSE 按行切分；最后一行可能不完整，留到下次
+        final lines = pending.split('\n');
+        pending = lines.removeLast();
+
+        for (final raw in lines) {
+          final line = raw.trim();
+          if (!line.startsWith('data: ')) continue;
+          final data = line.substring(6);
+          if (data == '[DONE]') break;
+
+          final parsed = _parseDelta(data);
+          if (parsed == null) continue;
+
+          // 文本增量
+          final textDelta = parsed.contentDelta;
+          if (textDelta != null && textDelta.isNotEmpty) {
+            fullText.write(textDelta);
             yield LlmEvent(
-              type: LlmEventType.done,
+              type: firstToken ? LlmEventType.firstToken : LlmEventType.firstToken,
               requestId: requestId,
-              fullText: fullText.toString(),
+              textDelta: textDelta,
             );
-            return;
+            firstToken = false;
           }
 
-          final delta = _parseTextDelta(data);
-          if (delta == null || delta.isEmpty) continue;
-
-          fullText.write(delta);
-
-          if (firstToken) {
-            firstToken = false;
-            yield LlmEvent(
-              type: LlmEventType.firstToken,
-              requestId: requestId,
-              textDelta: delta,
+          // tool_calls 增量
+          for (final tc in parsed.toolCallDeltas) {
+            final builder = toolBuilders.putIfAbsent(
+              tc.index,
+              () => _ToolCallBuilder(),
             );
-          } else {
-            yield LlmEvent(
-              type: LlmEventType.firstToken, // streaming delta
-              requestId: requestId,
-              textDelta: delta,
-            );
+            if (tc.id != null) builder.id = tc.id;
+            if (tc.name != null) builder.name = tc.name;
+            if (tc.argumentsDelta != null) {
+              builder.arguments.write(tc.argumentsDelta);
+            }
           }
         }
       }
+
+      final finalToolCalls = toolBuilders.values
+          .where((b) => (b.name ?? '').isNotEmpty)
+          .map((b) => ToolCall(
+                id: b.id ?? '',
+                name: b.name ?? '',
+                argumentsJson: b.arguments.toString(),
+              ))
+          .toList();
 
       yield LlmEvent(
         type: LlmEventType.done,
         requestId: requestId,
         fullText: fullText.toString(),
+        toolCalls: finalToolCalls.isEmpty ? null : finalToolCalls,
       );
     } on http.ClientException catch (e) {
       yield LlmEvent(
@@ -139,15 +158,61 @@ class LlmOpenaiPlugin implements LlmPlugin {
     _activeClients.clear();
   }
 
-  String? _parseTextDelta(String json) {
+  // ─────────────────────────────────────────────────
+  // SSE delta 解析
+  // ─────────────────────────────────────────────────
+
+  _DeltaParsed? _parseDelta(String json) {
     try {
       final obj = jsonDecode(json) as Map<String, dynamic>;
       final choices = obj['choices'] as List?;
       if (choices == null || choices.isEmpty) return null;
-      final delta = choices[0]['delta'] as Map<String, dynamic>?;
-      return delta?['content'] as String?;
+      final delta = (choices[0]['delta'] as Map?)?.cast<String, dynamic>();
+      if (delta == null) return _DeltaParsed(null, const []);
+
+      final content = delta['content'] as String?;
+
+      final tcs = delta['tool_calls'] as List?;
+      final toolDeltas = <_ToolCallDelta>[];
+      if (tcs != null) {
+        for (final tc in tcs.whereType<Map>()) {
+          final fn = (tc['function'] as Map?)?.cast<String, dynamic>();
+          toolDeltas.add(_ToolCallDelta(
+            index: (tc['index'] as num?)?.toInt() ?? 0,
+            id: tc['id'] as String?,
+            name: fn?['name'] as String?,
+            argumentsDelta: fn?['arguments'] as String?,
+          ));
+        }
+      }
+      return _DeltaParsed(content, toolDeltas);
     } catch (_) {
       return null;
     }
   }
+}
+
+class _DeltaParsed {
+  _DeltaParsed(this.contentDelta, this.toolCallDeltas);
+  final String? contentDelta;
+  final List<_ToolCallDelta> toolCallDeltas;
+}
+
+class _ToolCallDelta {
+  _ToolCallDelta({
+    required this.index,
+    this.id,
+    this.name,
+    this.argumentsDelta,
+  });
+  final int index;
+  final String? id;
+  final String? name;
+  final String? argumentsDelta;
+}
+
+class _ToolCallBuilder {
+  String? id;
+  String? name;
+  final StringBuffer arguments = StringBuffer();
 }

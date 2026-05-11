@@ -1,0 +1,77 @@
+name: ai_agent_sdk_workspace
+
+# 工作区成员：消费方 app + 25 个 SDK 子包
+packages:
+  - app
+  - app/local_plugins/core/*
+  - app/local_plugins/agents/*
+  - app/local_plugins/vendors/*
+  - app/local_plugins/devices/*
+  - app/local_plugins/translate_server
+  - app/local_plugins/assistant_server
+  - app/local_plugins/ai_agent_sdk
+
+ignore:
+  - "**/build/**"
+  - "**/.dart_tool/**"
+
+# 强制按 melos 解析依赖关系顺序执行（拓扑序）；
+# 上层包（agents_server / service_manager）会等所有 vendor 先发完。
+command:
+  bootstrap:
+    # melos 6 默认会自动写 pubspec_overrides.yaml，把所有 workspace 包
+    # 互相 path: 链接起来——这正是我们要的"开发走 path、发布走 hosted"双轨
+    runPubGetInParallel: true
+
+scripts:
+  # ------- 健康检查 -------
+  list:
+    description: 列出所有 workspace 包（拓扑序）
+    run: melos list --long --graph
+
+  list-publishable:
+    description: 列出真正要发布的 SDK 包（排除 app）
+    run: melos list --no-private
+
+  # ------- 发布（按 layer 拆分，避免上层先发） -------
+  publish-dry:
+    description: 全量 dry-run（不真发）
+    run: melos exec --no-private --order-dependents -- "dart pub publish --dry-run"
+
+  publish-l0:
+    description: 发布接口层（ai_plugin_interface / device_plugin_interface / local_db）
+    run: melos exec --no-private --order-dependents -- "dart pub publish --force"
+    packageFilters:
+      scope: ["ai_plugin_interface", "device_plugin_interface", "local_db"]
+
+  publish-l1:
+    description: 发布所有 vendors/* + device_jieli
+    run: melos exec --no-private --order-dependents -- "dart pub publish --force"
+    packageFilters:
+      scope:
+        - "stt_*"
+        - "tts_*"
+        - "llm_*"
+        - "sts_*"
+        - "ast_*"
+        - "translation_*"
+        - "mcp"
+        - "device_jieli"
+
+  publish-l2:
+    description: 发布业务编排层（translate_server / assistant_server / device_manager）
+    run: melos exec --no-private --order-dependents -- "dart pub publish --force"
+    packageFilters:
+      scope: ["translate_server", "assistant_server", "device_manager"]
+
+  publish-l3:
+    description: 发布顶层容器（agents/* + service_manager + agents_server）
+    run: melos exec --no-private --order-dependents -- "dart pub publish --force"
+    packageFilters:
+      scope: ["agent_*", "agents_server", "service_manager"]
+
+  publish-umbrella:
+    description: 发布 umbrella 门面包（必须在 L3 之后）
+    run: melos exec --no-private -- "dart pub publish --force"
+    packageFilters:
+      scope: ["ai_agent_sdk"]

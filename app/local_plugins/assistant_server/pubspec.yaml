@@ -1,6 +1,6 @@
 name: assistant_server
 description: AI Assistant orchestrator (single chat agent + headset RCSP audio loop). Native-driven; Dart side is a thin facade.
-publish_to: none
+publish_to: http://localhost:4000
 version: 0.1.0
 
 environment:
@@ -10,8 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  device_plugin_interface:
-    path: ../core/device_plugin_interface
+  device_plugin_interface: ^0.1.0
 
 dev_dependencies:
   flutter_test:

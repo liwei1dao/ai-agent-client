@@ -1,6 +1,6 @@
 name: ai_plugin_interface
 description: Shared abstract interfaces and data classes for AI plugins (Dart + Native)
-publish_to: none
+publish_to: http://localhost:4000
 version: 0.1.0
 
 environment:

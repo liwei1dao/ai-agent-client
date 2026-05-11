@@ -47,6 +47,7 @@ class AgentsServerBridge {
     String? stsConfigJson,
     String? astConfigJson,
     String? translationConfigJson,
+    String? mcpServersJson,
     Map<String, String> extraParams = const {},
   }) =>
       _commandChannel.invokeMethod('createAgent', {
@@ -65,6 +66,7 @@ class AgentsServerBridge {
         'stsConfigJson': stsConfigJson,
         'astConfigJson': astConfigJson,
         'translationConfigJson': translationConfigJson,
+        'mcpServersJson': mcpServersJson,
         'extraParams': extraParams,
       });
 

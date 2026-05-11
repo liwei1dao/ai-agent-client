@@ -2,6 +2,7 @@ import 'package:ai_plugin_interface/ai_plugin_interface.dart';
 import 'package:ast_polychat/ast_polychat_web.dart';
 import 'package:ast_volcengine/ast_volcengine.dart';
 import 'package:llm_openai/llm_openai.dart';
+import 'package:mcp/mcp.dart';
 import 'package:sts_volcengine/sts_volcengine.dart';
 import 'package:sts_polychat/sts_polychat_web.dart';
 import 'package:stt_azure/stt_azure.dart';
@@ -75,6 +76,18 @@ class WebServiceFactory {
         throw UnimplementedError(
           'Translation vendor "$vendor" not available on web',
         );
+    }
+  }
+
+  /// MCP transport 选择。当前仅 streamable_http；后续 SSE 旧版协议加在这里。
+  static McpPlugin createMcp(String transport) {
+    switch (transport) {
+      case 'streamable_http':
+      case 'http':
+        return McpHttpPlugin();
+      default:
+        throw UnimplementedError(
+            'MCP transport "$transport" not available on web');
     }
   }
 }

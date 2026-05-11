@@ -326,6 +326,38 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
         return jsonEncode(map);
       }
 
+      /// 把 agent 配置里的 mcpServiceIds 列表解析成 native 端要消费的
+      /// JSON 数组（每条 = McpServerConfig.toJson）。无 MCP 时返回 null。
+      String? buildMcpServersJson() {
+        final ids = (agentCfg['mcpServiceIds'] as List?)?.cast<String>();
+        if (ids == null || ids.isEmpty) return null;
+        final servers = <Map<String, dynamic>>[];
+        for (final id in ids) {
+          ServiceConfigDto? svc;
+          try {
+            svc = allServices.firstWhere((s) => s.id == id && s.type == 'mcp');
+          } catch (_) {
+            continue;
+          }
+          Map<String, dynamic> cfg;
+          try {
+            cfg = jsonDecode(svc.configJson) as Map<String, dynamic>;
+          } catch (_) {
+            continue;
+          }
+          final url = (cfg['url'] as String?)?.trim();
+          if (url == null || url.isEmpty) continue;
+          final auth = (cfg['authHeader'] as String?)?.trim();
+          servers.add({
+            'id': svc.id,
+            'name': svc.name,
+            'url': url,
+            if (auth != null && auth.isNotEmpty) 'authHeader': auth,
+          });
+        }
+        return servers.isEmpty ? null : jsonEncode(servers);
+      }
+
       // Build E2E config — 从 ServiceConfigDto 读取凭证，注入语言和 agentId
       String buildE2eConfigJson(String? serviceId) {
         final base = svcCfg(serviceId);
@@ -425,6 +457,11 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
               agentType == 'sts-chat' ? buildE2eConfigJson(stsId) : null,
           'astConfigJson':
               agentType == 'ast-translate' ? buildE2eConfigJson(astId) : null,
+          // chat / sts-chat 才会在 agent 上挂 MCP，此处统一从配置 resolve
+          'mcpServersJson':
+              (agentType == 'chat' || agentType == 'sts-chat')
+                  ? buildMcpServersJson()
+                  : null,
         };
 
         await _bridge.createAgent(
@@ -444,6 +481,7 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
           llmConfigJson: _createAgentArgs!['llmConfigJson'] as String?,
           stsConfigJson: _createAgentArgs!['stsConfigJson'] as String?,
           astConfigJson: _createAgentArgs!['astConfigJson'] as String?,
+          mcpServersJson: _createAgentArgs!['mcpServersJson'] as String?,
           extraParams: {
             'srcLang': srcLang,
             'dstLang': dstLang,
@@ -935,6 +973,7 @@ class AgentScreenNotifier extends StateNotifier<AgentScreenState> {
       llmConfigJson: args['llmConfigJson'] as String?,
       stsConfigJson: args['stsConfigJson'] as String?,
       astConfigJson: args['astConfigJson'] as String?,
+      mcpServersJson: args['mcpServersJson'] as String?,
       extraParams: {
         'srcLang': state.srcLang,
         'dstLang': state.dstLang,

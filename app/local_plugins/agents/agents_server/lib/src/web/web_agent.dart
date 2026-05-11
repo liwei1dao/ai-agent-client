@@ -22,6 +22,7 @@ class WebAgentConfig {
     this.stsConfigJson,
     this.astConfigJson,
     this.translationConfigJson,
+    this.mcpServersJson,
     this.extraParams = const {},
   });
 
@@ -39,6 +40,9 @@ class WebAgentConfig {
   final String? stsConfigJson;
   final String? astConfigJson;
   final String? translationConfigJson;
+
+  /// MCP server 列表，JSON 数组字符串，每条对应 [ai.McpServerConfig.toJson]
+  final String? mcpServersJson;
   final Map<String, String> extraParams;
 }
 
@@ -136,6 +140,28 @@ class WebConfigParser {
         ...?(m['extra'] as Map?),
       }),
     );
+  }
+
+  /// 解析 mcpServersJson（JSON 数组）为 [ai.McpServerConfig] 列表。
+  /// 容错：解析失败或单条字段缺失时跳过该条，不影响其他 server。
+  static List<ai.McpServerConfig> parseMcpServers(String? json) {
+    if (json == null || json.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is! List) return const [];
+      final out = <ai.McpServerConfig>[];
+      for (final entry in decoded) {
+        if (entry is! Map) continue;
+        try {
+          out.add(ai.McpServerConfig.fromJson(entry.cast<String, dynamic>()));
+        } catch (_) {
+          // skip malformed entry
+        }
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
   }
 
   static Map<String, dynamic> _decode(String? json) {

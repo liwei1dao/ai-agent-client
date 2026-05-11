@@ -6,6 +6,8 @@
 - 厂商插件命名：`<能力>_<厂商>`，如 [stt_azure/](vendors/stt_azure/)、[tts_azure/](vendors/tts_azure/)、[sts_volcengine/](vendors/sts_volcengine/)、[ast_volcengine/](vendors/ast_volcengine/)。
 - 组合能力（对话/翻译/STS/AST）统一放在 `agent_*` 插件内，不应直接在厂商包里糅合。
 
+> **包对外发布与分发**：本目录下 26 个包通过 melos 工作区统一管理，发布到私有 unpub 服务，业务方通过 umbrella 包 [ai_agent_sdk/](ai_agent_sdk/) 一键接入。本文件仅约束**包内部**实现规范；发布流程、版本管理、私服部署、消费方接入、命名冲突处理等见 [`docs/sdk-distribution.md`](../../docs/sdk-distribution.md)。
+
 ---
 
 ## 0. 目录结构

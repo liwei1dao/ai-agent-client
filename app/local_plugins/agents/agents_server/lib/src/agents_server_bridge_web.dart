@@ -56,6 +56,7 @@ class AgentsServerBridge {
     String? stsConfigJson,
     String? astConfigJson,
     String? translationConfigJson,
+    String? mcpServersJson,
     Map<String, String> extraParams = const {},
   }) async {
     // Release any existing agent with the same id.
@@ -86,6 +87,7 @@ class AgentsServerBridge {
       stsConfigJson: stsConfigJson,
       astConfigJson: astConfigJson,
       translationConfigJson: translationConfigJson,
+      mcpServersJson: mcpServersJson,
       extraParams: extraParams,
     );
 

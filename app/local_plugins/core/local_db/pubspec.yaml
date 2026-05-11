@@ -1,10 +1,11 @@
 name: local_db
 description: Native SQLite data center (Room on Android, GRDB on iOS)
-publish_to: none
+publish_to: http://localhost:4000
 version: 0.1.0
 
 environment:
   sdk: ^3.8.1
+  flutter: ">=3.3.0"
 
 dependencies:
   flutter:

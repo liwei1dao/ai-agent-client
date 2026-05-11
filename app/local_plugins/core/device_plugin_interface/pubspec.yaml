@@ -1,6 +1,6 @@
 name: device_plugin_interface
 description: Abstract contracts for hardware device plugins (BLE / RCSP / vendor SDK).
-publish_to: none
+publish_to: http://localhost:4000
 version: 0.1.0
 
 environment:

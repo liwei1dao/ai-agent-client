@@ -1,42 +1,30 @@
 name: service_manager
 description: Service management and testing plugin - manages STT/TTS/LLM/STS/AST/Translation service instances
-publish_to: none
+publish_to: http://localhost:4000
 version: 0.1.0
 
 environment:
   sdk: ^3.8.1
+  flutter: ">=3.3.0"
 
 dependencies:
   flutter:
     sdk: flutter
   flutter_web_plugins:
     sdk: flutter
-  ai_plugin_interface:
-    path: ../../core/ai_plugin_interface
-  local_db:
-    path: ../../core/local_db
-  llm_openai:
-    path: ../../vendors/llm_openai
-  llm_volcengine:
-    path: ../../vendors/llm_volcengine
-  stt_azure:
-    path: ../../vendors/stt_azure
-  tts_azure:
-    path: ../../vendors/tts_azure
-  sts_volcengine:
-    path: ../../vendors/sts_volcengine
-  ast_volcengine:
-    path: ../../vendors/ast_volcengine
-  sts_polychat:
-    path: ../../vendors/sts_polychat
-  ast_polychat:
-    path: ../../vendors/ast_polychat
-  translation_deepl:
-    path: ../../vendors/translation_deepl
-  translation_aliyun:
-    path: ../../vendors/translation_aliyun
-  translation_azure:
-    path: ../../vendors/translation_azure
+  ai_plugin_interface: ^0.1.0
+  local_db: ^0.1.0
+  llm_openai: ^0.1.0
+  llm_volcengine: ^0.1.0
+  stt_azure: ^0.1.0
+  tts_azure: ^0.1.0
+  sts_volcengine: ^0.1.0
+  ast_volcengine: ^0.1.0
+  sts_polychat: ^0.1.0
+  ast_polychat: ^0.1.0
+  translation_deepl: ^0.1.0
+  translation_aliyun: ^0.1.0
+  translation_azure: ^0.1.0
 
 dev_dependencies:
   flutter_test:

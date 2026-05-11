@@ -5,6 +5,9 @@
 **日期**：2026-03-11
 **变更**：新增原生插件开发流程、后台服务配置、Pigeon 代码生成
 
+> **如果你是 SDK 接入方**（不维护本仓库代码），建议先读 [`docs/sdk-usage.md`](sdk-usage.md) — 26 个包的用法、配置、组合场景、跨包规范。
+> **如果你要发布或维护私服**：[`docs/sdk-distribution.md`](sdk-distribution.md)。
+
 ---
 
 ## 1. 环境搭建

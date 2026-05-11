@@ -1,0 +1,10 @@
+name: ai_agent_sdk_workspace
+publish_to: none
+version: 0.0.0
+
+environment:
+  sdk: ^3.8.1
+
+dev_dependencies:
+  melos: ^6.3.3
+  pubspec_parse: ^1.3.0

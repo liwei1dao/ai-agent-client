@@ -1,18 +1,18 @@
 name: agent_translate
 description: Translate agent plugin - orchestrates STT + Translation + TTS pipeline (native)
-publish_to: none
+publish_to: http://localhost:4000
 version: 0.1.0
 
 environment:
   sdk: ^3.8.1
+  flutter: ">=3.3.0"
 
 dependencies:
   flutter:
     sdk: flutter
   flutter_web_plugins:
     sdk: flutter
-  ai_plugin_interface:
-    path: ../../core/ai_plugin_interface
+  ai_plugin_interface: ^0.1.0
 
 dev_dependencies:
   flutter_test:

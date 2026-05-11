@@ -25,6 +25,7 @@ object NativeServiceRegistry {
     private val stsFactories = mutableMapOf<String, () -> NativeStsService>()
     private val astFactories = mutableMapOf<String, () -> NativeAstService>()
     private val translationFactories = mutableMapOf<String, () -> NativeTranslationService>()
+    private val mcpFactories = mutableMapOf<String, () -> NativeMcpService>()
 
     // ── 注册 ─────────────────────────────────────────
 
@@ -58,6 +59,11 @@ object NativeServiceRegistry {
         Log.d(TAG, "Registered Translation vendor: $vendor")
     }
 
+    fun registerMcp(transport: String, factory: () -> NativeMcpService) {
+        mcpFactories[transport] = factory
+        Log.d(TAG, "Registered MCP transport: $transport")
+    }
+
     // ── 创建 ─────────────────────────────────────────
 
     fun createStt(vendor: String): NativeSttService =
@@ -84,6 +90,10 @@ object NativeServiceRegistry {
         translationFactories[vendor]?.invoke()
             ?: throw IllegalArgumentException("No Translation service registered for vendor: $vendor. Available: ${translationFactories.keys}")
 
+    fun createMcp(transport: String): NativeMcpService =
+        mcpFactories[transport]?.invoke()
+            ?: throw IllegalArgumentException("No MCP service registered for transport: $transport. Available: ${mcpFactories.keys}")
+
     // ── 查询 ─────────────────────────────────────────
 
     fun availableSttVendors(): Set<String> = sttFactories.keys
@@ -92,4 +102,5 @@ object NativeServiceRegistry {
     fun availableStsVendors(): Set<String> = stsFactories.keys
     fun availableAstVendors(): Set<String> = astFactories.keys
     fun availableTranslationVendors(): Set<String> = translationFactories.keys
+    fun availableMcpTransports(): Set<String> = mcpFactories.keys
 }

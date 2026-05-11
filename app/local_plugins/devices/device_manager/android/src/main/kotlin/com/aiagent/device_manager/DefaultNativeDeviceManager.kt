@@ -21,6 +21,13 @@ class DefaultNativeDeviceManager : NativeDeviceManager {
     companion object {
         private const val TAG = "DefaultNativeDevMgr"
 
+        /**
+         * 周期性 snapshot 兜底间隔。即使某条 session_event 因时序/丢包导致 Dart 端
+         * `_activeSession` 字段错乱（比如把 ready 误读成 disconnected、电量没刷新），
+         * 也会在不超过这个时间内被下一拍 SNAPSHOT_UPDATED 自愈。
+         */
+        private const val PERIODIC_SYNC_INTERVAL_MS = 3_000L
+
         @Volatile
         private var instance: DefaultNativeDeviceManager? = null
 
@@ -39,6 +46,7 @@ class DefaultNativeDeviceManager : NativeDeviceManager {
 
     private var pluginEventJob: Job? = null
     private var sessionEventJob: Job? = null
+    private var periodicSyncJob: Job? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -195,6 +203,7 @@ class DefaultNativeDeviceManager : NativeDeviceManager {
     override fun dispose() {
         if (_disposed) return
         _disposed = true
+        stopPeriodicSyncLocked()
         teardownActiveLocked()
         scope.cancel()
     }
@@ -228,6 +237,7 @@ class DefaultNativeDeviceManager : NativeDeviceManager {
     private fun teardownSessionLocked(s: NativeDeviceSession) {
         sessionEventJob?.cancel()
         sessionEventJob = null
+        stopPeriodicSyncLocked()
         runCatching { s.disconnect() }
         emitSnapshot()
         emit(DeviceManagerEvent(
@@ -263,6 +273,40 @@ class DefaultNativeDeviceManager : NativeDeviceManager {
                 }
             }
         }
+        startPeriodicSyncLocked()
+    }
+
+    /**
+     * 启动周期性 SNAPSHOT_UPDATED 兜底。
+     *
+     * 与 [bindSession] 收到事件后立刻 emitSnapshot 并不冲突——后者是"事件触发的实时
+     * 更新"，本方法是"无事件时的定时对账"。底层 SDK（如杰理 RCSP）的电量、链接态
+     * 通常以事件方式回流，事件链路偶发漏 / 乱序时会让 Dart 端 _activeSession 字段
+     * 卡在中间态（已 ready 显示成 disconnected、电量未刷新等）。这里每隔
+     * [PERIODIC_SYNC_INTERVAL_MS] 把当前真相再推一遍，Dart 端 _routeEvent 收到
+     * snapshot_updated 后会整体覆盖 _activeSession，单条事件错乱不会再让状态卡死。
+     *
+     * 调用方必须在 synchronized(this) 块内调用（teardown / bindSession 都已加锁）。
+     */
+    private fun startPeriodicSyncLocked() {
+        periodicSyncJob?.cancel()
+        periodicSyncJob = scope.launch {
+            while (isActive) {
+                delay(PERIODIC_SYNC_INTERVAL_MS)
+                if (_disposed) break
+                // 只在 active session 还在时推送，避免周期性把 Dart 端缓存清成 null
+                // （session 已断开时不需要兜底——teardownSessionLocked 已经派发过
+                // ACTIVE_SESSION_CHANGED(null) + SNAPSHOT_UPDATED(null)）。
+                val plugin = _activePlugin ?: continue
+                if (plugin.activeSession == null) continue
+                emitSnapshot()
+            }
+        }
+    }
+
+    private fun stopPeriodicSyncLocked() {
+        periodicSyncJob?.cancel()
+        periodicSyncJob = null
     }
 
     /** 把当前 active session 序列化为 Dart 直接消费的 map；无 session 返回 null。 */

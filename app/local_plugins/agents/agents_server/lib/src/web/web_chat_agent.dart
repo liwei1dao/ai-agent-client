@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:ai_plugin_interface/ai_plugin_interface.dart' as ai;
 
 import '../agent_event.dart';
+import '../mcp/mcp_router.dart';
 import 'web_agent.dart';
 import 'web_service_factory.dart';
 
@@ -17,6 +19,7 @@ class WebChatAgent implements WebAgent {
   late ai.SttPlugin _stt;
   late ai.LlmPlugin _llm;
   late ai.TtsPlugin _tts;
+  McpRouter? _mcp;
 
   StreamSubscription<ai.SttEvent>? _sttSub;
   StreamSubscription<ai.TtsEvent>? _ttsSub;
@@ -25,6 +28,9 @@ class WebChatAgent implements WebAgent {
   final List<ai.LlmMessage> _history = [];
   String _inputMode = 'text';
   AgentSessionState _state = AgentSessionState.idle;
+
+  /// 单次用户输入 → LLM 多轮 tool loop 的上限，防止死循环。
+  static const int _maxToolIterations = 5;
 
   void _setState(AgentSessionState s, {String? requestId}) {
     _state = s;
@@ -58,6 +64,17 @@ class WebChatAgent implements WebAgent {
     final sys = llmCfg.systemPrompt;
     if (sys != null && sys.isNotEmpty) {
       _history.add(ai.LlmMessage(role: ai.MessageRole.system, content: sys));
+    }
+
+    // 连接 MCP 服务器（每个 server 独立失败容忍）。
+    final servers = WebConfigParser.parseMcpServers(config.mcpServersJson);
+    if (servers.isNotEmpty) {
+      _mcp = McpRouter(
+        pluginFactory: WebServiceFactory.createMcp,
+      );
+      for (final s in servers) {
+        await _mcp!.addServer(s);
+      }
     }
   }
 
@@ -118,6 +135,7 @@ class WebChatAgent implements WebAgent {
     await _stt.dispose();
     await _tts.dispose();
     await _llm.dispose();
+    await _mcp?.dispose();
   }
 
   void _onStt(ai.SttEvent e) {
@@ -211,89 +229,167 @@ class WebChatAgent implements WebAgent {
 
     _setState(AgentSessionState.llm, requestId: requestId);
 
-    final buffer = StringBuffer();
-    try {
-      await for (final event in _llm.chat(
-        requestId: requestId,
-        messages: _history,
-      )) {
-        if (!_gate.isActive(requestId)) return;
-        switch (event.type) {
-          case ai.LlmEventType.firstToken:
-          case ai.LlmEventType.done:
-            final delta = event.textDelta ?? '';
-            if (delta.isNotEmpty) {
-              buffer.write(delta);
+    String finalText = '';
+    bool produced = false;
+
+    for (int iter = 0; iter < _maxToolIterations; iter++) {
+      final buffer = StringBuffer();
+      List<ai.ToolCall>? pendingToolCalls;
+      bool aborted = false;
+
+      try {
+        await for (final event in _llm.chat(
+          requestId: requestId,
+          messages: _history,
+          tools: _mcp?.llmTools ?? const [],
+        )) {
+          if (!_gate.isActive(requestId)) return;
+          switch (event.type) {
+            case ai.LlmEventType.firstToken:
+              final delta = event.textDelta ?? '';
+              if (delta.isNotEmpty) {
+                buffer.write(delta);
+                _emit(LlmEvent(
+                  sessionId: _config.agentId,
+                  requestId: requestId,
+                  kind: LlmEventKind.firstToken,
+                  textDelta: delta,
+                ));
+              }
+              break;
+            case ai.LlmEventType.thinking:
               _emit(LlmEvent(
                 sessionId: _config.agentId,
                 requestId: requestId,
-                kind: LlmEventKind.firstToken,
-                textDelta: delta,
+                kind: LlmEventKind.thinking,
+                thinkingDelta: event.thinkingDelta,
               ));
-            }
-            if (event.type == ai.LlmEventType.done) {
+              break;
+            case ai.LlmEventType.done:
               final full = event.fullText ?? buffer.toString();
-              _emit(LlmEvent(
-                sessionId: _config.agentId,
-                requestId: requestId,
-                kind: LlmEventKind.done,
-                fullText: full,
-              ));
-              if (full.isNotEmpty) {
+              pendingToolCalls = event.toolCalls;
+              if (pendingToolCalls == null || pendingToolCalls.isEmpty) {
+                _emit(LlmEvent(
+                  sessionId: _config.agentId,
+                  requestId: requestId,
+                  kind: LlmEventKind.done,
+                  fullText: full,
+                ));
+                if (full.isNotEmpty) {
+                  _history.add(ai.LlmMessage(
+                    role: ai.MessageRole.assistant,
+                    content: full,
+                  ));
+                  finalText = full;
+                  produced = true;
+                }
+              } else {
+                // 工具调用阶段：把 assistant 的 tool_calls 消息加进历史
+                // OpenAI 协议：tool_calls 时 content 可空
                 _history.add(ai.LlmMessage(
                   role: ai.MessageRole.assistant,
                   content: full,
+                  toolCalls: pendingToolCalls,
                 ));
               }
-            }
-            break;
-          case ai.LlmEventType.thinking:
-            _emit(LlmEvent(
-              sessionId: _config.agentId,
-              requestId: requestId,
-              kind: LlmEventKind.thinking,
-              thinkingDelta: event.thinkingDelta,
-            ));
-            break;
-          case ai.LlmEventType.cancelled:
-            _emit(LlmEvent(
-              sessionId: _config.agentId,
-              requestId: requestId,
-              kind: LlmEventKind.cancelled,
-            ));
-            return;
-          case ai.LlmEventType.error:
-            _emit(LlmEvent(
-              sessionId: _config.agentId,
-              requestId: requestId,
-              kind: LlmEventKind.error,
-              errorCode: event.errorCode,
-              errorMessage: event.errorMessage,
-            ));
-            return;
-          case ai.LlmEventType.toolCallStart:
-          case ai.LlmEventType.toolCallArguments:
-          case ai.LlmEventType.toolCallResult:
-            break;
+              break;
+            case ai.LlmEventType.cancelled:
+              _emit(LlmEvent(
+                sessionId: _config.agentId,
+                requestId: requestId,
+                kind: LlmEventKind.cancelled,
+              ));
+              return;
+            case ai.LlmEventType.error:
+              _emit(LlmEvent(
+                sessionId: _config.agentId,
+                requestId: requestId,
+                kind: LlmEventKind.error,
+                errorCode: event.errorCode,
+                errorMessage: event.errorMessage,
+              ));
+              aborted = true;
+              break;
+            case ai.LlmEventType.toolCallStart:
+            case ai.LlmEventType.toolCallArguments:
+            case ai.LlmEventType.toolCallResult:
+              // plugin 暂不发中间事件；预留以兼容未来流式 tool_call UI。
+              break;
+          }
         }
+      } catch (e) {
+        _emit(LlmEvent(
+          sessionId: _config.agentId,
+          requestId: requestId,
+          kind: LlmEventKind.error,
+          errorCode: 'llm.exception',
+          errorMessage: e.toString(),
+        ));
+        return;
       }
-    } catch (e) {
-      _emit(LlmEvent(
-        sessionId: _config.agentId,
-        requestId: requestId,
-        kind: LlmEventKind.error,
-        errorCode: 'llm.exception',
-        errorMessage: e.toString(),
-      ));
-      return;
+
+      if (aborted) return;
+      if (!_gate.isActive(requestId)) return;
+
+      if (pendingToolCalls == null || pendingToolCalls.isEmpty) {
+        // 没有 tool 调用 — 跳出 loop 进 TTS
+        break;
+      }
+
+      // 执行 tool calls，结果回灌为 tool 角色消息，准备下一轮
+      for (final tc in pendingToolCalls) {
+        if (!_gate.isActive(requestId)) return;
+
+        _emit(LlmEvent(
+          sessionId: _config.agentId,
+          requestId: requestId,
+          kind: LlmEventKind.toolCallStart,
+          toolCallId: tc.id,
+          toolName: tc.name,
+          toolArgumentsDelta: tc.argumentsJson,
+        ));
+
+        Map<String, dynamic> args = const {};
+        try {
+          if (tc.argumentsJson.isNotEmpty) {
+            final decoded = jsonDecode(tc.argumentsJson);
+            if (decoded is Map) args = decoded.cast<String, dynamic>();
+          }
+        } catch (_) {
+          // 无效 JSON 参数：留空交给 server 自行处理 / 报错
+        }
+
+        final result = _mcp == null
+            ? ai.McpToolResult(
+                content: 'Error: no MCP servers configured',
+                isError: true,
+              )
+            : await _mcp!.callTool(tc.name, args);
+
+        _emit(LlmEvent(
+          sessionId: _config.agentId,
+          requestId: requestId,
+          kind: LlmEventKind.toolCallResult,
+          toolCallId: tc.id,
+          toolName: tc.name,
+          toolResult: result.content,
+        ));
+
+        _history.add(ai.LlmMessage(
+          role: ai.MessageRole.tool,
+          content: result.content,
+          toolCallId: tc.id,
+          name: tc.name,
+        ));
+      }
+      // 继续下一轮 LLM
     }
 
     if (!_gate.isActive(requestId)) return;
 
-    final full = buffer.toString();
-    if (full.isNotEmpty) {
+    if (produced && finalText.isNotEmpty) {
       _setState(AgentSessionState.tts, requestId: requestId);
-      await _tts.speak(full, requestId: requestId);
+      await _tts.speak(finalText, requestId: requestId);
     }
 
     if (_gate.isActive(requestId)) {

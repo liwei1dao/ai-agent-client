@@ -15,14 +15,11 @@ import kotlin.coroutines.coroutineContext
 /**
  * LlmOpenaiService — OpenAI-compatible LLM 原生服务实现
  *
- * 实现 NativeLlmService 接口，供 Agent 类型插件直接调用。
- *
- * 从 LlmPipelineNode.kt 提取核心逻辑：
  * - OkHttp SSE 流式推理
+ * - 文本 delta：实时通过 onFirstToken / onTextDelta 派发
+ * - tool_calls delta：按 index 累积 id/name/arguments，流结束后一次性派发
+ *   onToolCallStart(id, name) + onToolCallArguments(完整 arguments) + onDone(fullText)
  * - 取消机制（call.cancel()）
- *
- * 注意：DB 读写（消息历史、状态更新）由 Agent 类型插件负责，
- * 本服务只负责 HTTP 调用和流式解析。
  */
 class LlmOpenaiService : NativeLlmService {
 
@@ -39,10 +36,6 @@ class LlmOpenaiService : NativeLlmService {
     private var temperature: Double = 0.7
     private var maxTokens: Int = 2048
     private var systemPrompt: String? = null
-
-    // ─────────────────────────────────────────────────
-    // NativeLlmService 接口实现
-    // ─────────────────────────────────────────────────
 
     override fun initialize(configJson: String) {
         val cfg = JSONObject(configJson)
@@ -70,7 +63,6 @@ class LlmOpenaiService : NativeLlmService {
 
         // Build request body
         val messagesArray = JSONArray()
-        // Prepend system prompt if configured
         if (!systemPrompt.isNullOrBlank()) {
             messagesArray.put(JSONObject().apply {
                 put("role", "system")
@@ -101,10 +93,12 @@ class LlmOpenaiService : NativeLlmService {
             .header("Authorization", "Bearer $apiKey")
             .build()
 
-        Log.d(TAG, "POST $url model=$model messages=${messages.size}")
+        Log.d(TAG, "POST $url model=$model messages=${messages.size} tools=${tools.size}")
 
         val fullText = StringBuilder()
         var isFirstToken = true
+        // tool_calls 累积器（按 OpenAI delta 的 index 字段）
+        val toolBuilders = mutableMapOf<Int, _ToolCallBuilder>()
 
         return try {
             val response = suspendableEnqueue(request) ?: return ""
@@ -126,17 +120,34 @@ class LlmOpenaiService : NativeLlmService {
                 val data = line.removePrefix("data: ").trim()
                 if (data == "[DONE]") break
 
-                val delta = parseTextDelta(data) ?: continue
-                if (delta.isEmpty()) continue
+                val parsed = parseDelta(data) ?: continue
 
-                fullText.append(delta)
-
-                if (isFirstToken) {
-                    isFirstToken = false
-                    callback.onFirstToken(delta)
-                } else {
-                    callback.onTextDelta(delta)
+                // 文本增量
+                parsed.contentDelta?.takeIf { it.isNotEmpty() }?.let { delta ->
+                    fullText.append(delta)
+                    if (isFirstToken) {
+                        isFirstToken = false
+                        callback.onFirstToken(delta)
+                    } else {
+                        callback.onTextDelta(delta)
+                    }
                 }
+
+                // tool_calls 增量按 index 累积
+                for (tc in parsed.toolCallDeltas) {
+                    val builder = toolBuilders.getOrPut(tc.index) { _ToolCallBuilder() }
+                    if (tc.id != null) builder.id = tc.id
+                    if (tc.name != null) builder.name = tc.name
+                    if (tc.argumentsDelta != null) builder.arguments.append(tc.argumentsDelta)
+                }
+            }
+
+            // 一次性派发累积完成的 tool_calls
+            for (b in toolBuilders.values) {
+                val name = b.name ?: continue
+                if (name.isBlank()) continue
+                callback.onToolCallStart(b.id ?: "", name)
+                callback.onToolCallArguments(b.arguments.toString())
             }
 
             callback.onDone(fullText.toString())
@@ -176,11 +187,52 @@ class LlmOpenaiService : NativeLlmService {
         }
     }
 
-    private fun parseTextDelta(json: String): String? = try {
-        JSONObject(json)
-            .getJSONArray("choices")
-            .getJSONObject(0)
-            .getJSONObject("delta")
-            .optString("content", "")
-    } catch (_: Exception) { null }
+    private fun parseDelta(json: String): _DeltaParsed? {
+        return try {
+            val obj = JSONObject(json)
+            val choices = obj.optJSONArray("choices") ?: return null
+            if (choices.length() == 0) return null
+            val delta = choices.getJSONObject(0).optJSONObject("delta")
+                ?: return _DeltaParsed(null, emptyList())
+
+            val content = delta.optString("content", "").ifBlank { null }
+
+            val toolDeltas = mutableListOf<_ToolCallDelta>()
+            delta.optJSONArray("tool_calls")?.let { tcs ->
+                for (i in 0 until tcs.length()) {
+                    val tc = tcs.optJSONObject(i) ?: continue
+                    val fn = tc.optJSONObject("function")
+                    toolDeltas.add(
+                        _ToolCallDelta(
+                            index = tc.optInt("index", 0),
+                            id = tc.optString("id", "").ifBlank { null },
+                            name = fn?.optString("name", "")?.ifBlank { null },
+                            argumentsDelta = fn?.optString("arguments", "")?.ifBlank { null },
+                        )
+                    )
+                }
+            }
+            _DeltaParsed(content, toolDeltas)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private data class _DeltaParsed(
+        val contentDelta: String?,
+        val toolCallDeltas: List<_ToolCallDelta>,
+    )
+
+    private data class _ToolCallDelta(
+        val index: Int,
+        val id: String?,
+        val name: String?,
+        val argumentsDelta: String?,
+    )
+
+    private class _ToolCallBuilder {
+        var id: String? = null
+        var name: String? = null
+        val arguments = StringBuilder()
+    }
 }

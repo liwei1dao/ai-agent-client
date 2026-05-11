@@ -2398,18 +2398,39 @@ class _McpTestCard extends StatefulWidget {
   State<_McpTestCard> createState() => _McpTestCardState();
 }
 
+class _McpTool {
+  _McpTool({required this.name, required this.description, required this.inputSchema});
+  final String name;
+  final String description;
+  final Map<String, dynamic> inputSchema;
+
+  Map<String, dynamic> get properties =>
+      (inputSchema['properties'] as Map<String, dynamic>?) ?? const {};
+  List<String> get required =>
+      ((inputSchema['required'] as List?)?.cast<String>()) ?? const [];
+}
+
 class _McpTestCardState extends State<_McpTestCard> {
   ServiceConfigDto? _selected;
-  // Mock tools list for UI display
-  List<Map<String, String>> _tools = [];
+  List<_McpTool> _tools = [];
   int? _selectedToolIdx;
   final _paramControllers = <String, TextEditingController>{};
+
+  bool _loadingTools = false;
+  String? _toolsError;
+
   bool _executing = false;
   String? _resultJson;
   double? _execTime;
   bool? _success;
   String? _error;
+
   String? _serverUrl;
+  String _transport = 'http';
+  String? _authHeader;
+  String? _sessionId;
+  bool _initialized = false;
+  int _rpcId = 0;
 
   @override
   void initState() {
@@ -2429,29 +2450,162 @@ class _McpTestCardState extends State<_McpTestCard> {
   }
 
   void _onServiceSelected(ServiceConfigDto s) {
-    // Parse config to extract URL and generate mock tools
     try {
       final cfg = jsonDecode(s.configJson) as Map<String, dynamic>;
-      _serverUrl = cfg['url'] as String? ?? cfg['baseUrl'] as String? ?? cfg['endpoint'] as String? ?? 'N/A';
+      _serverUrl = (cfg['url'] as String?)?.trim();
+      _transport = (cfg['transport'] as String?)?.trim().toLowerCase() ?? 'http';
+      final ah = (cfg['authHeader'] as String?)?.trim();
+      _authHeader = (ah == null || ah.isEmpty) ? null : ah;
     } catch (_) {
-      _serverUrl = 'N/A';
+      _serverUrl = null;
     }
-    // Mock tools for UI display
-    _tools = [
-      {'name': 'get_weather', 'description': '获取指定城市的天气信息', 'params': 'city:string'},
-      {'name': 'search_docs', 'description': '搜索知识库中的文档', 'params': 'query:string,limit:number'},
-      {'name': 'run_sql', 'description': '执行 SQL 查询语句', 'params': 'sql:string,database:string'},
-    ];
+    _tools = [];
     _selectedToolIdx = null;
+    _toolsError = null;
     _resultJson = null;
     _execTime = null;
     _success = null;
     _error = null;
+    _sessionId = null;
+    _initialized = false;
     for (final c in _paramControllers.values) {
       c.dispose();
     }
     _paramControllers.clear();
+    if (_serverUrl != null && _serverUrl!.isNotEmpty) {
+      unawaited(_fetchTools());
+    }
   }
+
+  Future<void> _fetchTools() async {
+    final url = _serverUrl;
+    if (url == null || url.isEmpty) return;
+    setState(() {
+      _loadingTools = true;
+      _toolsError = null;
+      _tools = [];
+      _selectedToolIdx = null;
+    });
+    try {
+      if (!_initialized) await _initializeSession(url);
+      final result = await _rpc(url, 'tools/list', const {});
+      final list = (result['tools'] as List?) ?? const [];
+      final tools = list.whereType<Map<String, dynamic>>().map((m) => _McpTool(
+            name: (m['name'] as String?) ?? '',
+            description: (m['description'] as String?) ?? '',
+            inputSchema: (m['inputSchema'] as Map<String, dynamic>?) ?? const {},
+          )).where((t) => t.name.isNotEmpty).toList();
+      if (mounted) {
+        setState(() {
+          _tools = tools;
+          _loadingTools = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _toolsError = e.toString().replaceFirst('Exception: ', '');
+          _loadingTools = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _initializeSession(String url) async {
+    _sessionId = null;
+    final initResult = await _rpc(url, 'initialize', {
+      'protocolVersion': '2024-11-05',
+      'capabilities': {'tools': {}},
+      'clientInfo': {'name': 'ai-agent-client', 'version': '1.0.0'},
+    });
+    // 服务器版本可在 initResult 中返回，这里仅作 sanity check
+    if (initResult['protocolVersion'] == null && initResult['serverInfo'] == null) {
+      throw Exception('initialize 响应缺少 protocolVersion / serverInfo');
+    }
+    // 通知 initialized（无 id 的 notification）
+    await _rpcNotification(url, 'notifications/initialized', const {});
+    _initialized = true;
+  }
+
+  Map<String, String> _buildHeaders() => {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+        if (_authHeader != null) 'Authorization': _authHeader!,
+        if (_sessionId != null) 'Mcp-Session-Id': _sessionId!,
+      };
+
+  Future<Map<String, dynamic>> _rpc(
+    String url,
+    String method,
+    Map<String, dynamic> params,
+  ) async {
+    _rpcId++;
+    final body = jsonEncode({
+      'jsonrpc': '2.0',
+      'id': _rpcId,
+      'method': method,
+      'params': params,
+    });
+    final resp = await http
+        .post(Uri.parse(url), headers: _buildHeaders(), body: body)
+        .timeout(const Duration(seconds: 30));
+    final sid = resp.headers['mcp-session-id'];
+    if (sid != null && sid.isNotEmpty) _sessionId = sid;
+    if (resp.statusCode != 200 && resp.statusCode != 202) {
+      throw Exception('HTTP ${resp.statusCode}: ${_truncate(resp.body)}');
+    }
+    final json = _parseRpcBody(resp);
+    if (json['error'] is Map) {
+      final err = json['error'] as Map<String, dynamic>;
+      throw Exception('${err['code']} ${err['message'] ?? ''}'.trim());
+    }
+    return (json['result'] as Map<String, dynamic>?) ?? const {};
+  }
+
+  Future<void> _rpcNotification(
+    String url,
+    String method,
+    Map<String, dynamic> params,
+  ) async {
+    final body = jsonEncode({
+      'jsonrpc': '2.0',
+      'method': method,
+      'params': params,
+    });
+    final resp = await http
+        .post(Uri.parse(url), headers: _buildHeaders(), body: body)
+        .timeout(const Duration(seconds: 10));
+    final sid = resp.headers['mcp-session-id'];
+    if (sid != null && sid.isNotEmpty) _sessionId = sid;
+    // 通知预期 202 Accepted；其他状态码忽略 body 但不抛错（部分服务器返回 200）
+    if (resp.statusCode >= 400) {
+      throw Exception('HTTP ${resp.statusCode}: ${_truncate(resp.body)}');
+    }
+  }
+
+  /// Streamable HTTP 可能返回 application/json 或 text/event-stream，二者都解析为 JSON-RPC 响应对象。
+  Map<String, dynamic> _parseRpcBody(http.Response resp) {
+    final ct = resp.headers['content-type'] ?? '';
+    final body = resp.body;
+    if (ct.contains('text/event-stream')) {
+      for (final raw in body.split('\n')) {
+        final line = raw.trimRight();
+        if (line.startsWith('data:')) {
+          final payload = line.substring(5).trimLeft();
+          if (payload.isEmpty) continue;
+          final decoded = jsonDecode(payload);
+          if (decoded is Map<String, dynamic>) return decoded;
+        }
+      }
+      throw Exception('SSE 响应未包含 JSON-RPC data 帧');
+    }
+    if (body.isEmpty) return const {};
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    throw Exception('响应不是 JSON-RPC 对象');
+  }
+
+  String _truncate(String s) => s.length > 200 ? '${s.substring(0, 200)}…' : s;
 
   void _selectTool(int idx) {
     for (final c in _paramControllers.values) {
@@ -2464,40 +2618,46 @@ class _McpTestCardState extends State<_McpTestCard> {
     _error = null;
     setState(() {
       _selectedToolIdx = idx;
-      final params = _tools[idx]['params']!.split(',');
-      for (final p in params) {
-        final name = p.split(':').first.trim();
-        _paramControllers[name] = TextEditingController();
+      for (final key in _tools[idx].properties.keys) {
+        _paramControllers[key] = TextEditingController();
       }
     });
   }
 
   Future<void> _execute() async {
-    if (_selectedToolIdx == null) return;
-    setState(() { _executing = true; _error = null; _resultJson = null; _success = null; });
+    final url = _serverUrl;
+    if (_selectedToolIdx == null || url == null || url.isEmpty) return;
+    setState(() {
+      _executing = true;
+      _error = null;
+      _resultJson = null;
+      _success = null;
+    });
     final sw = Stopwatch()..start();
     try {
-      // Mock execution with a short delay
-      await Future.delayed(const Duration(milliseconds: 800));
-      sw.stop();
-      final toolName = _tools[_selectedToolIdx!]['name']!;
-      final params = <String, String>{};
-      for (final e in _paramControllers.entries) {
-        params[e.key] = e.value.text;
+      if (!_initialized) await _initializeSession(url);
+      final tool = _tools[_selectedToolIdx!];
+      final args = <String, dynamic>{};
+      final props = tool.properties;
+      for (final entry in _paramControllers.entries) {
+        final raw = entry.value.text.trim();
+        if (raw.isEmpty) {
+          if (tool.required.contains(entry.key)) {
+            throw Exception('请填写必填参数：${entry.key}');
+          }
+          continue;
+        }
+        final type = (props[entry.key] as Map?)?['type'];
+        args[entry.key] = _coerceArg(raw, type);
       }
-      // Generate mock result
-      final mockResult = {
-        'tool': toolName,
-        'status': 'success',
-        'data': toolName == 'get_weather'
-            ? {'city': params['city'] ?? 'Beijing', 'temp': '22°C', 'humidity': '65%', 'condition': 'Sunny'}
-            : toolName == 'search_docs'
-                ? {'results': [{'title': 'Doc 1', 'score': 0.95}, {'title': 'Doc 2', 'score': 0.87}]}
-                : {'rows': 42, 'columns': ['id', 'name', 'value']},
-      };
+      final result = await _rpc(url, 'tools/call', {
+        'name': tool.name,
+        'arguments': args,
+      });
+      sw.stop();
       if (mounted) {
         setState(() {
-          _resultJson = const JsonEncoder.withIndent('  ').convert(mockResult);
+          _resultJson = const JsonEncoder.withIndent('  ').convert(result);
           _execTime = sw.elapsedMilliseconds / 1000.0;
           _success = true;
         });
@@ -2513,6 +2673,31 @@ class _McpTestCardState extends State<_McpTestCard> {
       }
     } finally {
       if (mounted) setState(() => _executing = false);
+    }
+  }
+
+  /// 按 inputSchema.properties[key].type 把字符串转成对应 JSON 值。
+  dynamic _coerceArg(String raw, dynamic type) {
+    final t = type is String ? type : (type is List && type.isNotEmpty ? type.first : null);
+    switch (t) {
+      case 'integer':
+        return int.tryParse(raw) ?? raw;
+      case 'number':
+        return num.tryParse(raw) ?? raw;
+      case 'boolean':
+        final lower = raw.toLowerCase();
+        return lower == 'true' || lower == '1' || lower == 'yes';
+      case 'array':
+      case 'object':
+        try {
+          return jsonDecode(raw);
+        } catch (_) {
+          return raw;
+        }
+      case 'null':
+        return null;
+      default:
+        return raw;
     }
   }
 
@@ -2544,54 +2729,105 @@ class _McpTestCardState extends State<_McpTestCard> {
               const Icon(Icons.link, size: 12, color: AppTheme.text2),
               const SizedBox(width: 4),
               Expanded(child: Text(
-                _serverUrl ?? 'N/A',
+                _serverUrl == null || _serverUrl!.isEmpty ? 'N/A' : _serverUrl!,
                 style: const TextStyle(fontSize: 10, color: AppTheme.text2),
                 overflow: TextOverflow.ellipsis,
               )),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppTheme.bgColor,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppTheme.borderColor),
+                ),
+                child: Text(_transport.toUpperCase(),
+                    style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppTheme.text2)),
+              ),
               const SizedBox(width: 8),
               Text('${_tools.length} 个工具', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.text2)),
             ],
           ),
           const SizedBox(height: 10),
-          // Tool list
-          const Text('可用工具', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.text1)),
-          const SizedBox(height: 6),
-          Column(
+          // Tool list header + refresh
+          Row(
             children: [
-              for (int i = 0; i < _tools.length; i++)
-                GestureDetector(
-                  onTap: () => _selectTool(i),
-                  child: Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: _selectedToolIdx == i ? AppTheme.primaryLight : AppTheme.bgColor,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: _selectedToolIdx == i ? AppTheme.primary : AppTheme.borderColor,
-                        width: _selectedToolIdx == i ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(_tools[i]['name']!,
-                            style: TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w700,
-                              color: _selectedToolIdx == i ? AppTheme.primary : AppTheme.text1,
-                            )),
-                        const SizedBox(height: 2),
-                        Text(_tools[i]['description']!,
-                            style: const TextStyle(fontSize: 10, color: AppTheme.text2)),
-                      ],
-                    ),
-                  ),
+              const Text('可用工具', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.text1)),
+              const Spacer(),
+              GestureDetector(
+                onTap: _loadingTools ? null : _fetchTools,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: _loadingTools
+                      ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5))
+                      : const Icon(Icons.refresh, size: 14, color: AppTheme.primary),
                 ),
+              ),
             ],
           ),
+          const SizedBox(height: 6),
+          if (_toolsError != null)
+            _ResultBox(
+              active: true,
+              activeColor: AppTheme.danger,
+              child: Row(children: [
+                const Icon(Icons.error_outline, size: 13, color: AppTheme.danger),
+                const SizedBox(width: 4),
+                Expanded(child: Text('工具列表加载失败：${_toolsError!}',
+                    style: const TextStyle(fontSize: 11, color: AppTheme.danger))),
+              ]),
+            )
+          else if (_loadingTools && _tools.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: Text('正在加载工具列表...',
+                  style: TextStyle(fontSize: 11, color: AppTheme.text2))),
+            )
+          else if (_tools.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: Text('该服务器未返回任何工具',
+                  style: TextStyle(fontSize: 11, color: AppTheme.text2))),
+            )
+          else
+            Column(
+              children: [
+                for (int i = 0; i < _tools.length; i++)
+                  GestureDetector(
+                    onTap: () => _selectTool(i),
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _selectedToolIdx == i ? AppTheme.primaryLight : AppTheme.bgColor,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: _selectedToolIdx == i ? AppTheme.primary : AppTheme.borderColor,
+                          width: _selectedToolIdx == i ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_tools[i].name,
+                              style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w700, fontFamily: 'monospace',
+                                color: _selectedToolIdx == i ? AppTheme.primary : AppTheme.text1,
+                              )),
+                          if (_tools[i].description.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(_tools[i].description,
+                                style: const TextStyle(fontSize: 10, color: AppTheme.text2)),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           // Parameter form
-          if (_selectedToolIdx != null && _paramControllers.isNotEmpty) ...[
+          if (_selectedToolIdx != null) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(10),
@@ -2605,25 +2841,66 @@ class _McpTestCardState extends State<_McpTestCard> {
                 children: [
                   const Text('参数', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.text2)),
                   const SizedBox(height: 6),
-                  for (final entry in _paramControllers.entries) ...[
-                    TextField(
-                      controller: entry.value,
-                      style: const TextStyle(fontSize: 12, color: AppTheme.text1),
-                      decoration: InputDecoration(
-                        hintText: entry.key,
-                        hintStyle: const TextStyle(fontSize: 11, color: AppTheme.text2),
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        filled: true, fillColor: Colors.white,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppTheme.borderColor)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppTheme.borderColor)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppTheme.primary, width: 1.5)),
-                        labelText: entry.key,
-                        labelStyle: const TextStyle(fontSize: 10, color: AppTheme.text2),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                  ],
+                  if (_paramControllers.isEmpty)
+                    const Text('该工具无参数', style: TextStyle(fontSize: 11, color: AppTheme.text2))
+                  else
+                    for (final entry in _paramControllers.entries) ...[
+                      Builder(builder: (_) {
+                        final tool = _tools[_selectedToolIdx!];
+                        final propSchema = (tool.properties[entry.key] as Map?) ?? const {};
+                        final type = propSchema['type'];
+                        final typeLabel = type is String
+                            ? type
+                            : (type is List ? type.join('|') : 'string');
+                        final desc = propSchema['description'] as String?;
+                        final isRequired = tool.required.contains(entry.key);
+                        final hint = type == 'array' || type == 'object'
+                            ? '$typeLabel · 输入 JSON'
+                            : (desc?.isNotEmpty == true ? desc! : typeLabel.toString());
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Text(entry.key,
+                                  style: const TextStyle(
+                                      fontSize: 11, fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w600, color: AppTheme.text1)),
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.borderColor.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text(typeLabel.toString(),
+                                    style: const TextStyle(fontSize: 9, color: AppTheme.text2)),
+                              ),
+                              if (isRequired) ...[
+                                const SizedBox(width: 4),
+                                const Text('*',
+                                    style: TextStyle(fontSize: 11, color: AppTheme.danger, fontWeight: FontWeight.w700)),
+                              ],
+                            ]),
+                            const SizedBox(height: 4),
+                            TextField(
+                              controller: entry.value,
+                              style: const TextStyle(fontSize: 12, color: AppTheme.text1),
+                              decoration: InputDecoration(
+                                hintText: hint,
+                                hintStyle: const TextStyle(fontSize: 11, color: AppTheme.text2),
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                filled: true, fillColor: Colors.white,
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppTheme.borderColor)),
+                                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppTheme.borderColor)),
+                                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppTheme.primary, width: 1.5)),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        );
+                      }),
+                    ],
                 ],
               ),
             ),
@@ -2800,6 +3077,12 @@ class _ServiceDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final uniqueItems = <String>[];
+    final seen = <String>{};
+    for (final i in items) {
+      if (seen.add(i)) uniqueItems.add(i);
+    }
+    final effectiveValue = uniqueItems.contains(value) ? value : null;
     return Container(
       height: 30,
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -2810,12 +3093,14 @@ class _ServiceDropdown extends StatelessWidget {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          value: value,
+          value: effectiveValue,
           isExpanded: true,
+          hint: const Text('请选择服务',
+              style: TextStyle(fontSize: 11, color: AppTheme.text2, fontWeight: FontWeight.w500)),
           style: const TextStyle(fontSize: 11, color: AppTheme.text1, fontWeight: FontWeight.w500),
           icon: const Icon(Icons.keyboard_arrow_down, size: 14, color: AppTheme.text2),
           onChanged: (v) { if (v != null) onChanged(v); },
-          items: items.map((i) => DropdownMenuItem(value: i, child: Text(i, overflow: TextOverflow.ellipsis))).toList(),
+          items: uniqueItems.map((i) => DropdownMenuItem(value: i, child: Text(i, overflow: TextOverflow.ellipsis))).toList(),
         ),
       ),
     );

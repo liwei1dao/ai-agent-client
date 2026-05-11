@@ -8,6 +8,7 @@ import com.aiagent.plugin_interface.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -78,6 +79,12 @@ class ChatAgentSession : NativeAgent {
     private lateinit var eventSink: AgentEventSink
     private lateinit var config: NativeAgentConfig
 
+    /** MCP 工具路由器；无 MCP server 配置时为 null */
+    private var mcpRouter: NativeMcpRouter? = null
+
+    /** 单次用户输入 → LLM 多轮 tool loop 的上限，防止死循环 */
+    private val maxToolIterations = 5
+
     private var inputMode: String = "text"
 
     /**
@@ -108,7 +115,17 @@ class ChatAgentSession : NativeAgent {
         llmService.initialize(config.llmConfigJson ?: "{}")
         ttsService.initialize(config.ttsConfigJson ?: "{}", context)
 
-        Log.d(TAG, "initialized: agentId=${config.agentId} stt=${config.sttVendor} llm=${config.llmVendor} tts=${config.ttsVendor}")
+        // MCP 服务器（可选）：每个 server 独立失败容忍，不阻塞 chat agent 启动
+        if (!config.mcpServersJson.isNullOrBlank()) {
+            val router = NativeMcpRouter()
+            mcpRouter = router
+            scope.launch {
+                runCatching { router.loadFromJson(config.mcpServersJson) }
+                router.warnings().forEach { Log.w(TAG, "[mcp] $it") }
+            }
+        }
+
+        Log.d(TAG, "initialized: agentId=${config.agentId} stt=${config.sttVendor} llm=${config.llmVendor} tts=${config.ttsVendor} mcp=${config.mcpServersJson != null}")
     }
 
     override fun connectService() {
@@ -161,6 +178,8 @@ class ChatAgentSession : NativeAgent {
     }
 
     override fun release() {
+        mcpRouter?.dispose()
+        mcpRouter = null
         scope.cancel()
         sttService.release()
         ttsService.release()
@@ -369,55 +388,125 @@ class ChatAgentSession : NativeAgent {
             }
 
             try {
-                llmService.chat(
-                    requestId = requestId,
-                    messages = messages,
-                    tools = emptyList(),
-                    callback = object : LlmCallback {
-                        override fun onFirstToken(textDelta: String) {
-                            eventSink.onLlmEvent(LlmEventData(
-                                config.agentId, requestId, kind = "firstToken", textDelta = textDelta))
-                            scope.launch { db.messageDao().appendContent(assistantId, textDelta, System.currentTimeMillis()) }
-                            pushDelta(textDelta)
+                // ── LLM 多轮 tool loop ───────────────────────────────────────
+                // OpenAI 标准：assistant 用 tool_calls 决定调工具 → 拿结果 →
+                // 再次 chat → ... 直到 LLM 给最终文本（无 tool_calls）。
+                val currentMessages: MutableList<Map<String, Any>> = messages.toMutableList()
+                val tools = mcpRouter?.openAiTools() ?: emptyList()
+
+                loop@ for (iter in 0 until maxToolIterations) {
+                    if (!isActive || activeRequestId != requestId) break@loop
+
+                    // 本轮收集 LLM 决定调用的 tool 列表（按 onToolCallStart 顺序）
+                    val collectedToolCalls = mutableListOf<MutableMap<String, String>>()
+
+                    llmService.chat(
+                        requestId = requestId,
+                        messages = currentMessages,
+                        tools = tools,
+                        callback = object : LlmCallback {
+                            override fun onFirstToken(textDelta: String) {
+                                eventSink.onLlmEvent(LlmEventData(
+                                    config.agentId, requestId, kind = "firstToken", textDelta = textDelta))
+                                scope.launch { db.messageDao().appendContent(assistantId, textDelta, System.currentTimeMillis()) }
+                                pushDelta(textDelta)
+                            }
+                            override fun onTextDelta(textDelta: String) {
+                                eventSink.onLlmEvent(LlmEventData(
+                                    config.agentId, requestId, kind = "firstToken", textDelta = textDelta))
+                                scope.launch { db.messageDao().appendContent(assistantId, textDelta, System.currentTimeMillis()) }
+                                pushDelta(textDelta)
+                            }
+                            override fun onThinkingDelta(delta: String) {
+                                eventSink.onLlmEvent(LlmEventData(
+                                    config.agentId, requestId, kind = "thinking", thinkingDelta = delta))
+                            }
+                            override fun onToolCallStart(id: String, name: String) {
+                                collectedToolCalls.add(mutableMapOf(
+                                    "id" to id, "name" to name, "args" to "",
+                                ))
+                                eventSink.onLlmEvent(LlmEventData(
+                                    config.agentId, requestId, kind = "toolCallStart",
+                                    toolCallId = id, toolName = name))
+                            }
+                            override fun onToolCallArguments(delta: String) {
+                                if (collectedToolCalls.isNotEmpty()) {
+                                    val last = collectedToolCalls.last()
+                                    last["args"] = (last["args"] ?: "") + delta
+                                }
+                                eventSink.onLlmEvent(LlmEventData(
+                                    config.agentId, requestId, kind = "toolCallArguments",
+                                    toolArgumentsDelta = delta))
+                            }
+                            override fun onToolCallResult(result: String) {
+                                eventSink.onLlmEvent(LlmEventData(
+                                    config.agentId, requestId, kind = "toolCallResult",
+                                    toolResult = result))
+                            }
+                            override fun onDone(fullText: String) {
+                                if (collectedToolCalls.isEmpty()) {
+                                    // 真正结束（最后一轮）
+                                    eventSink.onLlmEvent(LlmEventData(
+                                        config.agentId, requestId, kind = "done", fullText = fullText))
+                                    scope.launch { db.messageDao().updateStatus(assistantId, "done", System.currentTimeMillis()) }
+                                }
+                                // tool_calls 阶段不发 done — loop 继续
+                            }
+                            override fun onError(code: String, message: String) {
+                                eventSink.onLlmEvent(LlmEventData(
+                                    config.agentId, requestId, kind = "error",
+                                    errorCode = code, errorMessage = message))
+                                scope.launch { db.messageDao().updateStatus(assistantId, "error", System.currentTimeMillis()) }
+                            }
                         }
-                        override fun onTextDelta(textDelta: String) {
-                            eventSink.onLlmEvent(LlmEventData(
-                                config.agentId, requestId, kind = "firstToken", textDelta = textDelta))
-                            scope.launch { db.messageDao().appendContent(assistantId, textDelta, System.currentTimeMillis()) }
-                            pushDelta(textDelta)
-                        }
-                        override fun onThinkingDelta(delta: String) {
-                            eventSink.onLlmEvent(LlmEventData(
-                                config.agentId, requestId, kind = "thinking", thinkingDelta = delta))
-                        }
-                        override fun onToolCallStart(id: String, name: String) {
-                            eventSink.onLlmEvent(LlmEventData(
-                                config.agentId, requestId, kind = "toolCallStart",
-                                toolCallId = id, toolName = name))
-                        }
-                        override fun onToolCallArguments(delta: String) {
-                            eventSink.onLlmEvent(LlmEventData(
-                                config.agentId, requestId, kind = "toolCallArguments",
-                                toolArgumentsDelta = delta))
-                        }
-                        override fun onToolCallResult(result: String) {
-                            eventSink.onLlmEvent(LlmEventData(
-                                config.agentId, requestId, kind = "toolCallResult",
-                                toolResult = result))
-                        }
-                        override fun onDone(fullText: String) {
-                            eventSink.onLlmEvent(LlmEventData(
-                                config.agentId, requestId, kind = "done", fullText = fullText))
-                            scope.launch { db.messageDao().updateStatus(assistantId, "done", System.currentTimeMillis()) }
-                        }
-                        override fun onError(code: String, message: String) {
-                            eventSink.onLlmEvent(LlmEventData(
-                                config.agentId, requestId, kind = "error",
-                                errorCode = code, errorMessage = message))
-                            scope.launch { db.messageDao().updateStatus(assistantId, "error", System.currentTimeMillis()) }
-                        }
+                    )
+
+                    if (collectedToolCalls.isEmpty()) break@loop
+
+                    // 1) 把 assistant 的 tool_calls 消息加进历史。
+                    //    嵌套结构用 JSONArray/JSONObject 显式构造，确保 LlmService
+                    //    内 JSONObject(map) 序列化时不丢字段。
+                    val toolCallsArr = JSONArray()
+                    for (tc in collectedToolCalls) {
+                        toolCallsArr.put(JSONObject().apply {
+                            put("id", tc["id"])
+                            put("type", "function")
+                            put("function", JSONObject().apply {
+                                put("name", tc["name"])
+                                put("arguments", tc["args"] ?: "")
+                            })
+                        })
                     }
-                )
+                    currentMessages.add(mapOf(
+                        "role" to "assistant",
+                        "content" to "",
+                        "tool_calls" to toolCallsArr,
+                    ))
+
+                    // 2) 执行所有 tool calls，把结果作为 tool 角色消息回灌
+                    val router = mcpRouter
+                    for (tc in collectedToolCalls) {
+                        if (!isActive || activeRequestId != requestId) break@loop
+                        val id = tc["id"] ?: ""
+                        val name = tc["name"] ?: ""
+                        val args = tc["args"] ?: ""
+                        val result = router?.callTool(name, args) ?: mapOf(
+                            "content" to "Error: no MCP servers configured",
+                            "isError" to true,
+                        )
+                        val content = (result["content"] as? String) ?: ""
+                        eventSink.onLlmEvent(LlmEventData(
+                            config.agentId, requestId, kind = "toolCallResult",
+                            toolCallId = id, toolName = name, toolResult = content))
+                        currentMessages.add(mapOf(
+                            "role" to "tool",
+                            "tool_call_id" to id,
+                            "name" to name,
+                            "content" to content,
+                        ))
+                    }
+                    // continue → 下一轮 chat
+                }
 
                 // LLM 完毕：把残余尾巴当最后一段送播
                 val tail = synchronized(bufferLock) {

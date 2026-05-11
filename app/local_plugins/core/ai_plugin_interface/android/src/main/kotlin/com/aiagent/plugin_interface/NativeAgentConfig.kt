@@ -18,6 +18,8 @@ data class NativeAgentConfig(
     val stsConfigJson: String?,
     val astConfigJson: String?,
     val translationConfigJson: String?,
+    /** MCP server 列表，JSON 数组字符串；每条对应 McpServerConfig.toJson */
+    val mcpServersJson: String? = null,
     val extraParams: Map<String, String> = emptyMap(),  // srcLang, dstLang etc.
 ) {
     companion object {
@@ -39,6 +41,7 @@ data class NativeAgentConfig(
             stsConfigJson = map["stsConfigJson"] as? String,
             astConfigJson = map["astConfigJson"] as? String,
             translationConfigJson = map["translationConfigJson"] as? String,
+            mcpServersJson = map["mcpServersJson"] as? String,
             extraParams = (map["extraParams"] as? Map<*, *>)
                 ?.map { (k, v) -> k.toString() to v.toString() }
                 ?.toMap() ?: emptyMap(),

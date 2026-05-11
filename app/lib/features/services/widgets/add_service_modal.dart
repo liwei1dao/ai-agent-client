@@ -29,7 +29,7 @@ Color _typeFg(String type) => switch (type) {
 
 class _ConfigField {
   const _ConfigField(this.key, this.label, this.hint,
-      {this.obscure = false, this.readonly = false, this.defaultValue});
+      {this.obscure = false, this.readonly = false, this.defaultValue, this.options});
   final String key;
   final String label;
   final String hint;
@@ -38,6 +38,8 @@ class _ConfigField {
   final bool readonly;
   /// Pre-filled default value for readonly fields
   final String? defaultValue;
+  /// When provided, renders as a dropdown of (value, label) pairs instead of a TextField.
+  final List<({String value, String label})>? options;
 }
 
 List<_ConfigField> _fieldsFor(String type, String vendor) {
@@ -146,7 +148,10 @@ List<_ConfigField> _fieldsFor(String type, String vendor) {
   if (type == 'mcp') {
     return const [
       _ConfigField('url', '服务地址 *', 'https://your-mcp-server.com/sse'),
-      _ConfigField('transport', '传输协议', 'sse', defaultValue: 'sse'),
+      _ConfigField('transport', '传输协议', 'sse', defaultValue: 'sse', options: [
+        (value: 'sse', label: 'SSE (Server-Sent Events)'),
+        (value: 'http', label: 'Streamable HTTP'),
+      ]),
       _ConfigField('authHeader', '认证 Header（可选）', 'Bearer your-token'),
     ];
   }
@@ -1054,6 +1059,8 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
                             _keyLabel(fields[i].label),
                             if (fields[i].readonly && !_unlockedReadonly.contains(fields[i].key))
                               _readonlyField(fields[i])
+                            else if (fields[i].options != null)
+                              _dropdownField(fields[i])
                             else
                               _keyField(_ctrlFor(fields[i].key), fields[i].hint, obscure: fields[i].obscure),
                           ],
@@ -1429,6 +1436,36 @@ class _AddServiceModalState extends ConsumerState<AddServiceModal> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _dropdownField(_ConfigField f) {
+    final ctrl = _ctrlFor(f.key);
+    final options = f.options!;
+    final current = ctrl.text.isNotEmpty
+        ? ctrl.text
+        : (f.defaultValue ?? options.first.value);
+    if (ctrl.text.isEmpty) ctrl.text = current;
+    final hasMatch = options.any((o) => o.value == current);
+    return DropdownButtonFormField<String>(
+      value: hasMatch ? current : options.first.value,
+      isExpanded: true,
+      style: const TextStyle(fontSize: 13, color: AppTheme.text1),
+      decoration: InputDecoration(
+        filled: true, fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppTheme.borderColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppTheme.borderColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppTheme.primary, width: 1.5)),
+      ),
+      items: [
+        for (final o in options)
+          DropdownMenuItem(value: o.value, child: Text(o.label)),
+      ],
+      onChanged: (v) {
+        if (v == null) return;
+        setState(() => ctrl.text = v);
+      },
     );
   }
 

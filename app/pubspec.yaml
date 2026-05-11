@@ -82,6 +82,8 @@ dependencies:
     path: local_plugins/vendors/translation_aliyun
   translation_azure:
     path: local_plugins/vendors/translation_azure
+  mcp:
+    path: local_plugins/vendors/mcp
 
   # Device layer (interface in core/, container + vendor SDKs in devices/)
   device_plugin_interface:

@@ -32,18 +32,43 @@ class LlmMessage {
     required this.content,
     this.toolCallId,
     this.name,
+    this.toolCalls,
   });
 
   final MessageRole role;
+
+  /// 文本内容；assistant 在 tool_calls 阶段时可能为空
   final String content;
+
+  /// tool 角色必填，关联到上一条 assistant 的 tool_calls[i].id
   final String? toolCallId;
+
+  /// 可选名字（tool 角色为工具名）
   final String? name;
+
+  /// assistant 角色可携带 tool_calls 列表（OpenAI 多轮 tool loop）
+  final List<ToolCall>? toolCalls;
 
   Map<String, dynamic> toJson() => {
         'role': role.name,
-        'content': content,
+        // OpenAI 在 tool_calls 时允许 content=null；其它角色 content 必填
+        if (toolCalls != null && toolCalls!.isNotEmpty && content.isEmpty)
+          'content': null
+        else
+          'content': content,
         if (toolCallId != null) 'tool_call_id': toolCallId,
         if (name != null) 'name': name,
+        if (toolCalls != null && toolCalls!.isNotEmpty)
+          'tool_calls': toolCalls!
+              .map((c) => {
+                    'id': c.id,
+                    'type': 'function',
+                    'function': {
+                      'name': c.name,
+                      'arguments': c.argumentsJson,
+                    },
+                  })
+              .toList(),
       };
 }
 
@@ -120,6 +145,7 @@ class LlmEvent {
     this.textDelta,
     this.thinkingDelta,
     this.toolCall,
+    this.toolCalls,
     this.toolResult,
     this.fullText,
     this.errorCode,
@@ -137,8 +163,11 @@ class LlmEvent {
   /// 思考增量（thinking 类型）
   final String? thinkingDelta;
 
-  /// 工具调用（toolCallStart 时）
+  /// 工具调用（toolCallStart 时单条）
   final ToolCall? toolCall;
+
+  /// 完整工具调用列表（done 时携带；非空表示需要 chat 容器执行工具并多轮回灌）
+  final List<ToolCall>? toolCalls;
 
   /// 工具调用结果文本（toolCallResult 时）
   final String? toolResult;
