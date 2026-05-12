@@ -13,6 +13,8 @@ flutter:
       android:
         package: com.aiagent.sts_volcengine
         pluginClass: StsVolcenginePlugin
+      ios:
+        pluginClass: StsVolcenginePlugin
       web:
         pluginClass: StsVolcengineWeb
         fileName: sts_volcengine_web.dart

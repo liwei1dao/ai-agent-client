@@ -26,6 +26,8 @@ flutter:
       android:
         package: com.aiagent.translation_aliyun
         pluginClass: TranslationAliyunPlugin
+      ios:
+        pluginClass: TranslationAliyunPlugin
       web:
         pluginClass: TranslationAliyunWeb
         fileName: translation_aliyun_web.dart

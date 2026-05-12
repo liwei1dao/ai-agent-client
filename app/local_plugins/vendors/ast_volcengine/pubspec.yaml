@@ -27,6 +27,8 @@ flutter:
       android:
         package: com.aiagent.ast_volcengine
         pluginClass: AstVolcenginePlugin
+      ios:
+        pluginClass: AstVolcenginePlugin
       web:
         pluginClass: AstVolcengineWeb
         fileName: ast_volcengine_web.dart

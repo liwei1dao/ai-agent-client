@@ -1,26 +1,27 @@
 package com.jielihome.jielihome.feature.record
 
-import android.content.Context
-import com.jieli.bluetooth.bean.translation.AudioData
-import com.jieli.bluetooth.bean.translation.TranslationMode
-import com.jieli.bluetooth.constant.Constants
-import com.jieli.bluetooth.impl.JL_BluetoothManager
 import com.jielihome.jielihome.bridge.EventDispatcher
-import com.jielihome.jielihome.feature.ConnectFeature
-import com.jielihome.jielihome.feature.translation.runtime.RcspTranslationRuntime
-import java.io.File
+import com.jielihome.jielihome.core.JieliHomeServer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 /**
- * 设备录音功能。
+ * 设备录音功能（MethodChannel/EventChannel 适配层）。
  *
- * 通过 RCSP [TranslationMode.MODE_CALL_TRANSLATION] + STRATEGY_DEVICE_ALWAYS_RECORDING
- * 让耳机持续上推双通道 PCM：
- *   - [AudioData.SOURCE_E_SCO_UP_LINK]   → streamId = "in.uplink"   （本端/耳机麦克风）
- *   - [AudioData.SOURCE_E_SCO_DOWN_LINK] → streamId = "in.downlink" （对端/通话对方）
+ * 实现下沉到 [JieliDeviceRecordPort]：MODE_CALL_RECORD(=7)
+ * + STRATEGY_DEVICE_ALWAYS_RECORDING + 双声道 OPUS（SOURCE_E_SCO_MIX）。耳机
+ * 持续上推 stereo OPUS，Port 解码成 16k/16bit/stereo 交织 PCM；本类把 Flow
+ * 事件转发到 [EventDispatcher] 给 Dart 侧。
  *
  * 事件类型：
- *   - `deviceRecordStart`  — 上行启动成功
- *   - `deviceRecordAudio`  — PCM 帧（含 streamId 区分上下行）
+ *   - `deviceRecordStart`  — 上行启动成功（payload: address, sampleRate, tsMs）
+ *   - `deviceRecordAudio`  — PCM 帧
+ *       payload: address, streamId="in.stereo", sampleRate, channels=2,
+ *                bitsPerSample=16, tsMs, pcm(ByteArray, 交织 LR)
  *   - `deviceRecordStop`   — 上行已停止
  *   - `deviceRecordError`  — 错误
  *
@@ -29,12 +30,13 @@ import java.io.File
  * 调用方（MethodRouter）负责在启动前 stop 另一个。
  */
 class DeviceRecordFeature(
-    private val context: Context,
-    private val btManager: JL_BluetoothManager,
-    private val connectFeature: ConnectFeature,
-    private val dispatcher: EventDispatcher,
+    private val server: JieliHomeServer,
 ) {
-    @Volatile private var runtime: RcspTranslationRuntime? = null
+    private val dispatcher: EventDispatcher get() = server.dispatcher
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    @Volatile private var audioJob: Job? = null
+    @Volatile private var errorJob: Job? = null
     @Volatile private var working = false
     @Volatile private var deviceAddress: String? = null
 
@@ -51,64 +53,54 @@ class DeviceRecordFeature(
         if (working) return Result.failure(IllegalStateException("already recording"))
 
         val address = args["address"] as? String
-        val device = address?.let { connectFeature.deviceByAddress(it) }
-            ?: connectFeature.connectedDevice()
-            ?: return Result.failure(IllegalStateException("no connected device; pass args.address or connect first"))
-
         val sampleRate = (args["sampleRate"] as? Int) ?: 16000
 
-        val sdkMode = TranslationMode(
-            TranslationMode.MODE_CALL_TRANSLATION,
-            Constants.AUDIO_TYPE_OPUS,
-            1,
-            sampleRate,
-        ).setRecordingStrategy(TranslationMode.STRATEGY_DEVICE_ALWAYS_RECORDING)
+        // 解析地址用于 deviceRecordStart/Stop 事件携带（即使 args.address 省略，也要把
+        // 实际连接到的设备地址回传给 Dart，便于上层做多设备路由）
+        val device = address?.let { server.connectFeature.deviceByAddress(it) }
+            ?: server.connectFeature.connectedDevice()
+            ?: return Result.failure(
+                IllegalStateException("no connected device; pass args.address or connect first")
+            )
+        val resolvedAddress = device.address
 
-        val rt = RcspTranslationRuntime(
-            btManager = btManager,
-            device = device,
-            mode = sdkMode,
-            tempDir = File(context.cacheDir, "jieli_device_record_tmp"),
-            onPcm = { source, pcm ->
-                val streamId = when (source) {
-                    AudioData.SOURCE_E_SCO_UP_LINK   -> "in.uplink"
-                    AudioData.SOURCE_E_SCO_DOWN_LINK -> "in.downlink"
-                    else -> return@RcspTranslationRuntime
-                }
-                dispatcher.send(
-                    mapOf(
-                        "type"          to "deviceRecordAudio",
-                        "address"       to device.address,
-                        "streamId"      to streamId,
-                        "sampleRate"    to sampleRate,
-                        "channels"      to 1,
-                        "bitsPerSample" to 16,
-                        "tsMs"          to System.currentTimeMillis(),
-                        "pcm"           to pcm,
-                    )
-                )
-            },
-            onError = { code, msg ->
-                dispatcher.send(
-                    mapOf(
-                        "type"    to "deviceRecordError",
-                        "address" to device.address,
-                        "code"    to code,
-                        "message" to msg,
-                    )
-                )
-            },
-        )
+        val port = server.deviceRecordPort
 
-        return rt.start().fold(
+        // 先订阅再 start，避免首帧落在订阅建立之前被 SharedFlow 丢掉（replay=0）
+        audioJob = port.audioFrames.onEach { f ->
+            dispatcher.send(
+                mapOf(
+                    "type"          to "deviceRecordAudio",
+                    "address"       to f.address,
+                    "streamId"      to f.streamId,
+                    "sampleRate"    to f.sampleRate,
+                    "channels"      to f.channels,
+                    "bitsPerSample" to f.bitsPerSample,
+                    "tsMs"          to f.tsMs,
+                    "pcm"           to f.pcm,
+                )
+            )
+        }.launchIn(scope)
+
+        errorJob = port.errors.onEach { e ->
+            dispatcher.send(
+                mapOf(
+                    "type"    to "deviceRecordError",
+                    "address" to e.address,
+                    "code"    to e.code,
+                    "message" to e.message,
+                )
+            )
+        }.launchIn(scope)
+
+        return port.start(address = resolvedAddress, sampleRate = sampleRate).fold(
             onSuccess = {
-                runtime = rt
                 working = true
-                deviceAddress = device.address
+                deviceAddress = resolvedAddress
                 dispatcher.send(
                     mapOf(
                         "type"       to "deviceRecordStart",
-                        "address"    to device.address,
+                        "address"    to resolvedAddress,
                         "sampleRate" to sampleRate,
                         "tsMs"       to System.currentTimeMillis(),
                     )
@@ -116,7 +108,10 @@ class DeviceRecordFeature(
                 Result.success(Unit)
             },
             onFailure = { err ->
-                rt.stop()
+                runCatching { audioJob?.cancel() }
+                runCatching { errorJob?.cancel() }
+                audioJob = null
+                errorJob = null
                 Result.failure(err)
             },
         )
@@ -128,8 +123,11 @@ class DeviceRecordFeature(
         working = false
         val addr = deviceAddress
         deviceAddress = null
-        runtime?.stop()
-        runtime = null
+        runCatching { audioJob?.cancel() }
+        runCatching { errorJob?.cancel() }
+        audioJob = null
+        errorJob = null
+        runCatching { server.deviceRecordPort.stop() }
         dispatcher.send(
             mapOf(
                 "type"    to "deviceRecordStop",

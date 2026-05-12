@@ -26,6 +26,8 @@ flutter:
       android:
         package: com.aiagent.llm_openai
         pluginClass: LlmOpenaiPlugin
+      ios:
+        pluginClass: LlmOpenaiPlugin
       web:
         pluginClass: LlmOpenaiWeb
         fileName: llm_openai_web.dart

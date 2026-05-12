@@ -25,6 +25,8 @@ flutter:
       android:
         package: com.aiagent.translation_deepl
         pluginClass: TranslationDeeplPlugin
+      ios:
+        pluginClass: TranslationDeeplPlugin
       web:
         pluginClass: TranslationDeeplWeb
         fileName: translation_deepl_web.dart

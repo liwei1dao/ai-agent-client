@@ -13,6 +13,8 @@ flutter:
       android:
         package: com.aiagent.sts_polychat
         pluginClass: StsPolychatPlugin
+      ios:
+        pluginClass: StsPolychatPlugin
       web:
         pluginClass: StsPolychatWeb
         fileName: sts_polychat_web.dart

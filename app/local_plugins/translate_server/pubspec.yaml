@@ -22,3 +22,5 @@ flutter:
       android:
         package: com.aiagent.translate_server
         pluginClass: TranslateServerPlugin
+      ios:
+        pluginClass: TranslateServerPlugin

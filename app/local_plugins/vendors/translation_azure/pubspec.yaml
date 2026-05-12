@@ -25,6 +25,8 @@ flutter:
       android:
         package: com.aiagent.translation_azure
         pluginClass: TranslationAzurePlugin
+      ios:
+        pluginClass: TranslationAzurePlugin
       web:
         pluginClass: TranslationAzureWeb
         fileName: translation_azure_web.dart

@@ -21,3 +21,5 @@ flutter:
       android:
         package: com.aiagent.device_plugin_interface
         pluginClass: DevicePluginInterfacePlugin
+      ios:
+        pluginClass: DevicePluginInterfacePlugin

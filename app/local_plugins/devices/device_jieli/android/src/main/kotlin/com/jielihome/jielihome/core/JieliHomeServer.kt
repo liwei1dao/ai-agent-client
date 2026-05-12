@@ -153,7 +153,7 @@ class JieliHomeServer private constructor() {
         translationFeature = TranslationFeature(context.applicationContext, btManager, connectFeature)
         speechFeature = SpeechFeature(btManager, connectFeature, dispatcher).also { it.attach() }
         otaFeature = OtaFeature(btManager, connectFeature, dispatcher)
-        deviceRecordFeature = DeviceRecordFeature(context.applicationContext, btManager, connectFeature, dispatcher)
+        deviceRecordFeature = DeviceRecordFeature(this)
 
         // 默认音频桥：EventChannel；injector 把 Dart 推过来的 PCM 路由回当前 ModeHandler
         defaultBridge = EventChannelAudioBridge(dispatcher) { _, streamId, pcm, fmt, isFinal ->

@@ -1,53 +1,190 @@
 PODS:
+  - agent_ast_translate (0.1.0):
+    - Flutter
+  - agent_chat (0.1.0):
+    - ai_plugin_interface
+    - Flutter
+  - agent_sts_chat (0.1.0):
+    - Flutter
+  - agent_translate (0.1.0):
+    - Flutter
+  - agents_server (0.1.0):
+    - ai_plugin_interface
+    - Flutter
+  - ai_plugin_interface (0.1.0):
+    - Flutter
+    - WebRTC-SDK (~> 125.6422.07)
+  - assistant_server (0.1.0):
+    - Flutter
+  - ast_polychat (0.1.0):
+    - ai_plugin_interface
+    - Flutter
+  - ast_volcengine (0.1.0):
+    - ai_plugin_interface
+    - Flutter
+  - device_manager (0.1.0):
+    - Flutter
+  - device_plugin_interface (0.1.0):
+    - Flutter
   - Flutter (1.0.0)
   - GRDB.swift (6.24.1):
     - GRDB.swift/standard (= 6.24.1)
   - GRDB.swift/standard (6.24.1)
+  - llm_openai (0.1.0):
+    - ai_plugin_interface
+    - Flutter
+  - llm_volcengine (0.1.0):
+    - ai_plugin_interface
+    - Flutter
   - local_db (0.1.0):
     - Flutter
     - GRDB.swift (~> 6.0)
   - MicrosoftCognitiveServicesSpeech-iOS (1.48.2)
   - permission_handler_apple (9.3.0):
     - Flutter
+  - service_manager (0.1.0):
+    - ai_plugin_interface
+    - Flutter
+    - local_db
+  - sts_polychat (0.1.0):
+    - ai_plugin_interface
+    - Flutter
+  - sts_volcengine (0.1.0):
+    - ai_plugin_interface
+    - Flutter
   - stt_azure (0.1.0):
     - Flutter
     - MicrosoftCognitiveServicesSpeech-iOS (~> 1.43)
+  - translate_server (0.1.0):
+    - Flutter
+  - translation_aliyun (0.1.0):
+    - ai_plugin_interface
+    - Flutter
+  - translation_azure (0.1.0):
+    - ai_plugin_interface
+    - Flutter
+  - translation_deepl (0.1.0):
+    - ai_plugin_interface
+    - Flutter
   - tts_azure (0.1.0):
     - Flutter
     - MicrosoftCognitiveServicesSpeech-iOS (~> 1.43)
+  - WebRTC-SDK (125.6422.09)
 
 DEPENDENCIES:
+  - agent_ast_translate (from `.symlinks/plugins/agent_ast_translate/ios`)
+  - agent_chat (from `.symlinks/plugins/agent_chat/ios`)
+  - agent_sts_chat (from `.symlinks/plugins/agent_sts_chat/ios`)
+  - agent_translate (from `.symlinks/plugins/agent_translate/ios`)
+  - agents_server (from `.symlinks/plugins/agents_server/ios`)
+  - ai_plugin_interface (from `.symlinks/plugins/ai_plugin_interface/ios`)
+  - assistant_server (from `.symlinks/plugins/assistant_server/ios`)
+  - ast_polychat (from `.symlinks/plugins/ast_polychat/ios`)
+  - ast_volcengine (from `.symlinks/plugins/ast_volcengine/ios`)
+  - device_manager (from `.symlinks/plugins/device_manager/ios`)
+  - device_plugin_interface (from `.symlinks/plugins/device_plugin_interface/ios`)
   - Flutter (from `Flutter`)
+  - llm_openai (from `.symlinks/plugins/llm_openai/ios`)
+  - llm_volcengine (from `.symlinks/plugins/llm_volcengine/ios`)
   - local_db (from `.symlinks/plugins/local_db/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - service_manager (from `.symlinks/plugins/service_manager/ios`)
+  - sts_polychat (from `.symlinks/plugins/sts_polychat/ios`)
+  - sts_volcengine (from `.symlinks/plugins/sts_volcengine/ios`)
   - stt_azure (from `.symlinks/plugins/stt_azure/ios`)
+  - translate_server (from `.symlinks/plugins/translate_server/ios`)
+  - translation_aliyun (from `.symlinks/plugins/translation_aliyun/ios`)
+  - translation_azure (from `.symlinks/plugins/translation_azure/ios`)
+  - translation_deepl (from `.symlinks/plugins/translation_deepl/ios`)
   - tts_azure (from `.symlinks/plugins/tts_azure/ios`)
 
 SPEC REPOS:
   trunk:
     - GRDB.swift
     - MicrosoftCognitiveServicesSpeech-iOS
+    - WebRTC-SDK
 
 EXTERNAL SOURCES:
+  agent_ast_translate:
+    :path: ".symlinks/plugins/agent_ast_translate/ios"
+  agent_chat:
+    :path: ".symlinks/plugins/agent_chat/ios"
+  agent_sts_chat:
+    :path: ".symlinks/plugins/agent_sts_chat/ios"
+  agent_translate:
+    :path: ".symlinks/plugins/agent_translate/ios"
+  agents_server:
+    :path: ".symlinks/plugins/agents_server/ios"
+  ai_plugin_interface:
+    :path: ".symlinks/plugins/ai_plugin_interface/ios"
+  assistant_server:
+    :path: ".symlinks/plugins/assistant_server/ios"
+  ast_polychat:
+    :path: ".symlinks/plugins/ast_polychat/ios"
+  ast_volcengine:
+    :path: ".symlinks/plugins/ast_volcengine/ios"
+  device_manager:
+    :path: ".symlinks/plugins/device_manager/ios"
+  device_plugin_interface:
+    :path: ".symlinks/plugins/device_plugin_interface/ios"
   Flutter:
     :path: Flutter
+  llm_openai:
+    :path: ".symlinks/plugins/llm_openai/ios"
+  llm_volcengine:
+    :path: ".symlinks/plugins/llm_volcengine/ios"
   local_db:
     :path: ".symlinks/plugins/local_db/ios"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
+  service_manager:
+    :path: ".symlinks/plugins/service_manager/ios"
+  sts_polychat:
+    :path: ".symlinks/plugins/sts_polychat/ios"
+  sts_volcengine:
+    :path: ".symlinks/plugins/sts_volcengine/ios"
   stt_azure:
     :path: ".symlinks/plugins/stt_azure/ios"
+  translate_server:
+    :path: ".symlinks/plugins/translate_server/ios"
+  translation_aliyun:
+    :path: ".symlinks/plugins/translation_aliyun/ios"
+  translation_azure:
+    :path: ".symlinks/plugins/translation_azure/ios"
+  translation_deepl:
+    :path: ".symlinks/plugins/translation_deepl/ios"
   tts_azure:
     :path: ".symlinks/plugins/tts_azure/ios"
 
 SPEC CHECKSUMS:
+  agent_ast_translate: f8aca0191d87bf2323572b4b85cdcd10558872ea
+  agent_chat: 12df7130fc0a9e863dd5b194ca738c5e4d9be682
+  agent_sts_chat: 5aad863113e6d361ed535d1bd029557a0821932a
+  agent_translate: 8daaec7b2deecdf8bb735f3a402dbb835c032d46
+  agents_server: 0079d748490035c3dcbb9a7f1cfbace44755f347
+  ai_plugin_interface: 4da398f78177122dc3f6940428769a40c87ddd30
+  assistant_server: 46684dc62cf9be4e671fde0550232d28e3e1efb2
+  ast_polychat: ebb03f085ad7cdea82123b95e6d4fa73b2c6725b
+  ast_volcengine: e90bf33da5b7b9e697c6f78da5c03725249138cf
+  device_manager: 98b1d82ca5d98fde534ff59054efcfd4ee73f53c
+  device_plugin_interface: e876f134e0ff0bff5de31dc0e2a29938ddac6fd4
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
   GRDB.swift: 136dcb5d8dddca50aae3ba7d77475f79e7232cd8
+  llm_openai: c0a761ccb99b1728e5502b8007086b0930795368
+  llm_volcengine: 2a038ce953309eb648e2f0f3f2f730ee301e15f9
   local_db: 5b1c17010ee12837e23d0db9f8fc442155cd51f8
   MicrosoftCognitiveServicesSpeech-iOS: 709f67fe1f81bca5c230112d5c63bc8674b6a998
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
+  service_manager: a286d4ac9bebd0e83ce8216aed39925f980f30b6
+  sts_polychat: aee5583469e7eef47533df9d1c8b6a3d7f483085
+  sts_volcengine: 4fc026a10451f55dcb28b245f853535c8355398b
   stt_azure: 5e1f296812a372219cf8ef4abbf0f0c2e2071291
+  translate_server: 3e02b86caf6f96ec12346b75cd787bf3513ae2a8
+  translation_aliyun: e16b27dd8dfdb0ad20c30c407a07ab33c5414f5b
+  translation_azure: 4b70b7b123a50bad6194bdf12d223951fe633a9b
+  translation_deepl: e45985fae529fbb630577197cd2d587768c34ee9
   tts_azure: e3416649c33ce954a89e225baca41270b025a79b
+  WebRTC-SDK: d75580e98b394310e934d1b404d19fd54db4b9d2
 
 PODFILE CHECKSUM: 1857a7cdb7dfafe45f2b0e9a9af44644190f7506
 

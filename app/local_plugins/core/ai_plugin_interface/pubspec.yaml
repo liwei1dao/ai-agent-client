@@ -23,6 +23,8 @@ flutter:
       android:
         package: com.aiagent.plugin_interface
         pluginClass: AiPluginInterfacePlugin
+      ios:
+        pluginClass: AiPluginInterfacePlugin
       web:
         pluginClass: AiPluginInterfaceWeb
         fileName: ai_plugin_interface_web.dart

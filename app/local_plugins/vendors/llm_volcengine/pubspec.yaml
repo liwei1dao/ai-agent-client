@@ -25,6 +25,8 @@ flutter:
       android:
         package: com.aiagent.llm_volcengine
         pluginClass: LlmVolcenginePlugin
+      ios:
+        pluginClass: LlmVolcenginePlugin
       web:
         pluginClass: LlmVolcengineWeb
         fileName: llm_volcengine_web.dart

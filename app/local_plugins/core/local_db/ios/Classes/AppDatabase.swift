@@ -3,8 +3,8 @@ import GRDB
 
 /// AppDatabase — iOS 数据中心（GRDB）
 /// agent_runtime 可直接调用，无需 Channel 开销
-final class AppDatabase {
-    static let shared = AppDatabase()
+public final class AppDatabase {
+    public static let shared = AppDatabase()
 
     private let dbQueue: DatabaseQueue
 
@@ -71,21 +71,28 @@ final class AppDatabase {
     // MARK: — ServiceConfig
     // ─────────────────────────────────────────────────
 
-    func upsertServiceConfig(_ row: ServiceConfigRecord) throws {
+    public func upsertServiceConfig(_ row: ServiceConfigRecord) throws {
         try dbQueue.write { db in
             try row.save(db)
         }
     }
 
-    func deleteServiceConfig(id: String) throws {
+    public func deleteServiceConfig(id: String) throws {
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM service_configs WHERE id = ?", arguments: [id])
         }
     }
 
-    func getAllServiceConfigs() throws -> [ServiceConfigRecord] {
+    public func getAllServiceConfigs() throws -> [ServiceConfigRecord] {
         try dbQueue.read { db in
             try ServiceConfigRecord.fetchAll(db)
+        }
+    }
+
+    /// Convenience: look up one service config by primary key.
+    public func getServiceConfig(id: String) throws -> ServiceConfigRecord? {
+        try dbQueue.read { db in
+            try ServiceConfigRecord.fetchOne(db, key: id)
         }
     }
 
@@ -186,14 +193,30 @@ final class AppDatabase {
 // MARK: — GRDB Record 定义
 // ─────────────────────────────────────────────────
 
-struct ServiceConfigRecord: Codable, FetchableRecord, PersistableRecord {
-    static let databaseTableName = "service_configs"
-    var id: String
-    var type: String
-    var vendor: String
-    var name: String
-    var configJson: String
-    var createdAt: Int64
+public struct ServiceConfigRecord: Codable, FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "service_configs"
+    public var id: String
+    public var type: String
+    public var vendor: String
+    public var name: String
+    public var configJson: String
+    public var createdAt: Int64
+
+    public init(
+        id: String,
+        type: String,
+        vendor: String,
+        name: String,
+        configJson: String,
+        createdAt: Int64
+    ) {
+        self.id = id
+        self.type = type
+        self.vendor = vendor
+        self.name = name
+        self.configJson = configJson
+        self.createdAt = createdAt
+    }
 }
 
 struct AgentRecord: Codable, FetchableRecord, PersistableRecord {

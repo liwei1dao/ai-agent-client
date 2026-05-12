@@ -22,3 +22,5 @@ flutter:
       android:
         package: com.aiagent.assistant_server
         pluginClass: AssistantServerPlugin
+      ios:
+        pluginClass: AssistantServerPlugin

@@ -36,6 +36,8 @@ flutter:
       android:
         package: com.aiagent.agents_server
         pluginClass: AgentsServerPlugin
+      ios:
+        pluginClass: AgentsServerPlugin
       web:
         pluginClass: AgentsServerWeb
         fileName: agents_server_web.dart

@@ -22,3 +22,5 @@ flutter:
       android:
         package: com.aiagent.device_manager
         pluginClass: DeviceManagerPlugin
+      ios:
+        pluginClass: DeviceManagerPlugin

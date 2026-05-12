@@ -36,6 +36,8 @@ flutter:
       android:
         package: com.aiagent.service_manager
         pluginClass: ServiceManagerPlugin
+      ios:
+        pluginClass: ServiceManagerPlugin
       web:
         pluginClass: ServiceManagerWeb
         fileName: service_manager_web.dart

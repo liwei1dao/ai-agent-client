@@ -24,6 +24,8 @@ flutter:
       android:
         package: com.aiagent.agent_chat
         pluginClass: ChatAgentFlutterPlugin
+      ios:
+        pluginClass: ChatAgentFlutterPlugin
       web:
         pluginClass: AgentChatWeb
         fileName: agent_chat_web.dart

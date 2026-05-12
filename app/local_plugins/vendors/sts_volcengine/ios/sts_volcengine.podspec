@@ -9,5 +9,6 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*'
   s.platform         = :ios, '16.0'
   s.dependency 'Flutter'
+  s.dependency 'ai_plugin_interface'
   s.swift_version    = '5.9'
 end

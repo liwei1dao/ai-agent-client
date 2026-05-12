@@ -24,6 +24,8 @@ flutter:
       android:
         package: com.aiagent.agent_translate
         pluginClass: TranslateAgentFlutterPlugin
+      ios:
+        pluginClass: TranslateAgentFlutterPlugin
       web:
         pluginClass: AgentTranslateWeb
         fileName: agent_translate_web.dart
