@@ -248,6 +248,8 @@ class JieliDeviceSession implements DeviceSession {
     );
     if (snapshot == null) return _info;
     // 杰理 RCSP 当前只给一个总电量；按接口约定映射到 batteryLeft。
+    // （TWS 双耳拆分电量走 native-driven `JieliNativeDeviceSession`，那条路径
+    // 直接消费 ADV 字段，本 Dart facade 只是历史兼容入口。）
     _info = _info.copyWith(
       name: snapshot['name'] as String? ?? _info.name,
       firmwareVersion: snapshot['firmwareVersion'] as String?,

@@ -4,7 +4,6 @@ import android.content.Context
 import com.jieli.bluetooth.bean.BluetoothOption
 import com.jieli.bluetooth.impl.JL_BluetoothManager
 import com.jieli.bluetooth.impl.rcsp.RCSPController
-import com.jieli.bluetooth.interfaces.rcsp.ITwsOp
 import com.jieli.bluetooth.utils.JL_Log
 import com.jielihome.jielihome.api.JieliEventListener
 import com.jielihome.jielihome.bridge.EventDispatcher
@@ -64,20 +63,6 @@ class JieliHomeServer private constructor() {
      *  需要直接持有 [com.jieli.bluetooth.impl.rcsp.record.RecordOpImpl] 单例时）。 */
     internal val internalBtManager: JL_BluetoothManager get() = btManager
 
-    /**
-     * 杰理 TWS 操作接口 —— 提供左右耳 / 电仓独立电量与充电状态、ADV 广播订阅、
-     * Voice Mode 等高级 API。
-     *
-     * 实现说明：`RCSPController` 通过多层继承（PCSlaveImpl → SPDIFImpl →
-     * SoundCardImpl → TwsOpImpl）实现了 [ITwsOp]，强转拿到接口即可。SDK 没暴露
-     * 显式 getter，但 `getInstance()` 在 [initialize] 之后保证非 null。
-     *
-     * 调用方需要做空检查 / `getADVInfo` 返回 null 兜底——单耳设备 / 旧固件可能
-     * 不响应 ADV 协议，此时回退到 [DeviceInfoFeature.snapshot] 的 `battery` 字段。
-     */
-    val twsOp: ITwsOp
-        get() = RCSPController.getInstance() as ITwsOp
-
     private lateinit var bluetoothForwarder: BluetoothEventForwarder
     private lateinit var deviceInfoForwarder: DeviceInfoEventForwarder
     private lateinit var mediaForwarder: MediaEventForwarder
@@ -125,14 +110,13 @@ class JieliHomeServer private constructor() {
         val option = BluetoothOption.createDefaultOption()
         option.setUseMultiDevice(multiDevice)
         option.setSkipNoNameDev(skipNoNameDev)
-        // 关闭设备认证：SDK 默认 isUseDeviceAuth=true，会要求设备走 RCSP 授权流程
-        // (`DeviceStatusManager.isAuthBtDevice`)，未授权设备会被拒绝 → 表现为
-        // 连上后 RCSP init 完成立刻断开。授权需要服务端发签名密钥的整套基础
-        // 设施，目前没接，统一关掉。
+        // 启用 RCSP 设备认证（SDK 默认行为）：连接成功后 SDK 会通过
+        // `DeviceStatusManager.isAuthBtDevice` 走授权握手；未授权设备会被拒掉
+        // → 表现为连上后 RCSP init 完成立刻断开。本项目耳机已发签名授权，保持开启。
         option.setUseDeviceAuth(true)
         android.util.Log.d(
             "JieliHome",
-            "init multiDev=$multiDevice skipNoName=$skipNoNameDev useAuth=false"
+            "init multiDev=$multiDevice skipNoName=$skipNoNameDev useAuth=true defaultProtocol=SPP"
         )
         RCSPController.init(context, option)
 
@@ -231,8 +215,18 @@ class JieliHomeServer private constructor() {
         com.jielihome.jielihome.feature.assistant.JieliAssistantPort(this)
     }
 
+    /**
+     * Flutter ↔ [assistantPort] 的桥接。让 Dart 侧可以通过 MethodChannel
+     * 启停 AI 助理的耳机录音通路（`MODE_RECORD` + `STRATEGY_DEVICE_ALWAYS_RECORDING`），
+     * 上行 PCM 帧通过 EventDispatcher 以 `assistantAudio` 事件推给 Dart。
+     */
+    val assistantBridge: com.jielihome.jielihome.feature.assistant.AssistantBridge by lazy {
+        com.jielihome.jielihome.feature.assistant.AssistantBridge(assistantPort, dispatcher)
+    }
+
     fun shutdown() {
         if (!initialized) return
+        runCatching { assistantBridge.shutdown() }
         runCatching { otaFeature.cancel() }
         runCatching { deviceRecordFeature.stop() }
         runCatching { translationFeature.stop() }

@@ -15,6 +15,7 @@ PODS:
     - Flutter
     - WebRTC-SDK (~> 125.6422.07)
   - assistant_server (0.1.0):
+    - ai_plugin_interface
     - Flutter
   - ast_polychat (0.1.0):
     - ai_plugin_interface
@@ -39,7 +40,7 @@ PODS:
   - local_db (0.1.0):
     - Flutter
     - GRDB.swift (~> 6.0)
-  - MicrosoftCognitiveServicesSpeech-iOS (1.48.2)
+  - MicrosoftCognitiveServicesSpeech-iOS (1.49.0)
   - permission_handler_apple (9.3.0):
     - Flutter
   - service_manager (0.1.0):
@@ -56,6 +57,7 @@ PODS:
     - Flutter
     - MicrosoftCognitiveServicesSpeech-iOS (~> 1.43)
   - translate_server (0.1.0):
+    - ai_plugin_interface
     - Flutter
   - translation_aliyun (0.1.0):
     - ai_plugin_interface
@@ -163,7 +165,7 @@ SPEC CHECKSUMS:
   agent_translate: 8daaec7b2deecdf8bb735f3a402dbb835c032d46
   agents_server: 0079d748490035c3dcbb9a7f1cfbace44755f347
   ai_plugin_interface: 4da398f78177122dc3f6940428769a40c87ddd30
-  assistant_server: 46684dc62cf9be4e671fde0550232d28e3e1efb2
+  assistant_server: ee3abd880222ad0d9db0d8ae9133bdc373ac3233
   ast_polychat: ebb03f085ad7cdea82123b95e6d4fa73b2c6725b
   ast_volcengine: e90bf33da5b7b9e697c6f78da5c03725249138cf
   device_manager: 98b1d82ca5d98fde534ff59054efcfd4ee73f53c
@@ -173,13 +175,13 @@ SPEC CHECKSUMS:
   llm_openai: c0a761ccb99b1728e5502b8007086b0930795368
   llm_volcengine: 2a038ce953309eb648e2f0f3f2f730ee301e15f9
   local_db: 5b1c17010ee12837e23d0db9f8fc442155cd51f8
-  MicrosoftCognitiveServicesSpeech-iOS: 709f67fe1f81bca5c230112d5c63bc8674b6a998
+  MicrosoftCognitiveServicesSpeech-iOS: 9ab43961f9337f5124062dc3f1564230effe2366
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
   service_manager: a286d4ac9bebd0e83ce8216aed39925f980f30b6
   sts_polychat: aee5583469e7eef47533df9d1c8b6a3d7f483085
   sts_volcengine: 4fc026a10451f55dcb28b245f853535c8355398b
   stt_azure: 5e1f296812a372219cf8ef4abbf0f0c2e2071291
-  translate_server: 3e02b86caf6f96ec12346b75cd787bf3513ae2a8
+  translate_server: 41751485f3d85fd979c5a3f6d8ec884826128490
   translation_aliyun: e16b27dd8dfdb0ad20c30c407a07ab33c5414f5b
   translation_azure: 4b70b7b123a50bad6194bdf12d223951fe633a9b
   translation_deepl: e45985fae529fbb630577197cd2d587768c34ee9

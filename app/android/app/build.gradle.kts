@@ -76,7 +76,7 @@ flutter {
 dependencies {
     // 杰理 RCSP / 音频解码 / 解密 SDK；device_jieli 子模块只 compileOnly，
     // 宿主必须 implementation 才能在运行时找到 com.jieli.bluetooth.* 等类。
-    implementation(":jl_bluetooth_rcsp_V4.2.0_beta2_40214_20251224@aar")
+    implementation(":jl_bluetooth_rcsp_V4.2.0_beta1_40255_20260324@aar")
     implementation(":jl_audio_decode_V2.1.0_20012-release@aar")
     implementation(":jl_audio_v2_V1.0.0_9-release@aar")
     implementation(":jldecryption_v0.4-release@aar")

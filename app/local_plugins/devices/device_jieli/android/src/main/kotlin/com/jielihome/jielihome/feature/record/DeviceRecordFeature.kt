@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.onEach
 /**
  * 设备录音功能（MethodChannel/EventChannel 适配层）。
  *
- * 实现下沉到 [JieliDeviceRecordPort]：MODE_CALL_RECORD(=7)
+ * 实现下沉到 [JieliDeviceRecordPort]：MODE_CALL_TRANSLATION_WITH_STEREO(=6)
  * + STRATEGY_DEVICE_ALWAYS_RECORDING + 双声道 OPUS（SOURCE_E_SCO_MIX）。耳机
  * 持续上推 stereo OPUS，Port 解码成 16k/16bit/stereo 交织 PCM；本类把 Flow
  * 事件转发到 [EventDispatcher] 给 Dart 侧。

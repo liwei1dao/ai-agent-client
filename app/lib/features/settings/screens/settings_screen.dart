@@ -487,6 +487,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     int totalImported = 0;
+    int svcNew = 0;
+    int svcOverwrite = 0;
+    int svcSkip = 0;
 
     if (hasServices) {
       final svcNotifier = ref.read(serviceLibraryProvider.notifier);
@@ -504,7 +507,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: '服务导入冲突',
           );
           if (overwriteIds != null) {
-            totalImported += await _runWithLoading(
+            final r = await _runWithLoading(
               '正在导入服务…',
               () => svcNotifier.executeImport(
                 newItems: parsed.newItems,
@@ -512,9 +515,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 overwriteIds: overwriteIds,
               ),
             );
+            svcNew += r.newCount;
+            svcOverwrite += r.overwriteCount;
+            svcSkip += r.skipCount;
+            totalImported += r.totalImported;
+          } else {
+            svcSkip += parsed.totalCount;
           }
         } else {
-          totalImported += await _runWithLoading(
+          final r = await _runWithLoading(
             '正在导入服务…',
             () => svcNotifier.executeImport(
               newItems: parsed.newItems,
@@ -522,6 +531,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               overwriteIds: {},
             ),
           );
+          svcNew += r.newCount;
+          svcOverwrite += r.overwriteCount;
+          svcSkip += r.skipCount;
+          totalImported += r.totalImported;
         }
       }
     }
@@ -564,10 +577,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     if (!mounted) return;
+    final detail = StringBuffer('成功导入 $totalImported 项配置');
+    if (hasServices && (svcNew + svcOverwrite + svcSkip) > 0) {
+      detail.write('（服务：新增 $svcNew / 覆盖 $svcOverwrite / 跳过 $svcSkip）');
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('成功导入 $totalImported 项配置'),
+        content: Text(detail.toString()),
         backgroundColor: const Color(0xFF10B981),
+        duration: const Duration(seconds: 5),
       ),
     );
   }
@@ -581,14 +599,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required String Function(T) itemId,
     required String title,
   }) async {
+    // 默认全部覆盖：用户点击「导入」的语义就是让文件内容生效。
+    // 之前默认 false 会导致同设备导出 → 导入时所有冲突项被静默跳过。
     final overwriteMap = <String, bool>{
-      for (final c in conflicts) itemId(c): false,
+      for (final c in conflicts) itemId(c): true,
     };
 
     return showDialog<Set<String>>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
+        builder: (ctx, setDialogState) {
+          final allOverwrite =
+              overwriteMap.values.every((v) => v);
+          final allSkip = overwriteMap.values.every((v) => !v);
+          return AlertDialog(
           title: Text(title,
               style: const TextStyle(
                   fontSize: 16, fontWeight: FontWeight.w700)),
@@ -605,9 +629,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         style: const TextStyle(
                             fontSize: 13, color: AppTheme.text2)),
                   ),
-                Text('以下 ${conflicts.length} 项与本地已有配置冲突：',
-                    style: const TextStyle(
-                        fontSize: 13, color: AppTheme.text1)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '以下 ${conflicts.length} 项与本地已有配置冲突：',
+                        style: const TextStyle(
+                            fontSize: 13, color: AppTheme.text1),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => setDialogState(() {
+                        final next = !allOverwrite;
+                        for (final k in overwriteMap.keys) {
+                          overwriteMap[k] = next;
+                        }
+                      }),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 0),
+                        minimumSize: const Size(0, 28),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        allOverwrite
+                            ? '全部跳过'
+                            : (allSkip ? '全部覆盖' : '全部覆盖'),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 Flexible(
                   child: ListView.separated(
@@ -696,7 +748,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               child: const Text('确认导入'),
             ),
           ],
-        ),
+        );
+        },
       ),
     );
   }

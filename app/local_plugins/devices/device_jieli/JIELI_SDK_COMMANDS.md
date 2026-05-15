@@ -1,6 +1,6 @@
 # 杰理 RCSP SDK 指令 / 常量参考
 
-> **来源**：`android/libs/jl_bluetooth_rcsp_V4.2.0_beta2_40214_20251224.aar` 中
+> **来源**：`android/libs/jl_bluetooth_rcsp_V4.2.0_beta1_40214_20251224.aar` 中
 > `com.jieli.bluetooth.constant.Command` 等 class 的 `javap -p -constants` 反编译结果。
 > **生成时间**：2026-05-07
 > **用途**：核对项目里硬编码的 cmd / opcode / 模式 ID 是否与 SDK 内部定义一致，避免猜测。

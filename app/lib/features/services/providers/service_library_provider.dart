@@ -174,13 +174,16 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
     return ImportParseResult(conflicts: conflicts, newItems: newItems);
   }
 
-  /// Execute import with conflict resolution.
-  Future<int> executeImport({
+  /// Execute import with conflict resolution. Returns detailed counts so the
+  /// caller can show 「新增/覆盖/跳过」 breakdown for diagnosis.
+  Future<ImportExecuteResult> executeImport({
     required List<ImportItem> newItems,
     required List<ImportItem> conflicts,
     required Set<String> overwriteIds,
   }) async {
-    int count = 0;
+    int newCount = 0;
+    int overwriteCount = 0;
+    int skipCount = 0;
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final item in newItems) {
       final dto = ServiceConfigDto(
@@ -192,7 +195,7 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
         createdAt: now,
       );
       await _db.upsertServiceConfig(dto);
-      count++;
+      newCount++;
     }
     for (final item in conflicts) {
       if (item.existingId != null && overwriteIds.contains(item.existingId)) {
@@ -206,12 +209,30 @@ class ServiceLibraryNotifier extends StateNotifier<List<ServiceConfigDto>> {
           createdAt: existing.createdAt,
         );
         await _db.upsertServiceConfig(dto);
-        count++;
+        overwriteCount++;
+      } else {
+        skipCount++;
       }
     }
     await _load();
-    return count;
+    return ImportExecuteResult(
+      newCount: newCount,
+      overwriteCount: overwriteCount,
+      skipCount: skipCount,
+    );
   }
+}
+
+class ImportExecuteResult {
+  final int newCount;
+  final int overwriteCount;
+  final int skipCount;
+  const ImportExecuteResult({
+    required this.newCount,
+    required this.overwriteCount,
+    required this.skipCount,
+  });
+  int get totalImported => newCount + overwriteCount;
 }
 
 class ImportItem {

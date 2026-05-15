@@ -1,7 +1,8 @@
 name: device_jieli
 description: "JieLi Home SDK Flutter plugin"
-publish_to: http://localhost:4000
-version: 0.1.0
+publish_to: none
+version: 0.0.1
+homepage:
 
 environment:
   sdk: ^3.8.1
@@ -11,7 +12,8 @@ dependencies:
   flutter:
     sdk: flutter
   plugin_platform_interface: ^2.0.2
-  device_plugin_interface: ^0.1.0
+  device_plugin_interface:
+    path: ../device_plugin_interface
 
 dev_dependencies:
   flutter_test:
@@ -38,6 +40,9 @@ flutter:
       android:
         package: com.jielihome.jielihome
         pluginClass: JielihomePlugin
+      ios:
+        pluginClass: JielihomePlugin
+        sharedDarwinSource: false
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:

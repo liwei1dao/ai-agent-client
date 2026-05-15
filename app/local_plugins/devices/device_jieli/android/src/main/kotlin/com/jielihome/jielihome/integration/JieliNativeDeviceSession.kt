@@ -24,12 +24,11 @@ import java.io.File
 /**
  * 杰理 [NativeDeviceSession] 实现 —— 包装 [JieliHomeServer] 的连接快照与事件。
  *
- * 状态机由 [JieliNativeDevicePlugin] 在 RCSP 事件回调里推动（值对应
- * `com.jieli.bluetooth.constant.StateCode`）：
- *   - state == CONNECTING(3) → connecting
- *   - state == OK(1) / CONNECTED(4)，且 RcspInit 未到 → linkConnected
+ * 状态机由 [JieliNativeDevicePlugin] 在 RCSP 事件回调里推动：
+ *   - ConnectionStateEvent.state == CONNECTING(2) → connecting
+ *   - state == OK(1) + RcspInit 未到 → linkConnected
  *   - RcspInit(success=true) → ready
- *   - state == DISCONNECT(0) / FAILED(2) → disconnected
+ *   - state == DISCONNECT(0) → disconnected
  */
 class JieliNativeDeviceSession internal constructor(
     private val server: JieliHomeServer,
@@ -68,7 +67,6 @@ class JieliNativeDeviceSession internal constructor(
 
     internal fun setState(s: DeviceConnectionState) {
         if (_state == s) return
-        Log.d(TAG, "setState $deviceId: $_state -> $s")
         _state = s
         emit(DeviceSessionEvent(
             type = DeviceSessionEventType.CONNECTION_STATE_CHANGED,
@@ -107,32 +105,16 @@ class JieliNativeDeviceSession internal constructor(
     }
 
     private fun applySnapshot(snapshot: Map<String, Any?>) {
-        // 电量字段映射：
-        //  - TWS 双耳 + 电仓：用 ADV 拆分后的 batteryLeft / batteryRight / batteryCase
-        //    + chargingLeft / chargingRight / chargingCase（[DeviceInfoFeature] 已合并）。
-        //  - 单耳 / 非 TWS 设备：ADV 拉不回（feature 那边 batteryRight/Case 都是 null），
-        //    fallback 到 SDK 聚合的 `battery`（quantity）填到 batteryLeft，与接口
-        //    `DeviceInfo` 关于"单一电量设备只填 batteryLeft"的约定对齐。
-        //
-        // 直接走 data class 自带的 [DeviceInfo.copy] 而不是 [DeviceInfo.copyWith]：
-        // 后者把 null 当作"保留旧值"，导致 batteryRight 一旦填过 80 就再也清不掉，
-        // 但右耳从仓里取出又收回时我们需要让 UI 隐藏右耳条目，所以必须能显式写 null。
-        val advLeft = (snapshot["batteryLeft"] as? Number)?.toInt()
-        val advRight = (snapshot["batteryRight"] as? Number)?.toInt()
-        val advCase = (snapshot["batteryCase"] as? Number)?.toInt()
-        val totalBattery = (snapshot["battery"] as? Number)?.toInt()?.takeIf { it in 0..100 }
-        val isTws = advLeft != null || advRight != null || advCase != null
-        _info = _info.copy(
+        // 杰理 SDK 的 snapshot 只透出单个 `battery`（info.quantity），无左右耳/仓体细分；
+        // 这里把它同时填到 batteryLeft / batteryRight，保证 UI 上能拿到总电量。
+        val battery = (snapshot["battery"] as? Number)?.toInt()
+        _info = _info.copyWith(
             name = (snapshot["name"] as? String).takeIf { !it.isNullOrEmpty() }
                 ?: _info.name,
             firmwareVersion = (snapshot["versionName"] as? String)
                 ?: _info.firmwareVersion,
-            batteryLeft = if (isTws) advLeft else totalBattery,
-            batteryRight = if (isTws) advRight else null,
-            batteryCase = if (isTws) advCase else null,
-            chargingLeft = (snapshot["chargingLeft"] as? Boolean) ?: false,
-            chargingRight = (snapshot["chargingRight"] as? Boolean) ?: false,
-            chargingCase = (snapshot["chargingCase"] as? Boolean) ?: false,
+            batteryLeft = battery,
+            batteryRight = battery,
             metadata = snapshot,
         )
         emit(DeviceSessionEvent(

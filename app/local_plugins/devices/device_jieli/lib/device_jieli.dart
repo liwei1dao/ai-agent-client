@@ -299,10 +299,12 @@ class SpeechStopReason {
 
 // ───── 设备录音事件 ─────
 
-/// 上行/下行通道 ID 常量（与 Kotlin DeviceRecordFeature 保持一致）
+/// 通道 ID 常量（与 Kotlin DeviceRecordFeature 保持一致）
+///
+/// 当前实现走 MODE_CALL_TRANSLATION_WITH_STEREO + ch=2，耳机一次推一帧
+/// **双声道交织 PCM**（L=本端 / R=对端），统一用 [inStereo] 标识。
 class DeviceRecordStreams {
-  static const String inUplink = 'in.uplink';
-  static const String inDownlink = 'in.downlink';
+  static const String inStereo = 'in.stereo';
 }
 
 class DeviceRecordStartEvent extends JieliEvent {
@@ -319,7 +321,7 @@ class DeviceRecordStartEvent extends JieliEvent {
 class DeviceRecordAudioEvent extends JieliEvent {
   final String? address;
 
-  /// [DeviceRecordStreams.inUplink] 或 [DeviceRecordStreams.inDownlink]
+  /// [DeviceRecordStreams.inStereo]（双声道交织：L=本端 / R=对端）
   final String streamId;
   final int sampleRate;
   final int channels;
@@ -351,6 +353,47 @@ class DeviceRecordErrorEvent extends JieliEvent {
   final int code;
   final String? message;
   const DeviceRecordErrorEvent({this.address, required this.code, this.message});
+}
+
+// ───── AI 助理通路事件（JieliAssistantPort：MODE_RECORD + DEVICE_ALWAYS_RECORDING）─────
+// 与 SpeechXxxEvent 互斥；走 RCSP 翻译模式状态机，耳机端 OPUS → 16k PCM 自动持续上推。
+
+class AssistantStartEvent extends JieliEvent {
+  final int sampleRate;
+  final int tsMs;
+  const AssistantStartEvent({required this.sampleRate, required this.tsMs});
+}
+
+class AssistantAudioEvent extends JieliEvent {
+  /// 'pcm16'
+  final String encoding;
+  final int sampleRate;
+  final int channels;
+  final int bitsPerSample;
+  final int sequence;
+  final int tsMs;
+  /// 16-bit signed PCM, mono, 16kHz, 20ms 帧
+  final Uint8List pcm;
+  const AssistantAudioEvent({
+    required this.encoding,
+    required this.sampleRate,
+    required this.channels,
+    required this.bitsPerSample,
+    required this.sequence,
+    required this.tsMs,
+    required this.pcm,
+  });
+}
+
+class AssistantEndEvent extends JieliEvent {
+  final int tsMs;
+  const AssistantEndEvent({required this.tsMs});
+}
+
+class AssistantErrorEvent extends JieliEvent {
+  final String code;
+  final String? message;
+  const AssistantErrorEvent(this.code, this.message);
 }
 
 // ───── OTA 事件 ─────
@@ -474,6 +517,30 @@ class Jielihome {
       case 'speechError':
         return SpeechErrorEvent(
           (raw['code'] as int?) ?? 0,
+          raw['message'] as String?,
+        );
+      case 'assistantStart':
+        return AssistantStartEvent(
+          sampleRate: (raw['sampleRate'] as int?) ?? 16000,
+          tsMs: (raw['tsMs'] as num?)?.toInt() ?? 0,
+        );
+      case 'assistantAudio':
+        return AssistantAudioEvent(
+          encoding: (raw['encoding'] as String?) ?? 'pcm16',
+          sampleRate: (raw['sampleRate'] as int?) ?? 16000,
+          channels: (raw['channels'] as int?) ?? 1,
+          bitsPerSample: (raw['bitsPerSample'] as int?) ?? 16,
+          sequence: (raw['sequence'] as num?)?.toInt() ?? 0,
+          tsMs: (raw['tsMs'] as num?)?.toInt() ?? 0,
+          pcm: raw['pcm'] as Uint8List,
+        );
+      case 'assistantEnd':
+        return AssistantEndEvent(
+          tsMs: (raw['tsMs'] as num?)?.toInt() ?? 0,
+        );
+      case 'assistantError':
+        return AssistantErrorEvent(
+          (raw['code'] as String?) ?? 'device.assistant.unknown',
           raw['message'] as String?,
         );
       case 'deviceRecordStart':
@@ -741,6 +808,24 @@ class Jielihome {
       'reason': reason,
     });
   }
+
+  // ───── AI 助理通路（JieliAssistantPort）─────
+  // 与 [speechStart] 不同：本通路走 RCSP `MODE_RECORD` +
+  // `STRATEGY_DEVICE_ALWAYS_RECORDING`，耳机自主持续推 OPUS，APP 不需要唤醒词
+  // 也不需要按键。Port 内部以 `packetSize=40` 解码 16k OPUS 帧，避免 SpeechFeature
+  // 路径下因 packetSize=200 导致的 80% 帧丢失。
+  //
+  // 订阅 [AssistantAudioEvent] 拿 16k/16bit/mono/20ms PCM 帧；
+  // [AssistantErrorEvent] / [AssistantEndEvent] 用于错误和退出通知。
+  Future<bool> assistantStart() async =>
+      (await _methodChannel.invokeMethod<bool>('assistantStart')) ?? false;
+
+  Future<void> assistantStop() async {
+    await _methodChannel.invokeMethod<bool>('assistantStop');
+  }
+
+  Future<bool> assistantIsRunning() async =>
+      (await _methodChannel.invokeMethod<bool>('assistantIsRunning')) ?? false;
 
   // ───── 设备录音 ─────
   // 订阅 [DeviceRecordStartEvent] / [DeviceRecordAudioEvent] /

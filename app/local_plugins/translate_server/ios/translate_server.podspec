@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
   s.name             = 'translate_server'
   s.version          = '0.1.0'
-  s.summary          = 'Composite translation orchestrator (iOS stub).'
+  s.summary          = 'Composite translation orchestrator (iOS).'
   s.homepage         = 'https://example.com'
   s.license          = { :type => 'MIT' }
   s.author           = { 'AI Agent' => 'dev@example.com' }
@@ -9,5 +9,6 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*'
   s.platform         = :ios, '16.0'
   s.dependency 'Flutter'
+  s.dependency 'ai_plugin_interface'
   s.swift_version    = '5.9'
 end

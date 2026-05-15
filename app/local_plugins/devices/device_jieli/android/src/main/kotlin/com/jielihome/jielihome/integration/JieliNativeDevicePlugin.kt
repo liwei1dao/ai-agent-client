@@ -141,35 +141,20 @@ class JieliNativeDevicePlugin(
             val session = _activeSession ?: return
             if (session.deviceId != address) return
             Log.d(TAG, "onConnectionState addr=$address state=$state")
-            // SDK 状态码（com.jieli.bluetooth.constant.StateCode）：
-            //   0 CONNECTION_DISCONNECT   1 CONNECTION_OK         2 CONNECTION_FAILED
-            //   3 CONNECTION_CONNECTING   4 CONNECTION_CONNECTED
-            //
-            // 注意：曾经把 2 误当 CONNECTING 用，连接成功后 SDK 一旦补发 FAILED→DISCONNECT，
-            // UI 就会出现"已链接设备一闪而过"的现象。FAILED 必须按断开处理。
             when (state) {
-                3 -> session.setState(DeviceConnectionState.CONNECTING)
-                1, 4 -> {
-                    // BLE/EDR 链路就绪，等 RCSP 初始化。READY 状态下（onRcspInit 已先到）
-                    // 不要把状态回退到 LINK_CONNECTED。
-                    if (session.state != DeviceConnectionState.READY) {
-                        session.setState(DeviceConnectionState.LINK_CONNECTED)
-                    }
-                }
-                0, 2 -> {
+                2 -> session.setState(DeviceConnectionState.CONNECTING)
+                1 -> session.setState(DeviceConnectionState.LINK_CONNECTED)
+                0 -> {
                     session.setState(DeviceConnectionState.DISCONNECTED)
                     _activeSession = null
                     val pending = _pendingConnect
                     if (pending != null && !pending.isDone) {
-                        val code = if (state == 2)
-                            DeviceErrorCode.CONNECT_FAILED
-                        else
-                            DeviceErrorCode.DISCONNECTED_REMOTE
-                        val msg = if (state == 2)
-                            "connection failed"
-                        else
-                            "disconnected before ready"
-                        pending.completeExceptionally(DeviceException(code, msg))
+                        pending.completeExceptionally(
+                            DeviceException(
+                                DeviceErrorCode.DISCONNECTED_REMOTE,
+                                "disconnected before ready",
+                            )
+                        )
                         _pendingConnect = null
                         _pendingConnectAddress = null
                     }
@@ -208,17 +193,6 @@ class JieliNativeDevicePlugin(
             val session = _activeSession ?: return
             if (address != null && session.deviceId != address) return
             // 由 session 自己 refresh info 拉一次最新快照
-            runCatching { session.refreshInfo() }
-        }
-
-        override fun onTwsBroadcast(payload: Map<String, Any?>) {
-            // TWS 设备主动推左右耳 / 电仓电量变化（佩戴 / 取出 / 充电态）。
-            // 真值已经在 JieliNativeDeviceSession.applySnapshot 里映射好——这里直接
-            // refreshInfo 让它重新合并 [DeviceInfoFeature.snapshot] 的最新数据并
-            // 派 deviceInfoUpdated 事件，UI 上的电量 chip 自动刷新。
-            val address = payload["address"] as? String
-            val session = _activeSession ?: return
-            if (address != null && session.deviceId != address) return
             runCatching { session.refreshInfo() }
         }
 
@@ -357,65 +331,6 @@ class JieliNativeDevicePlugin(
 
     override val activeSession: NativeDeviceSession?
         get() = _activeSession?.takeIf { it.state != DeviceConnectionState.DISCONNECTED }
-
-    /**
-     * 与杰理 SDK 当前连接状态对账，修复"SDK 还连着 / app 失忆"造成的扫描页死锁。
-     *
-     * 三种走向：
-     *  - SDK 当前有连接的设备（[ConnectFeature.connectedDevice] 非空），但本插件
-     *    无 active session 或 deviceId 不一致或已断开 → 把旧 session 标
-     *    DISCONNECTED 后重建一个，状态直接置 READY（SDK 都说连着了，RCSP 必然
-     *    已握手），再 refreshInfo 一次拉最新电量/固件。
-     *  - SDK 当前有连接的设备且 [_activeSession] 已存在但状态不是 READY（被中间
-     *    态卡住）→ 直接 setState(READY)，不重建。
-     *  - SDK 当前无连接但 [_activeSession] 还活着 → 把它标 DISCONNECTED 并清空。
-     *
-     * 完全一致时 no-op，不派任何事件，避免 UI 抖动。
-     */
-    override fun syncActiveFromSdk() {
-        if (!_initialized || _disposed) return
-        val sdkDevice = runCatching { server.connectFeature.connectedDevice() }.getOrNull()
-        val sdkAddr = sdkDevice?.address
-        val current = _activeSession
-
-        if (sdkAddr != null) {
-            if (current != null && current.deviceId == sdkAddr &&
-                current.state != DeviceConnectionState.DISCONNECTED) {
-                if (current.state != DeviceConnectionState.READY) {
-                    Log.i(TAG, "syncActiveFromSdk: bump $sdkAddr ${current.state} → READY")
-                    current.setState(DeviceConnectionState.READY)
-                }
-                runCatching { current.refreshInfo() }
-                return
-            }
-            // 旧 session 过期或地址不一致：标 disconnected 让 OTA 等端口收尾
-            current?.takeIf { it.state != DeviceConnectionState.DISCONNECTED }
-                ?.setState(DeviceConnectionState.DISCONNECTED)
-            val snapshotName =
-                server.deviceInfoFeature.snapshot(sdkAddr)?.get("name") as? String
-            val initialName = snapshotName?.takeIf { it.isNotEmpty() }
-                ?: runCatching { sdkDevice.name }.getOrNull() ?: ""
-            val rebuilt = JieliNativeDeviceSession(
-                server = server,
-                deviceId = sdkAddr,
-                initialName = initialName,
-                capabilities = capabilities,
-                otaCacheDir = context.cacheDir,
-            )
-            rebuilt.setState(DeviceConnectionState.READY)
-            runCatching { rebuilt.refreshInfo() }
-            _activeSession = rebuilt
-            Log.i(TAG, "syncActiveFromSdk: rebuilt session for sdk-connected $sdkAddr")
-            return
-        }
-
-        if (current != null && current.state != DeviceConnectionState.DISCONNECTED) {
-            Log.i(TAG, "syncActiveFromSdk: clear stale session ${current.deviceId} " +
-                "(sdk has no connection)")
-            current.setState(DeviceConnectionState.DISCONNECTED)
-            _activeSession = null
-        }
-    }
 
     override fun dispose() {
         if (_disposed) return

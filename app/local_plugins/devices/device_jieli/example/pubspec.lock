@@ -59,7 +59,7 @@ packages:
   device_plugin_interface:
     dependency: transitive
     description:
-      path: "../../../core/device_plugin_interface"
+      path: "../../device_plugin_interface"
       relative: true
     source: path
     version: "0.1.0"

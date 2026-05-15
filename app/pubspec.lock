@@ -374,7 +374,7 @@ packages:
       path: "local_plugins/devices/device_jieli"
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.0.1"
   device_manager:
     dependency: "direct main"
     description:

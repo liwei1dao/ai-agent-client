@@ -156,8 +156,13 @@ class JieliCallTranslationPort(
         savedBridge = server.defaultBridge
         server.setTranslationBridge(captureBridge)
 
+        // 显式走 6 号立体声通话翻译（MODE_CALL_TRANSLATION_WITH_STEREO）：
+        // 耳机 SDK 会上推一路立体声 PCM（L=上行 / R=下行），
+        // 由 StereoCallTranslationModeHandler 内部拆成两路 mono 再分发到
+        // IN_UPLINK / IN_DOWNLINK，对外 captureBridge 仍然看到 16k/mono/20ms。
+        // 注意：该模式依赖真实 SCO 通话事件，没有通话时不会出帧。
         val result = translationFeature.start(
-            TranslationModeIds.MODE_CALL_TRANSLATION,
+            TranslationModeIds.MODE_CALL_TRANSLATION_WITH_STEREO,
             emptyMap(),
         )
         if (result.isFailure) {
@@ -165,12 +170,12 @@ class JieliCallTranslationPort(
             savedBridge?.let { runCatching { server.setTranslationBridge(it) } }
             savedBridge = null
             throw IllegalStateException(
-                "failed to enter MODE_CALL_TRANSLATION: ${result.exceptionOrNull()?.message}",
+                "failed to enter MODE_CALL_TRANSLATION_WITH_STEREO: ${result.exceptionOrNull()?.message}",
                 result.exceptionOrNull(),
             )
         }
         entered = true
-        Log.d(TAG, "entered MODE_CALL_TRANSLATION")
+        Log.d(TAG, "entered MODE_CALL_TRANSLATION_WITH_STEREO")
     }
 
     @Synchronized

@@ -207,6 +207,24 @@ class MethodRouter(
                     )
                 }
 
+                // ── AI 助理通路（JieliAssistantPort：MODE_RECORD + DEVICE_ALWAYS_RECORDING）──
+                "assistantStart" -> {
+                    // 翻译 / 设备录音与本通路互斥（同一 RCSP TranslationImpl 状态机）
+                    if (server.translationFeature.isWorking()) server.translationFeature.stop()
+                    if (server.deviceRecordFeature.isRecording()) server.deviceRecordFeature.stop()
+                    val ok = server.assistantBridge.start()
+                    if (ok) result.success(true)
+                    else result.error("ASSISTANT_START_ERR", "assistant bridge start failed", null)
+                }
+
+                "assistantStop" -> {
+                    server.assistantBridge.stop()
+                    result.success(true)
+                }
+
+                "assistantIsRunning" ->
+                    result.success(server.assistantBridge.isRunning())
+
                 // ── 设备录音 ──────────────────────────────────────────────────
                 "deviceRecordStart" -> {
                     @Suppress("UNCHECKED_CAST")

@@ -50,7 +50,6 @@ abstract class JieliEventAdapter : JieliEventListener {
                 address = payload["address"] as? String,
                 level = payload["level"] as? Int,
             )
-            "twsBroadcast" -> onTwsBroadcast(payload)
             "phoneCallStatus" -> onPhoneCallStatus(
                 address = payload["address"] as? String,
                 status = payload["status"] as? Int ?: 0,
@@ -115,18 +114,6 @@ abstract class JieliEventAdapter : JieliEventListener {
     open fun onConnectionState(address: String, state: Int) {}
 
     open fun onBattery(address: String?, level: Int?) {}
-
-    /**
-     * TWS 广播 / 设置查询统一事件 —— 设备主动推或主动查回的左右耳 / 电仓
-     * 电量与充电态。payload 字段：
-     *  - `address`: 设备 mac
-     *  - `leftBattery` / `rightBattery` / `caseBattery`: 0..100 或 null（未上报）
-     *  - `leftCharging` / `rightCharging` / `caseCharging`: bool
-     *
-     * 与 `onBattery` 的区别：`onBattery` 是 SDK 聚合后的总电量（兼容单耳设备），
-     * `onTwsBroadcast` 是 TWS 双耳 / 充电仓的拆分电量（旧固件 / 非 TWS 不会触发）。
-     */
-    open fun onTwsBroadcast(payload: Map<String, Any?>) {}
     open fun onPhoneCallStatus(address: String?, status: Int) {}
     open fun onVoiceMode(address: String?, modeId: Int?) {}
 

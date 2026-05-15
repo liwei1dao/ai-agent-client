@@ -36,14 +36,14 @@ data class DeviceRecordFrame(
 data class DeviceRecordError(val address: String?, val code: Int, val message: String?)
 
 /**
- * 设备录音端口 —— **通话录音模式（MODE_CALL_RECORD=7）+ 双声道**版。
+ * 设备录音端口 —— **立体声通话翻译模式（MODE_CALL_TRANSLATION_WITH_STEREO=6）+ 双声道**版。
  *
  * # 设计要点
  * 与 [com.jielihome.jielihome.feature.assistant.JieliAssistantPort] 是同构关系，只是
  * 一个单声道、一个双声道：
  * - JieliAssistantPort：mode=MODE_RECORD(1) + ch=1，耳机麦单通道上行
- * - 本类：              mode=MODE_CALL_RECORD(7) + ch=2，耳机持续上推双声道
- *                       （L=本端 UPLINK / R=对端 DOWNLINK）OPUS（source =
+ * - 本类：              mode=MODE_CALL_TRANSLATION_WITH_STEREO(6) + ch=2，耳机持续
+ *                       上推双声道（L=本端 UPLINK / R=对端 DOWNLINK）OPUS（source =
  *                       SOURCE_E_SCO_MIX），由 [OpusStreamDecoder] 解码成 16k/16bit
  *                       /stereo 交织 PCM 抛给 [audioFrames]
  *
@@ -52,22 +52,16 @@ data class DeviceRecordError(val address: String?, val code: Int, val message: S
  *     → OpusStreamDecoder(channel=2, packetSize=80) → 16k/16bit/stereo 交织 PCM
  *     → SharedFlow
  *
- * # MODE_CALL_RECORD vs MODE_CALL_TRANSLATION_WITH_STEREO
- * SDK V4.2.0 beta1 / 40255 起新增 MODE_CALL_RECORD(=7)：等价于"立体声通话翻译"
- * 模式 6 的录音变体——上下行双流回传，但**不强制串接 AI 翻译链路**。设备能力
- * 与 6 共享（都看 `isSupportCallTranslationWithStereo`），固件状态机走相同的
- * SOURCE_E_SCO_MIX 分支，只在协议层标记不同。详见官方 demo
- * `AITranslationImpl` 第 200~201、453~454 行的分支判断。
- *
  * # 与 [DeviceRecordFeature] 的关系
- * [DeviceRecordFeature] 是 MethodChannel/EventChannel 的薄适配层，内部只持有本
- * Port 引用并把 [audioFrames] / [errors] 转发到 [com.jielihome.jielihome.bridge.EventDispatcher]。
- * Port 自身是真正的实现入口，native 编排器（如未来的 RecordPort）也可直接拿
- * 这个 Port 而无需经过 feature 层。
+ * 两者都是录音通路实现，但走两条独立的 TranslationImpl：
+ *   - [DeviceRecordFeature]：MODE_CALL_TRANSLATION + ch=1，单声道分两路（uplink/downlink）
+ *   - 本类：                MODE_CALL_TRANSLATION_WITH_STEREO + ch=2，双声道一路 stereo
+ * SDK enterMode 是设备级互斥的，两者不能同时活跃。Port 内部不再依赖 feature；
+ * MethodRouter / Flutter 侧仍走 feature，保持兼容。
  *
  * # 设备能力
  * 进入前会校验 `TranslationImpl.isSupportCallTranslationWithStereo`；不支持的耳机直接
- * 失败返回，避免下发 MODE_CALL_RECORD 后耳机状态机卡 IDLE 静默丢帧。
+ * 失败返回，避免下发后耳机状态机卡 IDLE 静默丢帧。
  *
  * # 格式
  * PCM_S16LE / 16 kHz / **stereo** / 20 ms。stereo 16k/16bit/20ms ≈ 80 B/OPUS 帧。
@@ -120,7 +114,7 @@ class JieliDeviceRecordPort(
     @Volatile private var rxFirstAudioLogged = false
 
     /**
-     * 启动设备录音上行（MODE_CALL_RECORD + stereo + DEVICE_ALWAYS_RECORDING）。
+     * 启动设备录音上行（MODE_RECORDING_TRANSLATION + stereo + DEVICE_ALWAYS_RECORDING）。
      *
      * @param address 目标设备 MAC；null 取当前已连设备
      * @param sampleRate 采样率（Hz），默认 16000
@@ -198,7 +192,7 @@ class JieliDeviceRecordPort(
                         DeviceRecordError(
                             address = d.address,
                             code = -1,
-                            message = "headset exited MODE_CALL_RECORD → MODE_IDLE",
+                            message = "headset exited MODE_CALL_TRANSLATION_WITH_STEREO → MODE_IDLE",
                         )
                     )
                 }
@@ -238,8 +232,8 @@ class JieliDeviceRecordPort(
         device = dev
 
         // 4. 下发 enterMode(MODE_CALL_RECORD=7, OPUS, ch=2, sr, STRATEGY_DEVICE_ALWAYS_RECORDING)
-        //    - mode=7：通话录音模式（V4.2.0 beta1/40255 起新增），与 mode=6
-        //              共享 SOURCE_E_SCO_MIX 双声道分支，但不串接 AI 翻译链路
+        //    - mode=6：立体声通话翻译模式，耳机 RCSP 状态机进入 STEREO 状态，固件按
+        //              SOURCE_E_SCO_MIX 上推双声道交织 OPUS
         //    - ch=2：  双声道（L=本端 UPLINK 耳机麦，R=对端 DOWNLINK 通话音/参考）
         //    - STRATEGY_DEVICE_ALWAYS_RECORDING=1：耳机固件自主采集并持续上推，APP 不用手机麦
         val sdkMode = TranslationMode(
@@ -248,11 +242,11 @@ class JieliDeviceRecordPort(
             2,
             sampleRate,
         ).setRecordingStrategy(TranslationMode.STRATEGY_DEVICE_ALWAYS_RECORDING)
-        Log.i(TAG, "[APP->SDK] enterMode addr=${dev.address} mode=${sdkMode.mode}(MODE_CALL_RECORD) type=${sdkMode.audioType}(OPUS) ch=${sdkMode.channel} sr=${sdkMode.sampleRate} strategy=${sdkMode.recordingStrategy}(DEVICE_ALWAYS_RECORDING)")
+        Log.i(TAG, "[APP->SDK] enterMode addr=${dev.address} mode=${sdkMode.mode}(MODE_CALL_TRANSLATION_WITH_STEREO) type=${sdkMode.audioType}(OPUS) ch=${sdkMode.channel} sr=${sdkMode.sampleRate} strategy=${sdkMode.recordingStrategy}(DEVICE_ALWAYS_RECORDING)")
         impl.enterMode(sdkMode, cb)
 
         entered = true
-        Log.d(TAG, "entered device record mode (MODE_CALL_RECORD=7, ch=2, DEVICE_ALWAYS_RECORDING)")
+        Log.d(TAG, "entered device record mode (MODE_CALL_TRANSLATION_WITH_STEREO=6, ch=2, DEVICE_ALWAYS_RECORDING)")
         return Result.success(Unit)
     }
 
