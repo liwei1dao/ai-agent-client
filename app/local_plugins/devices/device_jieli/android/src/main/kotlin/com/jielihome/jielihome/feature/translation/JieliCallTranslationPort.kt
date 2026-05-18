@@ -160,7 +160,6 @@ class JieliCallTranslationPort(
         // 耳机 SDK 会上推一路立体声 PCM（L=上行 / R=下行），
         // 由 StereoCallTranslationModeHandler 内部拆成两路 mono 再分发到
         // IN_UPLINK / IN_DOWNLINK，对外 captureBridge 仍然看到 16k/mono/20ms。
-        // 注意：该模式依赖真实 SCO 通话事件，没有通话时不会出帧。
         val result = translationFeature.start(
             TranslationModeIds.MODE_CALL_TRANSLATION_WITH_STEREO,
             emptyMap(),

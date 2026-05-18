@@ -1,6 +1,7 @@
 {
     "java.configuration.updateBuildConfiguration": "interactive",
     "java.project.sourcePaths": [
-        "app/local_plugins/device_jieli"
+        "app/local_plugins/device_jieli",
+        "app/ios/Runner.xcworkspace"
     ]
 }

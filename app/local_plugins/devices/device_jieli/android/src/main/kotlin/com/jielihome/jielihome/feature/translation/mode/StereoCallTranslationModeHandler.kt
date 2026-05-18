@@ -1,6 +1,7 @@
 package com.jielihome.jielihome.feature.translation.mode
 
 import android.content.Context
+import android.util.Log
 import com.jieli.bluetooth.bean.translation.AudioData
 import com.jieli.bluetooth.bean.translation.TranslationMode
 import com.jieli.bluetooth.constant.Constants
@@ -14,6 +15,7 @@ import com.jielihome.jielihome.feature.translation.TranslationModeIds
 import com.jielihome.jielihome.feature.translation.TranslationStreams
 import com.jielihome.jielihome.feature.translation.runtime.RcspTranslationRuntime
 import java.io.File
+import kotlin.math.sqrt
 
 /**
  * MODE_CALL_TRANSLATION_WITH_STEREO —— 立体声通话翻译。
@@ -26,11 +28,24 @@ class StereoCallTranslationModeHandler(
     bridge: TranslationAudioBridge,
 ) : BaseTranslationModeHandler(btManager, bridge) {
 
+    companion object {
+        private const val TAG = "StereoCallTransHandler"
+    }
+
     override val modeId = TranslationModeIds.MODE_CALL_TRANSLATION_WITH_STEREO
     override val inputStreams = listOf(TranslationStreams.IN_UPLINK, TranslationStreams.IN_DOWNLINK)
     override val outputStreams = listOf(TranslationStreams.OUT_UPLINK, TranslationStreams.OUT_DOWNLINK)
 
     private var runtime: RcspTranslationRuntime? = null
+
+    // 诊断：每秒打一次 L/R 能量。可定位 “对方说话没接入” 是因为
+    // SDK 根本没推 stereo（看 bridge writeAudio FIRST source 日志），
+    // 还是 R 声道恒为 0（耳机端无 SCO 下行）。
+    private var diagFrameCount: Long = 0
+    private var diagRmsL: Double = 0.0
+    private var diagRmsR: Double = 0.0
+    private var diagLastReportMs: Long = 0
+    private val diagLock = Any()
 
     override fun start(args: Map<String, Any?>) {
         if (working) return
@@ -61,11 +76,15 @@ class StereoCallTranslationModeHandler(
             mode = sdkMode,
             tempDir = File(context.cacheDir, "jieli_translation_tts"),
             onPcm = { source, stereoPcm ->
-                if (source != AudioData.SOURCE_E_SCO_MIX) return@RcspTranslationRuntime
+                if (source != AudioData.SOURCE_E_SCO_MIX) {
+                    Log.w(TAG, "drop non-MIX source=$source size=${stereoPcm.size} (mode=6 expects SOURCE_E_SCO_MIX)")
+                    return@RcspTranslationRuntime
+                }
                 val (left, right) = PcmKit.splitStereo16(stereoPcm)
                 val fmt = AudioFormat(sampleRate, 1, 16)
                 pushFrame(TranslationStreams.IN_UPLINK, left, fmt)
                 pushFrame(TranslationStreams.IN_DOWNLINK, right, fmt)
+                reportChannelEnergy(left, right)
             },
             onError = { code, msg -> emitError(code, msg) }
         )
@@ -112,7 +131,58 @@ class StereoCallTranslationModeHandler(
         runtime?.stop()
         runtime = null
         working = false
+        synchronized(diagLock) {
+            diagFrameCount = 0; diagRmsL = 0.0; diagRmsR = 0.0; diagLastReportMs = 0
+        }
         emitLog("StereoCallTranslation stop")
+    }
+
+    /**
+     * 每秒打一次左右两路 16-bit PCM 的 RMS 能量。
+     *
+     * 判读：
+     *  - L/R 都 > 0 → SDK 推 stereo MIX、对端音频也接进来了；如果业务侧还说"接不到"，
+     *    那是 captureBridge 或 pumpAudioFrames 后续链路的事。
+     *  - L > 0, R ≈ 0 → SDK 推 stereo 但 right 恒静音（耳机端没有真实 SCO 下行；
+     *    AI 助理场景下 mode=6 的已知限制：见 JIELI_SDK_COMMANDS.md §三）。
+     *  - 一直没日志 → SDK 根本没推 SOURCE_E_SCO_MIX；看 bridge 的
+     *    "writeAudio FIRST source=X" 日志确认 SDK 实际推的 source。
+     */
+    private fun reportChannelEnergy(left: ByteArray, right: ByteArray) {
+        val now = System.currentTimeMillis()
+        val rmsL = pcm16Rms(left)
+        val rmsR = pcm16Rms(right)
+        synchronized(diagLock) {
+            diagFrameCount++
+            diagRmsL += rmsL
+            diagRmsR += rmsR
+            if (diagLastReportMs == 0L) diagLastReportMs = now
+            if (now - diagLastReportMs >= 1000L && diagFrameCount > 0) {
+                val avgL = diagRmsL / diagFrameCount
+                val avgR = diagRmsR / diagFrameCount
+                Log.d(
+                    TAG,
+                    "stereo energy (last ${now - diagLastReportMs}ms): " +
+                        "frames=$diagFrameCount L_rms=${"%.1f".format(avgL)} R_rms=${"%.1f".format(avgR)} " +
+                        "(R≈0 ⇒ no SCO downlink)"
+                )
+                diagFrameCount = 0; diagRmsL = 0.0; diagRmsR = 0.0; diagLastReportMs = now
+            }
+        }
+    }
+
+    private fun pcm16Rms(pcm: ByteArray): Double {
+        if (pcm.size < 2) return 0.0
+        var sumSq = 0.0
+        var n = 0
+        var i = 0
+        while (i + 1 < pcm.size) {
+            val s = ((pcm[i].toInt() and 0xff) or (pcm[i + 1].toInt() shl 8)).toShort().toInt()
+            sumSq += (s * s).toDouble()
+            n++
+            i += 2
+        }
+        return if (n == 0) 0.0 else sqrt(sumSq / n)
     }
 
     override fun onTranslatedAudio(

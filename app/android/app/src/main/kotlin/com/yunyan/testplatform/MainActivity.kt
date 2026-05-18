@@ -1,4 +1,4 @@
-package com.nicetoo.agents
+package com.yunyan.testplatform
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine

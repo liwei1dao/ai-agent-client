@@ -24,7 +24,7 @@ repositories {
 }
 
 android {
-    namespace = "com.nicetoo.agents"
+    namespace = "com.yunyan.testplatform"
     compileSdk = 36
     ndkVersion = "27.0.12077973"
 
@@ -49,7 +49,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.nicetoo.agents"
+        applicationId = "com.yunyan.testplatform"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
