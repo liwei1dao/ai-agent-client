@@ -113,7 +113,14 @@ Future<void> _switchVendor(
     }
     debugPrint('[device_service] switching vendor → $vendor');
     setStatus('pending');
-    await manager.useVendor(vendor, const DevicePluginConfig());
+    final cfg = ref.read(configServiceProvider);
+    final pluginConfig = switch (vendor) {
+      'jieli' => DevicePluginConfig(extra: {
+          'useDeviceAuth': cfg.jieliUseDeviceAuth,
+        }),
+      _ => const DevicePluginConfig(),
+    };
+    await manager.useVendor(vendor, pluginConfig);
     debugPrint('[device_service] useVendor($vendor) ok');
     setStatus('ready');
     LogService.instance.talker.info('[device] active vendor: $vendor');

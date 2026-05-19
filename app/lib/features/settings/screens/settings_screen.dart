@@ -1205,6 +1205,8 @@ class _DeviceSection extends ConsumerWidget {
         if (config.deviceVendor == 'jieli') ...[
           _JieliConnectWayTile(current: config.jieliConnectWay),
           Divider(height: 1, color: colors.border),
+          _JieliUseDeviceAuthTile(enabled: config.jieliUseDeviceAuth),
+          Divider(height: 1, color: colors.border),
         ],
 
         // 默认聊天 agent
@@ -1435,6 +1437,42 @@ class _JieliConnectWayTile extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 杰理 RCSP 设备认证开关（仅 Android/iOS 杰理生效）。
+///
+/// 对应 `BluetoothOption.setUseDeviceAuth` / iOS `bleMultiple.authEnable`。
+/// 开启后未签名授权的耳机会在 RCSP 握手阶段被拒（连上就秒断），正式发布机型保持
+/// 开启；调试无签名样机时关闭。修改后需重新连接 / 重启应用才会生效。
+class _JieliUseDeviceAuthTile extends ConsumerWidget {
+  const _JieliUseDeviceAuthTile({required this.enabled});
+
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.appColors;
+    return SwitchListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      secondary: const Icon(Icons.verified_user_outlined,
+          color: AppTheme.primary, size: 20),
+      title: Text('RCSP 设备认证（杰理）',
+          style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: colors.text1)),
+      subtitle: Text(
+          enabled
+              ? '已开启：仅签名授权的耳机可连接（生产机型推荐）'
+              : '已关闭：跳过认证；可用于调试无签名样机',
+          style: TextStyle(fontSize: 11, color: colors.text2)),
+      value: enabled,
+      activeThumbColor: AppTheme.primary,
+      onChanged: (v) {
+        ref.read(configServiceProvider.notifier).setJieliUseDeviceAuth(v);
+      },
     );
   }
 }

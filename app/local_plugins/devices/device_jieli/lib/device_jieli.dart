@@ -611,11 +611,13 @@ class Jielihome {
     bool multiDevice = true,
     bool skipNoNameDev = false,
     bool enableLog = false,
+    bool useDeviceAuth = true,
   }) async {
     await _methodChannel.invokeMethod<bool>('initialize', {
       'multiDevice': multiDevice,
       'skipNoNameDev': skipNoNameDev,
       'enableLog': enableLog,
+      'useDeviceAuth': useDeviceAuth,
     });
   }
 

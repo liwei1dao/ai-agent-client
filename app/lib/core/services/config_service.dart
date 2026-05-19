@@ -68,6 +68,7 @@ class AppConfig {
     this.audioOutputMode = AudioOutputMode.auto,
     this.deviceVendor,
     this.jieliConnectWay = JieliConnectWay.auto,
+    this.jieliUseDeviceAuth = true,
     this.defaultChatAgentId,
     this.defaultTranslateAgentId,
     this.defaultCallUplinkAgentId,
@@ -93,6 +94,15 @@ class AppConfig {
 
   /// 杰理设备链接方式偏好（仅在 [deviceVendor] == 'jieli' 时生效）。
   final JieliConnectWay jieliConnectWay;
+
+  /// 杰理 RCSP 设备认证开关（仅在 [deviceVendor] == 'jieli' 时生效）。
+  ///
+  /// 对应原生 `BluetoothOption.setUseDeviceAuth` / iOS `bleMultiple.authEnable`。
+  /// 开启时 SDK 在连接成功后会通过 `DeviceStatusManager.isAuthBtDevice` 走签名握手，
+  /// 未授权设备会被拒掉（表现为连上后 RCSP init 完成立刻断开）。
+  /// 正式发布耳机默认开启；调试未签名样机时关闭。修改后需要在「设备」页重新连接
+  /// 或重启应用才会生效。
+  final bool jieliUseDeviceAuth;
 
   /// 设备唤醒后默认启动的聊天 agent id。
   final String? defaultChatAgentId;
@@ -140,6 +150,7 @@ class AppConfig {
     AudioOutputMode? audioOutputMode,
     Object? deviceVendor = _unset,
     JieliConnectWay? jieliConnectWay,
+    bool? jieliUseDeviceAuth,
     Object? defaultChatAgentId = _unset,
     Object? defaultTranslateAgentId = _unset,
     Object? defaultCallUplinkAgentId = _unset,
@@ -163,6 +174,7 @@ class AppConfig {
             ? this.deviceVendor
             : deviceVendor as String?,
         jieliConnectWay: jieliConnectWay ?? this.jieliConnectWay,
+        jieliUseDeviceAuth: jieliUseDeviceAuth ?? this.jieliUseDeviceAuth,
         defaultChatAgentId: identical(defaultChatAgentId, _unset)
             ? this.defaultChatAgentId
             : defaultChatAgentId as String?,
@@ -244,6 +256,7 @@ class ConfigService extends StateNotifier<AppConfig> {
       deviceVendor: prefs.getString('device_vendor'),
       jieliConnectWay:
           JieliConnectWay.fromKey(prefs.getString('jieli_connect_way')),
+      jieliUseDeviceAuth: prefs.getBool('jieli_use_device_auth') ?? true,
       defaultChatAgentId: prefs.getString('default_chat_agent_id'),
       defaultTranslateAgentId: prefs.getString('default_translate_agent_id'),
       defaultCallUplinkAgentId: prefs.getString('default_call_uplink_agent_id'),
@@ -315,6 +328,12 @@ class ConfigService extends StateNotifier<AppConfig> {
     state = state.copyWith(jieliConnectWay: way);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('jieli_connect_way', way.persistKey);
+  }
+
+  Future<void> setJieliUseDeviceAuth(bool enabled) async {
+    state = state.copyWith(jieliUseDeviceAuth: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('jieli_use_device_auth', enabled);
   }
 
   Future<void> setDefaultChatAgentId(String? id) async {

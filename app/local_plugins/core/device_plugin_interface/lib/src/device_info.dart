@@ -177,7 +177,7 @@ class DeviceScanFilter {
 @immutable
 class DeviceConnectOptions {
   const DeviceConnectOptions({
-    this.timeout = const Duration(seconds: 15),
+    this.timeout = const Duration(seconds: 20),
     this.extra = const {},
   });
 

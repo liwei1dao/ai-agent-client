@@ -64,7 +64,13 @@ class ConnectFeature(private val btManager: JL_BluetoothManager) {
             return ble to BluetoothConstant.PROTOCOL_TYPE_BLE
         }
 
-        // 默认走 SPP；调用方显式要求 GATT_OVER_BR_EDR 时尊重之
+        // 调用方显式选择 BLE（cw=0 但带值表示"用户强制 BLE"，与 cw 未传时的默认 0
+        // 区分不开，故由上层在缺省时传 -1 表示"未指定"，0 才意味"强制 BLE"）。
+        if (connectWay == BluetoothConstant.PROTOCOL_TYPE_BLE) {
+            return ble to BluetoothConstant.PROTOCOL_TYPE_BLE
+        }
+
+        // 有 EDR 地址走经典蓝牙；GATT_OVER_BR_EDR 被显式要求则用之，否则默认 SPP
         if (!edrAddress.isNullOrEmpty()) {
             val protocol = if (connectWay == BluetoothConstant.PROTOCOL_TYPE_GATT_OVER_BR_EDR) {
                 BluetoothConstant.PROTOCOL_TYPE_GATT_OVER_BR_EDR

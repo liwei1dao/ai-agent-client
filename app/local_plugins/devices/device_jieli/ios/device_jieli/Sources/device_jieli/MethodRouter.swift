@@ -26,7 +26,8 @@ public final class MethodRouter {
             server.initialize(
                 multiDevice: args["multiDevice"] as? Bool ?? true,
                 skipNoNameDev: args["skipNoNameDev"] as? Bool ?? false,
-                enableLog: args["enableLog"] as? Bool ?? false
+                enableLog: args["enableLog"] as? Bool ?? false,
+                useDeviceAuth: args["useDeviceAuth"] as? Bool ?? true
             )
             result(true)
 

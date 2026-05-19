@@ -63,6 +63,12 @@ class JieliDevicePlugin implements DevicePlugin {
             label: '启用 SDK 日志',
             defaultValue: false,
           ),
+          DevicePluginConfigField(
+            key: 'useDeviceAuth',
+            label: 'RCSP 设备认证',
+            defaultValue: true,
+            helpText: '关闭可调试未签名授权的开发样机；正式发布机器请保持开启',
+          ),
         ],
       );
 
@@ -82,6 +88,7 @@ class JieliDevicePlugin implements DevicePlugin {
       multiDevice: (config.extra['multiDevice'] as bool?) ?? false,
       skipNoNameDev: (config.extra['skipNoNameDev'] as bool?) ?? false,
       enableLog: (config.extra['enableLog'] as bool?) ?? false,
+      useDeviceAuth: (config.extra['useDeviceAuth'] as bool?) ?? true,
     );
     _sub = _home.events.listen(_onJieliEvent);
     _initialized = true;

@@ -26,6 +26,7 @@ class MethodRouter(
                         multiDevice = call.argument<Boolean>("multiDevice") ?: true,
                         skipNoNameDev = call.argument<Boolean>("skipNoNameDev") ?: false,
                         enableLog = call.argument<Boolean>("enableLog") ?: false,
+                        useDeviceAuth = call.argument<Boolean>("useDeviceAuth") ?: true,
                     )
                     result.success(true)
                 }

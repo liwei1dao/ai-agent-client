@@ -99,6 +99,7 @@ class JieliHomeServer private constructor() {
         multiDevice: Boolean = true,
         skipNoNameDev: Boolean = false,
         enableLog: Boolean = false,
+        useDeviceAuth: Boolean = true,
     ) {
         if (initialized) return
 
@@ -110,13 +111,13 @@ class JieliHomeServer private constructor() {
         val option = BluetoothOption.createDefaultOption()
         option.setUseMultiDevice(multiDevice)
         option.setSkipNoNameDev(skipNoNameDev)
-        // 启用 RCSP 设备认证（SDK 默认行为）：连接成功后 SDK 会通过
-        // `DeviceStatusManager.isAuthBtDevice` 走授权握手；未授权设备会被拒掉
-        // → 表现为连上后 RCSP init 完成立刻断开。本项目耳机已发签名授权，保持开启。
-        option.setUseDeviceAuth(true)
+        // RCSP 设备认证：开启后 SDK 在连接成功后会通过 `DeviceStatusManager.isAuthBtDevice`
+        // 走签名握手，未授权设备会被拒掉（表现为连上后 RCSP init 完成立刻断开）。
+        // 本项目耳机已发签名授权，默认保持开启；调试无签名设备时可关闭。
+        option.setUseDeviceAuth(useDeviceAuth)
         android.util.Log.d(
             "JieliHome",
-            "init multiDev=$multiDevice skipNoName=$skipNoNameDev useAuth=true defaultProtocol=SPP"
+            "init multiDev=$multiDevice skipNoName=$skipNoNameDev useAuth=$useDeviceAuth defaultProtocol=SPP"
         )
         RCSPController.init(context, option)
 

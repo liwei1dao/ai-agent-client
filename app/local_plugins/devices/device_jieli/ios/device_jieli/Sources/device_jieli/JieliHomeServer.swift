@@ -67,7 +67,7 @@ public final class JieliHomeServer: NSObject {
 
     private override init() { super.init() }
 
-    public func initialize(multiDevice: Bool, skipNoNameDev: Bool, enableLog: Bool) {
+    public func initialize(multiDevice: Bool, skipNoNameDev: Bool, enableLog: Bool, useDeviceAuth: Bool = true) {
         if initialized { return }
 
         JLLogManager.clearLog()
@@ -77,7 +77,9 @@ public final class JieliHomeServer: NSObject {
 
         bleMultiple.ble_FILTER_ENABLE = false
         bleMultiple.ble_TIMEOUT = 10
-        bleMultiple.authEnable = true
+        // RCSP 设备认证：见 Android JieliHomeServer.initialize 注释。默认开启，
+        // 调试无签名设备时可关闭。
+        bleMultiple.authEnable = useDeviceAuth
 
         let btFwd = BluetoothEventForwarder(server: self)
         btFwd.attach()

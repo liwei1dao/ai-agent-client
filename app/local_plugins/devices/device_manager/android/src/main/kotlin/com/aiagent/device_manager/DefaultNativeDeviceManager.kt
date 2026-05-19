@@ -277,14 +277,27 @@ class DefaultNativeDeviceManager : NativeDeviceManager {
     }
 
     /**
-     * 启动周期性 SNAPSHOT_UPDATED 兜底。
+     * 启动周期性主动对账 + SNAPSHOT_UPDATED 兜底。
      *
      * 与 [bindSession] 收到事件后立刻 emitSnapshot 并不冲突——后者是"事件触发的实时
-     * 更新"，本方法是"无事件时的定时对账"。底层 SDK（如杰理 RCSP）的电量、链接态
-     * 通常以事件方式回流，事件链路偶发漏 / 乱序时会让 Dart 端 _activeSession 字段
-     * 卡在中间态（已 ready 显示成 disconnected、电量未刷新等）。这里每隔
-     * [PERIODIC_SYNC_INTERVAL_MS] 把当前真相再推一遍，Dart 端 _routeEvent 收到
-     * snapshot_updated 后会整体覆盖 _activeSession，单条事件错乱不会再让状态卡死。
+     * 更新"，本方法是"主动跟 SDK 拉真相 + 无事件时的定时对账"。底层 SDK（如杰理
+     * RCSP）的电量、链接态通常以事件方式回流，事件链路偶发漏 / 乱序时会让 Dart 端
+     * _activeSession 字段卡在中间态（已 ready 显示成 disconnected、电量未刷新等）。
+     *
+     * 每隔 [PERIODIC_SYNC_INTERVAL_MS] 做两件事：
+     *  1. `syncActiveFromSdk()`（manager 级 @Synchronized 入口）：让 plugin 跟
+     *     底层 SDK 对账连接态——SDK 还连着但 session 卡在 CONNECTING / LINK_CONNECTED
+     *     时直接 bump 到 READY；session 错乱 / 缺失时重建并由 manager 重新 bindSession。
+     *     这一步会派 CONNECTION_STATE_CHANGED + SNAPSHOT_UPDATED，UI 上的"正在
+     *     连接 / 握手中"会被及时刷成"已就绪"。
+     *  2. `session.refreshInfo()`：主动从 SDK 拉一次电量 / 固件 / 序列号等字段，
+     *     内部会派 DEVICE_INFO_UPDATED 事件，UI 上的电量 chip / FW 版本号自动刷新。
+     *     非 READY 态会抛 `device.no_active_session`，[runCatching] 吞掉。
+     *  最后再兜底显式 emitSnapshot 一次，确保不会长时间收不到 snapshot。
+     *
+     * 注意：走 manager 级 [syncActiveFromSdk] 而不是直接 `plugin.syncActiveFromSdk()`，
+     * 是因为极端场景下 plugin 会**重建** session 实例，必须由 manager 重新 bindSession
+     * 才能让新 session 的事件流抵达 Dart 层。
      *
      * 调用方必须在 synchronized(this) 块内调用（teardown / bindSession 都已加锁）。
      */
@@ -299,6 +312,17 @@ class DefaultNativeDeviceManager : NativeDeviceManager {
                 // ACTIVE_SESSION_CHANGED(null) + SNAPSHOT_UPDATED(null)）。
                 val plugin = _activePlugin ?: continue
                 if (plugin.activeSession == null) continue
+                // 主动跟 SDK 对账连接态：READY 仍是 READY；卡在中间态会被 bump，
+                // session 错乱会被 manager 重建 + rebind。
+                runCatching { syncActiveFromSdk() }.onFailure {
+                    Log.w(TAG, "periodic syncActiveFromSdk failed", it)
+                }
+                // 拉一次设备信息——refreshInfo 内部会 emit DEVICE_INFO_UPDATED 事件，
+                // bindSession.collect 收到后会触发 emitSnapshot 推到 Dart。非 READY
+                // 态会抛 device.no_active_session，runCatching 吞掉。
+                val session = _activePlugin?.activeSession ?: continue
+                runCatching { session.refreshInfo() }
+                // 兜底再补一份当前快照，覆盖 refreshInfo 抛错时事件路径走空的场景。
                 emitSnapshot()
             }
         }

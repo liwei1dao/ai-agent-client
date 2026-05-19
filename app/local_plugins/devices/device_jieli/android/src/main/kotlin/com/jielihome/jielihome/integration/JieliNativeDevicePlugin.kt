@@ -141,20 +141,37 @@ class JieliNativeDevicePlugin(
             val session = _activeSession ?: return
             if (session.deviceId != address) return
             Log.d(TAG, "onConnectionState addr=$address state=$state")
+            // SDK 状态码（com.jieli.bluetooth.constant.StateCode）：
+            //   0 CONNECTION_DISCONNECT   1 CONNECTION_OK         2 CONNECTION_FAILED
+            //   3 CONNECTION_CONNECTING   4 CONNECTION_CONNECTED
+            //
+            // 注意：曾经把 2 误当 CONNECTING 用，连接成功后 SDK 一旦补发 FAILED→DISCONNECT，
+            // UI 就会出现"已链接设备一闪而过"的现象。FAILED 必须按断开处理；同时
+            // FAILED 时 future 不 completeExceptionally 会让点击"连接"挂死 15s 才超时，
+            // 测试人员看到的就是连接键失灵 / 一连点几次后 ANR / 闪退。
             when (state) {
-                2 -> session.setState(DeviceConnectionState.CONNECTING)
-                1 -> session.setState(DeviceConnectionState.LINK_CONNECTED)
-                0 -> {
+                3 -> session.setState(DeviceConnectionState.CONNECTING)
+                1, 4 -> {
+                    // BLE/EDR 链路就绪，等 RCSP 初始化。READY 状态下（onRcspInit 已先到）
+                    // 不要把状态回退到 LINK_CONNECTED。
+                    if (session.state != DeviceConnectionState.READY) {
+                        session.setState(DeviceConnectionState.LINK_CONNECTED)
+                    }
+                }
+                0, 2 -> {
                     session.setState(DeviceConnectionState.DISCONNECTED)
                     _activeSession = null
                     val pending = _pendingConnect
                     if (pending != null && !pending.isDone) {
-                        pending.completeExceptionally(
-                            DeviceException(
-                                DeviceErrorCode.DISCONNECTED_REMOTE,
-                                "disconnected before ready",
-                            )
-                        )
+                        val code = if (state == 2)
+                            DeviceErrorCode.CONNECT_FAILED
+                        else
+                            DeviceErrorCode.DISCONNECTED_REMOTE
+                        val msg = if (state == 2)
+                            "connection failed"
+                        else
+                            "disconnected before ready"
+                        pending.completeExceptionally(DeviceException(code, msg))
                         _pendingConnect = null
                         _pendingConnectAddress = null
                     }
@@ -246,6 +263,7 @@ class JieliNativeDevicePlugin(
                 multiDevice = (config.extra["multiDevice"] as? Boolean) ?: false,
                 skipNoNameDev = (config.extra["skipNoNameDev"] as? Boolean) ?: false,
                 enableLog = (config.extra["enableLog"] as? Boolean) ?: false,
+                useDeviceAuth = (config.extra["useDeviceAuth"] as? Boolean) ?: true,
             )
         }
         server.addEventListener(listener)
@@ -299,10 +317,14 @@ class JieliNativeDevicePlugin(
         _pendingConnect = future
         _pendingConnectAddress = deviceId
 
-        val edrAddress = extra["edrAddr"] as? String
+        val rawEdrAddress = extra["edrAddr"] as? String
         val deviceType = (extra["deviceType"] as? Number)?.toInt() ?: 0
-        val connectWay = (extra["connectWay"] as? Number)?.toInt() ?: 0
-        Log.d(TAG, "connect deviceId=$deviceId edr=$edrAddress dt=$deviceType cw=$connectWay")
+        // 缺省 -1 表示"未指定 / auto"，与 0(强制 BLE) 区分；Dart 侧 auto 模式不下发本键。
+        val connectWay = (extra["connectWay"] as? Number)?.toInt() ?: -1
+        val deviceName = extra["name"] as? String
+        val edrAddress = rawEdrAddress ?: lookupBondedEdrAddress(deviceName, deviceId)
+        Log.d(TAG, "connect deviceId=$deviceId edr=$edrAddress (rawEdr=$rawEdrAddress " +
+                "name=$deviceName) dt=$deviceType cw=$connectWay")
         server.connectFeature.connect(
             bleAddress = deviceId,
             edrAddress = edrAddress,
@@ -316,7 +338,7 @@ class JieliNativeDevicePlugin(
             _pendingConnectAddress = null
         }
 
-        val timeout = (options?.timeoutMs ?: 15_000L)
+        val timeout = (options?.timeoutMs ?: 20_000L)
         return try {
             future.get(timeout, TimeUnit.MILLISECONDS)
         } catch (e: java.util.concurrent.TimeoutException) {
@@ -331,6 +353,65 @@ class JieliNativeDevicePlugin(
 
     override val activeSession: NativeDeviceSession?
         get() = _activeSession?.takeIf { it.state != DeviceConnectionState.DISCONNECTED }
+
+    /**
+     * 与杰理 SDK 当前连接状态对账，修复"SDK 还连着 / app 失忆"造成的扫描页死锁。
+     *
+     * 三种走向：
+     *  - SDK 当前有连接的设备（[ConnectFeature.connectedDevice] 非空），但本插件
+     *    无 active session 或 deviceId 不一致或已断开 → 把旧 session 标
+     *    DISCONNECTED 后重建一个，状态直接置 READY（SDK 都说连着了，RCSP 必然
+     *    已握手），再 refreshInfo 一次拉最新电量/固件。
+     *  - SDK 当前有连接的设备且 [_activeSession] 已存在但状态不是 READY（被中间
+     *    态卡住）→ 直接 setState(READY)，不重建。
+     *  - SDK 当前无连接但 [_activeSession] 还活着 → 把它标 DISCONNECTED 并清空。
+     *
+     * 完全一致时 no-op，不派任何事件，避免 UI 抖动。
+     */
+    override fun syncActiveFromSdk() {
+        if (!_initialized || _disposed) return
+        val sdkDevice = runCatching { server.connectFeature.connectedDevice() }.getOrNull()
+        val sdkAddr = sdkDevice?.address
+        val current = _activeSession
+
+        if (sdkAddr != null) {
+            if (current != null && current.deviceId == sdkAddr &&
+                current.state != DeviceConnectionState.DISCONNECTED) {
+                if (current.state != DeviceConnectionState.READY) {
+                    Log.i(TAG, "syncActiveFromSdk: bump $sdkAddr ${current.state} → READY")
+                    current.setState(DeviceConnectionState.READY)
+                }
+                runCatching { current.refreshInfo() }
+                return
+            }
+            // 旧 session 过期或地址不一致：标 disconnected 让 OTA 等端口收尾
+            current?.takeIf { it.state != DeviceConnectionState.DISCONNECTED }
+                ?.setState(DeviceConnectionState.DISCONNECTED)
+            val snapshotName =
+                server.deviceInfoFeature.snapshot(sdkAddr)?.get("name") as? String
+            val initialName = snapshotName?.takeIf { it.isNotEmpty() }
+                ?: runCatching { sdkDevice.name }.getOrNull() ?: ""
+            val rebuilt = JieliNativeDeviceSession(
+                server = server,
+                deviceId = sdkAddr,
+                initialName = initialName,
+                capabilities = capabilities,
+                otaCacheDir = context.cacheDir,
+            )
+            rebuilt.setState(DeviceConnectionState.READY)
+            runCatching { rebuilt.refreshInfo() }
+            _activeSession = rebuilt
+            Log.i(TAG, "syncActiveFromSdk: rebuilt session for sdk-connected $sdkAddr")
+            return
+        }
+
+        if (current != null && current.state != DeviceConnectionState.DISCONNECTED) {
+            Log.i(TAG, "syncActiveFromSdk: clear stale session ${current.deviceId} " +
+                "(sdk has no connection)")
+            current.setState(DeviceConnectionState.DISCONNECTED)
+            _activeSession = null
+        }
+    }
 
     override fun dispose() {
         if (_disposed) return
@@ -354,5 +435,33 @@ class JieliNativeDevicePlugin(
 
     private fun emit(e: DevicePluginEvent) {
         if (!_events.tryEmit(e)) Log.w(TAG, "event buffer full; dropped ${e.type}")
+    }
+
+    /**
+     * 扫描层（[com.jielihome.jielihome.feature.ScanFeature]）走 Android 原生 BLE
+     * scanner，部分广播包解不出 Jieli 私有 `edrAddr` 字段，调用方因此拿不到经典蓝牙
+     * 地址，只能强行走 BLE-only —— 而某些杰理设备（例如本仓测试的成年男耳机）的 RCSP
+     * 通道只挂在 SPP 上，BLE 通道连成功后 SDK 找不到 RCSP service 立刻断开。
+     *
+     * 这里在 connect 前兜底：去系统已配对设备列表里按设备名匹配出经典蓝牙 MAC 当
+     * edrAddr 用。前提是用户已通过手机设置完成过经典蓝牙配对（与老 app 行为一致）。
+     * 未配对则返回 null，仍走 BLE-only。
+     */
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun lookupBondedEdrAddress(name: String?, bleAddress: String): String? {
+        if (name.isNullOrEmpty()) return null
+        val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE)
+            as? android.bluetooth.BluetoothManager ?: return null
+        val adapter = mgr.adapter ?: return null
+        val bonded = try { adapter.bondedDevices } catch (_: SecurityException) { null }
+            ?: return null
+        // 只考虑经典蓝牙类型（DEVICE_TYPE_CLASSIC 或 DUAL）；纯 BLE bond 不算 EDR。
+        val match = bonded.firstOrNull { bd ->
+            val isClassic = bd.type == android.bluetooth.BluetoothDevice.DEVICE_TYPE_CLASSIC ||
+                bd.type == android.bluetooth.BluetoothDevice.DEVICE_TYPE_DUAL
+            isClassic && bd.address != bleAddress && bd.name?.equals(name, ignoreCase = true) == true
+        } ?: return null
+        Log.i(TAG, "lookupBondedEdrAddress: bleAddr=$bleAddress name=$name → edrAddr=${match.address}")
+        return match.address
     }
 }
