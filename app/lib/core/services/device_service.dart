@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:device_jieli/device_jieli.dart' show jieliDevicePluginDescriptor;
 import 'package:device_manager/device_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -71,16 +72,25 @@ final deviceVendorStatusProvider = StateProvider<String?>((_) => null);
 
 /// 全局 [DeviceManager] provider。
 ///
-/// 走 [MethodChannelDeviceManager] —— 编排逻辑全部在 native
-/// (`com.aiagent.device_manager.DefaultNativeDeviceManager`)。Vendor 工厂由各
-/// 厂商插件（如 `device_jieli` 的 `JieliNativeDevicePlugin`）在 onAttachedToEngine
-/// 时自注册到 native `NativeDevicePluginRegistry`，Dart 侧不再需要 registerVendor。
+/// 按平台选择编排实现：
+/// - **Android / Web**：[MethodChannelDeviceManager] —— 编排逻辑在 native
+///   (`com.aiagent.device_manager.DefaultNativeDeviceManager`)，vendor 工厂由各
+///   厂商插件在 onAttachedToEngine 时自注册到 `NativeDevicePluginRegistry`。
+/// - **iOS**：`device_manager` 的 iOS 端只是 stub（`DeviceManagerPlugin.swift`），
+///   改用纯 Dart 编排器 [DefaultDeviceManager] 直接驱动 `device_jieli` 的
+///   `DevicePlugin` 适配器；vendor 在此处通过 [registerVendor] 注册。
 ///
 /// 启动时仅做两件事：
 /// 1. 创建 facade + initialize；
 /// 2. 跟随 `configServiceProvider.deviceVendor` 切换 vendor。
 final deviceManagerProvider = Provider<DeviceManager>((ref) {
-  final manager = MethodChannelDeviceManager();
+  final DeviceManager manager;
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+    manager = DefaultDeviceManager()
+      ..registerVendor(jieliDevicePluginDescriptor);
+  } else {
+    manager = MethodChannelDeviceManager();
+  }
   manager.initialize();
 
   ref.listen<AppConfig>(configServiceProvider, (prev, next) {

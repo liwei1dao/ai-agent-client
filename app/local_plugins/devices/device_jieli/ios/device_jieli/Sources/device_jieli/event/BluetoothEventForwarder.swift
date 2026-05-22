@@ -40,6 +40,7 @@ public final class BluetoothEventForwarder: NSObject {
     // MARK: - Notification handlers
 
     @objc private func onBleOn(_ note: Notification) {
+        NSLog("[JieliBT] 蓝牙开 (kJL_BLE_M_ON) → 派 adapterStatus(enabled=true)")
         server?.dispatcher.send([
             "type": "adapterStatus",
             "enabled": true,
@@ -48,6 +49,7 @@ public final class BluetoothEventForwarder: NSObject {
     }
 
     @objc private func onBleOff(_ note: Notification) {
+        NSLog("[JieliBT] 蓝牙关 (kJL_BLE_M_OFF) → 派 adapterStatus(enabled=false)")
         server?.dispatcher.send([
             "type": "adapterStatus",
             "enabled": false,
@@ -56,8 +58,12 @@ public final class BluetoothEventForwarder: NSObject {
     }
 
     @objc private func onConnected(_ note: Notification) {
-        guard let entity = extractEntity(note) else { return }
+        guard let entity = extractEntity(note) else {
+            NSLog("[JieliBT] kJL_BLE_M_ENTITY_CONNECTED 收到但 extractEntity 失败 — 事件丢弃")
+            return
+        }
         let address = entity.mUUID ?? ""
+        NSLog("[JieliBT] 设备已连接 (kJL_BLE_M_ENTITY_CONNECTED) uuid=\(address) → 派 connectionState(1)+rcspInit(0)")
         server?.dispatcher.send([
             "type": "connectionState",
             "address": address,
@@ -79,6 +85,7 @@ public final class BluetoothEventForwarder: NSObject {
             if let peripheral = note.object as? CBPeripheral { return peripheral.identifier.uuidString }
             return ""
         }()
+        NSLog("[JieliBT] 设备已断开 (kJL_BLE_M_ENTITY_DISCONNECTED) uuid=\(address) → 派 connectionState(0)")
         server?.dispatcher.send([
             "type": "connectionState",
             "address": address,

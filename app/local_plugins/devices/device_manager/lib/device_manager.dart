@@ -4,6 +4,7 @@ import 'package:device_plugin_interface/device_plugin_interface.dart';
 import 'package:flutter/services.dart';
 
 export 'package:device_plugin_interface/device_plugin_interface.dart';
+export 'src/default_device_manager.dart';
 export 'src/device_recorder.dart';
 
 /// # device_manager（Flutter facade）

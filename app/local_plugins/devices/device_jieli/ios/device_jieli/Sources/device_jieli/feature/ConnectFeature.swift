@@ -41,15 +41,24 @@ public final class ConnectFeature {
         dualConnect: Bool = false,
         completion: @escaping (_ ok: Bool, _ errMsg: String?) -> Void
     ) {
-        guard let server = server else { completion(false, "server uninitialized"); return }
+        guard let server = server else {
+            NSLog("[JieliConnect] connect ABORT uuid=\(bleAddress) — server uninitialized")
+            completion(false, "server uninitialized")
+            return
+        }
         let bleMultiple = server.bleMultiple
 
-        let entity: JL_EntityM? = server.entity(forUuid: bleAddress)
-            ?? bleMultiple.makeEntity(withUUID: bleAddress)
+        let existing = server.entity(forUuid: bleAddress)
+        let entity: JL_EntityM? = existing ?? bleMultiple.makeEntity(withUUID: bleAddress)
         guard let target = entity else {
+            NSLog("[JieliConnect] connect FAIL uuid=\(bleAddress) — entity not found (makeEntity 返回 nil)")
             completion(false, "entity not found for uuid=\(bleAddress)")
             return
         }
+
+        // ⚠️ 不在这里发 bridging hint——实测会把 BLE connect 卡死（见类注释）。
+        //    只让 SDK 跑纯 BLE 正常流程，bridging 在 .paired 之后再补。
+        NSLog("[JieliConnect] connect BEGIN uuid=\(bleAddress) entity=\(existing != nil ? "existing" : "new") edr=\(edrAddress ?? "nil") deviceType=\(deviceType) connectWay=\(connectWay) dualConnect=\(dualConnect)")
 
         server.dispatcher.send([
             "type": "connectionState",
@@ -57,16 +66,12 @@ public final class ConnectFeature {
             "state": 2, // CONNECTION_CONNECTING
         ])
 
-        // ⚠️ 不在这里发 bridging hint——实测会把 BLE connect 卡死（见类注释）。
-        //    只让 SDK 跑纯 BLE 正常流程，bridging 在 .paired 之后再补。
-        NSLog("[JieliConnect] connect uuid=%@ edr=%@ deviceType=%ld connectWay=%ld dualConnect=%@",
-              bleAddress, edrAddress ?? "nil", deviceType, connectWay,
-              dualConnect ? "YES" : "NO")
-
         bleMultiple.connectEntity(target) { [weak self] status in
             guard let self = self else { return }
+            NSLog("[JieliConnect] connectEntity 回调 uuid=\(bleAddress) status=\(status.rawValue)")
             switch status {
             case .paired, .connectRepeat:
+                NSLog("[JieliConnect] BLE 链路已建立 uuid=\(bleAddress) → 拉取 RCSP TargetFeature")
                 // BLE 已建立。dualConnect=true 时尝试一次 BR/EDR 桥接升级——
                 // 对不支持 CTKD 的设备不会影响已建立的 BLE 通路。
                 if dualConnect {
@@ -81,6 +86,7 @@ public final class ConnectFeature {
                 target.mCmdManager.cmdTargetFeatureResult { [weak self] state, _, _ in
                     guard let self = self else { return }
                     let ok = state == .success
+                    NSLog("[JieliConnect] RCSP cmdTargetFeatureResult uuid=\(bleAddress) ok=\(ok)")
                     // 2) 拉取 COMMON 字段（电量 / 版本号等）填充 model 缓存，
                     //    供 deviceSnapshot() 读取。
                     if ok {
@@ -91,40 +97,56 @@ public final class ConnectFeature {
                         "address": target.mUUID ?? bleAddress,
                         "code": ok ? 0 : 1,
                     ])
+                    NSLog("[JieliConnect] connect \(ok ? "SUCCESS" : "FAIL — rcsp init failed") uuid=\(bleAddress)")
                     completion(ok, ok ? nil : "rcsp init failed")
                 }
             case .connecting:
-                break
+                NSLog("[JieliConnect] connecting… uuid=\(bleAddress)")
             case .bleOFF:
+                NSLog("[JieliConnect] connect FAIL uuid=\(bleAddress) — 蓝牙未开启")
                 completion(false, "ble off")
             case .connectFail:
+                NSLog("[JieliConnect] connect FAIL uuid=\(bleAddress) — connectFail")
                 completion(false, "connect fail")
             case .connectTimeout:
+                NSLog("[JieliConnect] connect FAIL uuid=\(bleAddress) — connectTimeout")
                 completion(false, "connect timeout")
             case .connectRefuse:
+                NSLog("[JieliConnect] connect FAIL uuid=\(bleAddress) — connectRefuse")
                 completion(false, "connect refuse")
             case .pairFail:
+                NSLog("[JieliConnect] connect FAIL uuid=\(bleAddress) — pairFail")
                 completion(false, "pair fail")
             case .pairTimeout:
+                NSLog("[JieliConnect] connect FAIL uuid=\(bleAddress) — pairTimeout")
                 completion(false, "pair timeout")
             case .masterChanging:
-                break
+                NSLog("[JieliConnect] masterChanging… uuid=\(bleAddress)")
             case .disconnectOk:
+                NSLog("[JieliConnect] connect FAIL uuid=\(bleAddress) — 连接中断开 (disconnectOk)")
                 completion(false, "disconnected")
             case .null:
+                NSLog("[JieliConnect] connect FAIL uuid=\(bleAddress) — entity null")
                 completion(false, "entity null")
             @unknown default:
+                NSLog("[JieliConnect] connect FAIL uuid=\(bleAddress) — unknown status \(status.rawValue)")
                 completion(false, "unknown status \(status.rawValue)")
             }
         }
     }
 
     public func disconnect(address: String, completion: @escaping (_ ok: Bool, _ errMsg: String?) -> Void) {
-        guard let server = server else { completion(false, "server uninitialized"); return }
+        guard let server = server else {
+            NSLog("[JieliConnect] disconnect ABORT \(address) — server uninitialized")
+            completion(false, "server uninitialized")
+            return
+        }
         guard let entity = server.connectedEntity(forUuid: address) else {
+            NSLog("[JieliConnect] disconnect SKIP \(address) — 当前未连接")
             completion(false, "not connected: \(address)")
             return
         }
+        NSLog("[JieliConnect] disconnect BEGIN \(address)")
         // 断开前先收尾翻译 / 助理 / 设备录音，避免脏状态
         server.translationFeature.stop()
         server.assistantBridge.stop()
@@ -133,6 +155,7 @@ public final class ConnectFeature {
         server.bleMultiple.disconnectEntity(entity) { _ in
             // 让翻译会话也一起释放
             server.removeTranslationSession(uuid: address)
+            NSLog("[JieliConnect] disconnect DONE \(address)")
             completion(true, nil)
         }
     }

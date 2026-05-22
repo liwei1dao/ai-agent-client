@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:device_plugin_interface/device_plugin_interface.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../device_jieli.dart';
@@ -67,10 +68,14 @@ class JieliDeviceSession implements DeviceSession {
 
   /// `JieliDevicePlugin.connect` 中等待握手完成。
   Future<DeviceSession> waitReady({required Duration timeout}) {
+    debugPrint('[JieliDeviceSession] $deviceId waitReady '
+        '(当前 state=${_state.name}, timeout=${timeout.inSeconds}s)');
     if (_state == DeviceConnectionState.ready) return Future.value(this);
     final c = _readyCompleter ??= Completer<DeviceSession>();
     _readyTimer ??= Timer(timeout, () {
       if (!c.isCompleted) {
+        debugPrint('[JieliDeviceSession] $deviceId waitReady 超时 '
+            '(${timeout.inSeconds}s 内未到 ready，当前 state=${_state.name})');
         c.completeError(
           DeviceException(DeviceErrorCode.connectTimeout,
               'jieli connect/handshake timeout'),
@@ -83,6 +88,8 @@ class JieliDeviceSession implements DeviceSession {
 
   /// 由 plugin 转发 ConnectionStateEvent。
   void updateConnectionFromRaw(int raw) {
+    debugPrint('[JieliDeviceSession] $deviceId ← connectionState raw=$raw '
+        '(0=断开 1=链路OK 2=连接中)');
     switch (raw) {
       case ConnectionStateEvent.connectionConnecting:
         _setState(DeviceConnectionState.connecting);
@@ -210,6 +217,8 @@ class JieliDeviceSession implements DeviceSession {
 
   /// 由 plugin 转发 RcspInitEvent。
   void updateRcspInit(bool success) {
+    debugPrint('[JieliDeviceSession] $deviceId ← rcspInit success=$success '
+        '→ ${success ? 'ready' : 'handshake_failed'}');
     if (success) {
       _setState(DeviceConnectionState.ready);
       _completeReady();
@@ -395,6 +404,8 @@ class JieliDeviceSession implements DeviceSession {
 
   @override
   Future<void> disconnect() async {
+    debugPrint('[JieliDeviceSession] $deviceId disconnect '
+        '(当前 state=${_state.name})');
     if (_state == DeviceConnectionState.disconnected) return;
     _setState(DeviceConnectionState.disconnecting);
     try {
@@ -415,6 +426,8 @@ class JieliDeviceSession implements DeviceSession {
 
   void _setState(DeviceConnectionState s) {
     if (_state == s) return;
+    debugPrint('[JieliDeviceSession] $deviceId 状态: '
+        '${_state.name} → ${s.name}');
     _state = s;
     if (_evt.isClosed) return;
     _evt.add(DeviceSessionEvent(

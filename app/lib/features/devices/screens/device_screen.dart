@@ -96,16 +96,20 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
   }
 
   Future<bool> _ensurePermissions() async {
-    // 定位权限只有 Android（6~11）的 BLE 扫描才强制需要；iOS 的 CoreBluetooth
-    // 扫描不依赖定位，且 Info.plist 未声明 NSLocationWhenInUseUsageDescription，
-    // 请求会被系统静默拒绝 —— 旧逻辑因此在 iOS 误报"定位权限没有"并卡住扫描。
+    // iOS：蓝牙授权由系统在原生 CoreBluetooth 首次扫描时自动弹窗（Info.plist
+    // 已声明 NSBluetoothAlwaysUsageDescription），无需、也不应通过
+    // permission_handler 预先申请 —— iOS 的 Permission.bluetooth 无法可靠
+    // 触发/等待系统弹窗，即便 CoreBluetooth 已授权也会被判为 denied，导致弹出
+    // 多余的应用内提示。直接放行；蓝牙真实状态由设备页顶部的「蓝牙未开启」
+    // 横幅（bluetoothEnabledProvider）兜底反馈。
+    if (Platform.isIOS) return true;
+
+    // Android（6~11）的 BLE 扫描强制需要 bluetoothScan / bluetoothConnect /
+    // 定位 运行时权限。
     final perms = <Permission>[
-      if (Platform.isIOS) Permission.bluetooth,
-      if (Platform.isAndroid) ...[
-        Permission.bluetoothScan,
-        Permission.bluetoothConnect,
-        Permission.locationWhenInUse,
-      ],
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
     ];
     final res = await perms.request();
 
@@ -124,18 +128,18 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
     if (!mounted) return false;
 
     // 永久拒绝必须去系统设置；普通拒绝先弹一次重试 / 跳设置
+    // （本路径仅 Android 会走到 —— iOS 已在方法开头 return true）
     final goSettings = permanentlyDenied.isNotEmpty;
-    final permLabel = Platform.isAndroid ? '蓝牙扫描 / 连接 / 定位' : '蓝牙';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('需要$permLabel权限',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        title: const Text('需要蓝牙 / 定位权限',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         content: Text(
           goSettings
-              ? '$permLabel权限已被永久拒绝。'
+              ? '蓝牙扫描 / 连接 / 定位权限已被永久拒绝。'
                 '请前往系统设置手动开启，否则无法搜索/连接耳机。'
-              : '需要授予$permLabel权限才能搜索耳机。'
+              : '需要授予蓝牙扫描 / 连接 / 定位权限才能搜索耳机。'
                 '\n\n点击"前往设置"打开系统授权页，或点击"重试"再次申请。',
           style: const TextStyle(fontSize: 14),
         ),

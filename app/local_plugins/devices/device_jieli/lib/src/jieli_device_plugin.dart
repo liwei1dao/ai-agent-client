@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:device_plugin_interface/device_plugin_interface.dart';
+import 'package:flutter/foundation.dart';
 
 import '../device_jieli.dart';
 
@@ -155,8 +156,16 @@ class JieliDevicePlugin implements DevicePlugin {
       deviceType: extra['deviceType'] as int?,
       connectWay: extra['connectWay'] as int?,
     );
-    await _home.connect(jl);
+    debugPrint('[JieliDevicePlugin] connect → address=$deviceId '
+        'name="${jl.name}" edrAddr=${jl.edrAddr} '
+        'deviceType=${jl.deviceType} connectWay=${jl.connectWay}');
 
+    // ⚠️ session 必须在 _home.connect() 之前就位并设为 _activeSession：
+    //    iOS 原生 connect 的 method result 在 connectionState / rcspInit 事件
+    //    「之后」才 resolve（见 ConnectFeature.swift / BluetoothEventForwarder）。
+    //    若像旧逻辑那样等 connect() 返回再挂 session，握手事件会在 _activeSession
+    //    还是 null 时到达、被 _onJieliEvent 丢弃 → waitReady 永远等不到 ready
+    //    而 15s 超时。先挂 session，事件就能驱动状态机。
     final session = JieliDeviceSession(
       home: _home,
       deviceId: deviceId,
@@ -170,7 +179,17 @@ class JieliDevicePlugin implements DevicePlugin {
       },
     );
     _activeSession = session;
-    return session.waitReady(timeout: options?.timeout ?? const Duration(seconds: 15));
+
+    try {
+      await _home.connect(jl);
+      debugPrint('[JieliDevicePlugin] connect 指令已下发，等待握手 ready…');
+    } catch (e) {
+      debugPrint('[JieliDevicePlugin] connect 指令下发失败: $e');
+      _activeSession = null;
+      rethrow;
+    }
+    return session.waitReady(
+        timeout: options?.timeout ?? const Duration(seconds: 15));
   }
 
   JieliDeviceSession? _activeSessionRef() => _activeSession;
@@ -215,6 +234,8 @@ class JieliDevicePlugin implements DevicePlugin {
 
   void _onJieliEvent(JieliEvent raw) {
     if (raw is AdapterStatusEvent) {
+      debugPrint('[JieliDevicePlugin] ← adapterStatus '
+          'enabled=${raw.enabled} hasBle=${raw.hasBle}');
       _emit(DevicePluginEvent(
         type: DevicePluginEventType.bluetoothStateChanged,
         bluetoothEnabled: raw.enabled,
@@ -256,10 +277,16 @@ class JieliDevicePlugin implements DevicePlugin {
       return;
     }
     if (raw is ConnectionStateEvent) {
+      debugPrint('[JieliDevicePlugin] ← connectionState '
+          'address=${raw.address} state=${raw.state} '
+          '(activeSession=${_activeSession != null})');
       _activeSession?.updateConnectionFromRaw(raw.state);
       return;
     }
     if (raw is RcspInitEvent) {
+      debugPrint('[JieliDevicePlugin] ← rcspInit '
+          'address=${raw.address} code=${raw.code} success=${raw.success} '
+          '(activeSession=${_activeSession != null})');
       _activeSession?.updateRcspInit(raw.success);
       return;
     }
