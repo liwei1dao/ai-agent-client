@@ -182,14 +182,31 @@ class _AstTestPanelState extends State<AstTestPanel> {
             jsonDecode(_selectedAgent!.configJson) as Map<String, dynamic>;
         overrides['agentId'] = agentCfg['agentId'];
       }
+      // 原生侧会把 extraConfigJson 覆盖式合并到 DB service config 之上，
+      // 这里同样合并出"生效配置"再打日志，让日志等于服务真正使用的参数。
+      String effectiveConfigJson;
+      try {
+        final dbCfg = jsonDecode(svc.configJson) as Map<String, dynamic>;
+        effectiveConfigJson = jsonEncode({...dbCfg, ...overrides});
+      } catch (_) {
+        effectiveConfigJson = svc.configJson;
+      }
+      for (final line in describeServiceRequest(
+        endpoint: 'service_manager/testAstConnect',
+        args: {'serviceId': svc.id},
+        bodyJson: effectiveConfigJson,
+      )) {
+        _log(line);
+      }
       await _bridge.testAstConnect(
         testId: tid,
         serviceId: svc.id,
         extraConfigJson: jsonEncode(overrides),
       );
+      _log('✓ testAstConnect 已下发 · 等待服务端连接回应…');
       // 服务测试 = 本地麦克风路径；底层 connected 事件到达后再开 startAudio。
     } catch (e) {
-      _log('‼ connect exception: $e');
+      _log('‼ 服务启动失败: $e');
       if (mounted) {
         setState(() {
           _phase = _Phase.error;
@@ -237,10 +254,14 @@ class _AstTestPanelState extends State<AstTestPanel> {
     if (!mounted) return;
     if (event is! AstTestEvent) return;
     _log('← ${_summarize(event)}');
+    String? extraLog;
     setState(() {
       switch (event.kind) {
         case AstTestEventKind.connected:
-          if (_phase != _Phase.connected) _startConnTimer();
+          if (_phase != _Phase.connected) {
+            _startConnTimer();
+            extraLog = '✓ 服务启动成功 · 已连接';
+          }
           _phase = _Phase.connected;
           // 服务测试默认 self-mic 路径：连上后立即开本地麦克风往火山推 PCM，
           // 否则服务端 8 秒收不到帧会主动断开。
@@ -265,11 +286,14 @@ class _AstTestPanelState extends State<AstTestPanel> {
           _connTimer?.cancel();
           _errorMessage =
               '[${event.errorCode ?? 'error'}] ${event.errorMessage ?? ''}';
+          extraLog =
+              '‼ 服务启动失败: [${event.errorCode ?? 'error'}] ${event.errorMessage ?? ''}';
         case AstTestEventKind.speechStart:
         case AstTestEventKind.stateChanged:
           break;
       }
     });
+    if (extraLog != null) _log(extraLog!);
   }
 
   // ── Transcript helpers ────────────────────────────────────────────────────

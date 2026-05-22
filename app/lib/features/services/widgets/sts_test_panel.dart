@@ -167,6 +167,17 @@ class _StsTestPanelState extends State<StsTestPanel> {
         base['agentId'] = agentCfg['agentId'];
         stsConfigJson = jsonEncode(base);
       }
+      for (final line in describeServiceRequest(
+        endpoint: 'agents_server/createAgent',
+        args: {
+          'agentType': 'sts-chat',
+          'inputMode': 'text',
+          'stsVendor': vendor,
+        },
+        bodyJson: stsConfigJson,
+      )) {
+        _log(line);
+      }
 
       await _bridge.createAgent(
         agentId: sid,
@@ -175,12 +186,15 @@ class _StsTestPanelState extends State<StsTestPanel> {
         stsVendor: vendor,
         stsConfigJson: stsConfigJson,
       );
+      _log('✓ createAgent 成功');
       _log('→ connectService');
       await _bridge.connectService(sid);
+      _log('✓ connectService 成功');
       _log('→ setInputMode=call');
       await _bridge.setInputMode(sid, 'call');
+      _log('✓ setInputMode 成功 · 等待服务端连接回应…');
     } catch (e) {
-      _log('‼ connect exception: $e');
+      _log('‼ 服务启动失败: $e');
       if (mounted) {
         setState(() {
           _phase = _Phase.error;
@@ -229,6 +243,7 @@ class _StsTestPanelState extends State<StsTestPanel> {
   void _onEvent(AgentEvent event) {
     if (!mounted) return;
     _log('← ${_summarize(event)}');
+    String? extraLog;
     setState(() {
       switch (event) {
         case ServiceConnectionStateEvent(
@@ -237,7 +252,10 @@ class _StsTestPanelState extends State<StsTestPanel> {
           ):
           switch (connectionState) {
             case ServiceConnectionState.connected:
-              if (_phase != _Phase.connected) _startConnTimer();
+              if (_phase != _Phase.connected) {
+                _startConnTimer();
+                extraLog = '✓ 服务启动成功 · WebRTC 已连接';
+              }
               _phase = _Phase.connected;
             case ServiceConnectionState.connecting:
               _phase = _Phase.connecting;
@@ -245,6 +263,7 @@ class _StsTestPanelState extends State<StsTestPanel> {
               _connTimer?.cancel();
               _phase = _Phase.error;
               _errorMessage = errorMessage ?? '连接失败';
+              extraLog = '‼ 服务启动失败: ${errorMessage ?? '未知错误'}';
             case ServiceConnectionState.disconnected:
               _connTimer?.cancel();
               if (_phase != _Phase.error) _phase = _Phase.idle;
@@ -279,10 +298,12 @@ class _StsTestPanelState extends State<StsTestPanel> {
         case AgentErrorEvent(:final errorCode, :final message):
           _phase = _Phase.error;
           _errorMessage = '[$errorCode] $message';
+          extraLog = '‼ 服务错误 [$errorCode] $message';
         default:
           break;
       }
     });
+    if (extraLog != null) _log(extraLog!);
   }
 
   // ── Transcript helpers ────────────────────────────────────────────────────

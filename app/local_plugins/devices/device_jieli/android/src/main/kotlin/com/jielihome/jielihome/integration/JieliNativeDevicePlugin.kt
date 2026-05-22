@@ -300,6 +300,20 @@ class JieliNativeDevicePlugin(
 
     override fun connect(deviceId: String, options: DeviceConnectOptions?): NativeDeviceSession {
         requireInit()
+
+        // 已就绪的同一台设备：直接复用 session，不重发 connect。
+        // 杰理 SDK 对"已连接设备"不会再补 onConnectionState / onRcspInit 回调，
+        // 若仍走下面的 connect + future 流程，_pendingConnect 会空等到 20s 超时，
+        // 上层就收到误报的 device.connect_timeout（设备其实一直连着）。
+        _activeSession?.let { existing ->
+            if (existing.deviceId == deviceId &&
+                existing.state == DeviceConnectionState.READY) {
+                Log.i(TAG, "connect: $deviceId already ready; reuse session, skip re-connect")
+                runCatching { existing.refreshInfo() }
+                return existing
+            }
+        }
+
         // 单设备：有旧 session 时先断
         _activeSession?.let { if (it.deviceId != deviceId) runCatching { it.disconnect() } }
 
@@ -312,6 +326,12 @@ class JieliNativeDevicePlugin(
             otaCacheDir = context.cacheDir,
         )
         _activeSession = session
+
+        // 上一个未完成的 connect future 必须先收尾，否则它的调用线程会一直
+        // 阻塞到自己的 20s 超时，且 SDK 回调完成的会是被覆盖掉的旧 future。
+        _pendingConnect?.takeIf { !it.isDone }?.completeExceptionally(
+            DeviceException(DeviceErrorCode.CONNECT_FAILED, "superseded by new connect")
+        )
 
         val future = CompletableFuture<NativeDeviceSession>()
         _pendingConnect = future
