@@ -68,6 +68,9 @@ PODS:
   - translation_deepl (0.1.0):
     - ai_plugin_interface
     - Flutter
+  - translation_volcengine (0.1.0):
+    - ai_plugin_interface
+    - Flutter
   - tts_azure (0.1.0):
     - Flutter
     - MicrosoftCognitiveServicesSpeech-iOS (~> 1.43)
@@ -98,6 +101,7 @@ DEPENDENCIES:
   - translation_aliyun (from `.symlinks/plugins/translation_aliyun/ios`)
   - translation_azure (from `.symlinks/plugins/translation_azure/ios`)
   - translation_deepl (from `.symlinks/plugins/translation_deepl/ios`)
+  - translation_volcengine (from `.symlinks/plugins/translation_volcengine/ios`)
   - tts_azure (from `.symlinks/plugins/tts_azure/ios`)
 
 SPEC REPOS:
@@ -155,6 +159,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/translation_azure/ios"
   translation_deepl:
     :path: ".symlinks/plugins/translation_deepl/ios"
+  translation_volcengine:
+    :path: ".symlinks/plugins/translation_volcengine/ios"
   tts_azure:
     :path: ".symlinks/plugins/tts_azure/ios"
 
@@ -185,6 +191,7 @@ SPEC CHECKSUMS:
   translation_aliyun: e16b27dd8dfdb0ad20c30c407a07ab33c5414f5b
   translation_azure: 4b70b7b123a50bad6194bdf12d223951fe633a9b
   translation_deepl: e45985fae529fbb630577197cd2d587768c34ee9
+  translation_volcengine: 7d296284946facc6c898ecb4da71e2fae22ea7ac
   tts_azure: e3416649c33ce954a89e225baca41270b025a79b
   WebRTC-SDK: d75580e98b394310e934d1b404d19fd54db4b9d2
 

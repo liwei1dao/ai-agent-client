@@ -14,11 +14,6 @@ public final class StsPolychatService: NativeStsService {
     private let session = VoitransWebRtcSession()
     private weak var callback: StsCallback?
 
-    /// Bot response cumulative text. Cleared at each `bot_response_start`.
-    /// The server pushes `bot_response.text` as a *cumulative snapshot*
-    /// rather than a delta — we must compute the diff before forwarding.
-    private var botBuffer = ""
-
     public init() {}
 
     deinit {
@@ -43,11 +38,9 @@ public final class StsPolychatService: NativeStsService {
 
     public func connect(callback: StsCallback) {
         self.callback = callback
-        botBuffer = ""
         session.connect(handler: VoitransWebRtcSession.EventHandler(
-            onConnected: { [weak self] in
+            onConnected: {
                 callback.onConnected()
-                self?.botBuffer = ""
             },
             onMessage: { [weak self] json in
                 self?.handleDataChannelMessage(json)
@@ -99,28 +92,27 @@ public final class StsPolychatService: NativeStsService {
             }
 
         case "bot_response_start":
-            botBuffer = ""
             cb.onStateChanged(state: "llm")
 
         case "bot_response":
             let text = (json["text"] as? String) ?? ""
             let done = (json["done"] as? Bool) ?? false
-            // Server-sent text is *cumulative* per round. Convert to a
-            // delta before forwarding; the upstream `firstToken` handler
-            // appends, not overwrites.
+            // `bot_response.text` is a cumulative snapshot per round (both the
+            // done=false interim frames and the done=true final frame). That
+            // is exactly the `onChatPartialResult` contract, so forward it
+            // as-is — the STS chat agent diffs against its own lastSentLength
+            // and appends into a single assistant message (one bubble).
+            //
+            // Forwarding per-frame deltas through `onSentenceDone` (the old
+            // behaviour) made every frame look like a finished sentence, so
+            // one reply was split across many bubbles.
             if !text.isEmpty {
-                let delta: String
-                if text.hasPrefix(botBuffer) {
-                    delta = String(text.dropFirst(botBuffer.count))
-                } else {
-                    delta = text
-                }
-                if !delta.isEmpty {
-                    botBuffer = text
-                    cb.onSentenceDone(text: delta)
-                }
+                cb.onChatPartialResult(cumulativeText: text)
             }
-            if done { botBuffer = "" }
+            // done=true: the reply is complete — close the current bubble.
+            if done {
+                cb.onSentenceDone(text: text)
+            }
 
         case "ai_response_done", "ai_speaking":
             cb.onStateChanged(state: "playing")

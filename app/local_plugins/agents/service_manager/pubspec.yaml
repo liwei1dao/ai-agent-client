@@ -25,6 +25,7 @@ dependencies:
   translation_deepl: ^0.1.0
   translation_aliyun: ^0.1.0
   translation_azure: ^0.1.0
+  translation_volcengine: ^0.1.0
 
 dev_dependencies:
   flutter_test:

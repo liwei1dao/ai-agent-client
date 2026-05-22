@@ -222,6 +222,10 @@ class StsChatAgentSession : NativeAgent {
         }
 
         override fun onChatPartialResult(cumulativeText: String) {
+            // cumulativeText 是本轮从开头到当前的累积快照。正常情况下严格扩展上一帧；
+            // 个别厂商可能中途改写、推送比已下发更短的快照——重置偏移整体重发，
+            // 避免 substring 越界崩溃。
+            if (lastSentLength > cumulativeText.length) lastSentLength = 0
             // 流式 token 到来：计算增量并推送到 UI
             val delta = cumulativeText.substring(lastSentLength)
             if (delta.isEmpty()) return

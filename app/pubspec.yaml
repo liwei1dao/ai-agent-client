@@ -82,6 +82,8 @@ dependencies:
     path: local_plugins/vendors/translation_aliyun
   translation_azure:
     path: local_plugins/vendors/translation_azure
+  translation_volcengine:
+    path: local_plugins/vendors/translation_volcengine
   mcp:
     path: local_plugins/vendors/mcp
 

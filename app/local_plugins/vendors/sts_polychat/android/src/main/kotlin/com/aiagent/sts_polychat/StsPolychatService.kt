@@ -24,9 +24,6 @@ class StsPolychatService(private val context: Context) : NativeStsService {
     private var callback: StsCallback? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    /** 已经下发给上层的累积 bot 文本。每轮 bot_response_start 清空。 */
-    private val botBuffer = StringBuilder()
-
     override fun initialize(configJson: String, context: Context) {
         val cfg = JSONObject(configJson)
         VoitransWebRtcSession.warmupHttp(cfg.getString("baseUrl"))
@@ -106,7 +103,6 @@ class StsPolychatService(private val context: Context) : NativeStsService {
             }
 
             "bot_response_start" -> {
-                botBuffer.clear()
                 cb.onStateChanged("llm")
             }
 
@@ -115,22 +111,20 @@ class StsPolychatService(private val context: Context) : NativeStsService {
                 val done = json.optBoolean("done", false)
                 // 服务端每条 bot_response.text 都是从本轮开头到当前时刻的 **累积快照**
                 // （done=false 的中间帧和 done=true 的终帧都是 cumulative，不是 delta）。
-                // 上层 firstToken 走 `content += textDelta` 按增量拼接，
-                // 因此这里必须计算 "当前快照 - 已下发累积" 的真正增量。
+                // 这正是 onChatPartialResult 的契约（"累积快照"），直接透传即可——
+                // 上层 StsChatAgentSession 按 lastSentLength 自行算增量、累加到
+                // **同一条** assistant 消息（同一个气泡）。
+                //
+                // 之前误用 onSentenceDone(delta) 逐帧下发：onSentenceDone 语义是
+                // "整句回复结束"，上层每收到一次就关闭气泡并重置 currentAssistantId，
+                // 导致一条 AI 回复被拆成多个气泡。
                 if (text.isNotEmpty()) {
-                    val sent = botBuffer.toString()
-                    val delta = if (text.startsWith(sent)) text.substring(sent.length) else {
-                        // 服务端做了中途改写（极少见）：回退成用整句覆盖本轮——
-                        // 上层没有覆盖语义，只能作为整段下发并吃一次重复；避免丢字。
-                        text
-                    }
-                    if (delta.isNotEmpty()) {
-                        botBuffer.setLength(0)
-                        botBuffer.append(text)
-                        cb.onSentenceDone(delta)
-                    }
+                    cb.onChatPartialResult(text)
                 }
-                if (done) botBuffer.clear()
+                // done=true：本轮回复结束，关闭当前气泡。
+                if (done) {
+                    cb.onSentenceDone(text)
+                }
             }
 
             "ai_response_done" -> {

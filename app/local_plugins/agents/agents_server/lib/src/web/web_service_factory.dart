@@ -8,6 +8,7 @@ import 'package:sts_polychat/sts_polychat_web.dart';
 import 'package:stt_azure/stt_azure.dart';
 import 'package:translation_aliyun/translation_aliyun.dart';
 import 'package:translation_deepl/translation_deepl.dart';
+import 'package:translation_volcengine/translation_volcengine.dart';
 import 'package:tts_azure/tts_azure.dart';
 
 /// Maps vendor names to their web implementation classes. Mirrors the native
@@ -72,6 +73,8 @@ class WebServiceFactory {
         return TranslationDeeplPlugin();
       case 'aliyun':
         return TranslationAliyunPlugin();
+      case 'volcengine':
+        return TranslationVolcenginePlugin();
       default:
         throw UnimplementedError(
           'Translation vendor "$vendor" not available on web',

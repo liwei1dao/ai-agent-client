@@ -63,6 +63,14 @@ List<_ConfigField> _fieldsFor(String type, String vendor) {
     ];
   }
   if (vendor == 'volcengine' && type != 'llm') {
+    if (type == 'translation') {
+      return const [
+        _ConfigField('accessKeyId', 'Access Key ID *', 'AKLT...', obscure: true),
+        _ConfigField('secretAccessKey', 'Secret Access Key *', 'xxxxxxxx', obscure: true),
+        _ConfigField('region', 'Region', 'cn-north-1',
+            readonly: true, defaultValue: 'cn-north-1'),
+      ];
+    }
     if (type == 'ast') {
       return const [
         _ConfigField('appKey', 'App Key *', '2316081933'),
@@ -211,6 +219,7 @@ const _vendorsByType = <String, List<Map<String, String>>>{
   'translation': [
     {'id': 'deepl', 'label': 'DeepL'},
     {'id': 'aliyun', 'label': '阿里云'},
+    {'id': 'volcengine', 'label': '火山引擎'},
     {'id': 'google', 'label': 'Google'},
     {'id': 'azure', 'label': '微软翻译 (Azure)'},
   ],
@@ -338,6 +347,11 @@ const _vendorDocs = <String, Map<String, _VendorDoc>>{
       url: 'https://console.volcengine.com/speech/app',
       urlLabel: '火山引擎语音控制台',
       hint: '创建应用获取 App ID 和 Access Token。开通语音合成能力，选择音色 ID。',
+    ),
+    'translation': _VendorDoc(
+      url: 'https://console.volcengine.com/translate',
+      urlLabel: '火山引擎机器翻译控制台',
+      hint: '开通机器翻译服务，在"访问控制 → 密钥管理"获取 Access Key ID 与 Secret Access Key。地域默认 cn-north-1。',
     ),
   },
   'deepl': {

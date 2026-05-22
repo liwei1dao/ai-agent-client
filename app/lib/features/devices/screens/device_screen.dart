@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:device_manager/device_manager.dart';
 import 'package:flutter/material.dart';
@@ -95,10 +96,16 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
   }
 
   Future<bool> _ensurePermissions() async {
+    // 定位权限只有 Android（6~11）的 BLE 扫描才强制需要；iOS 的 CoreBluetooth
+    // 扫描不依赖定位，且 Info.plist 未声明 NSLocationWhenInUseUsageDescription，
+    // 请求会被系统静默拒绝 —— 旧逻辑因此在 iOS 误报"定位权限没有"并卡住扫描。
     final perms = <Permission>[
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
+      if (Platform.isIOS) Permission.bluetooth,
+      if (Platform.isAndroid) ...[
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.locationWhenInUse,
+      ],
     ];
     final res = await perms.request();
 
@@ -118,16 +125,17 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
 
     // 永久拒绝必须去系统设置；普通拒绝先弹一次重试 / 跳设置
     final goSettings = permanentlyDenied.isNotEmpty;
+    final permLabel = Platform.isAndroid ? '蓝牙扫描 / 连接 / 定位' : '蓝牙';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('需要蓝牙 / 定位权限',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        title: Text('需要$permLabel权限',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         content: Text(
           goSettings
-              ? '蓝牙扫描 / 连接 / 定位权限已被永久拒绝。'
+              ? '$permLabel权限已被永久拒绝。'
                 '请前往系统设置手动开启，否则无法搜索/连接耳机。'
-              : '需要授予蓝牙扫描 / 连接 / 定位权限才能搜索耳机。'
+              : '需要授予$permLabel权限才能搜索耳机。'
                 '\n\n点击"前往设置"打开系统授权页，或点击"重试"再次申请。',
           style: const TextStyle(fontSize: 14),
         ),

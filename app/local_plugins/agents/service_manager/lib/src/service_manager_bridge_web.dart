@@ -13,6 +13,7 @@ import 'package:stt_azure/stt_azure.dart';
 import 'package:translation_aliyun/translation_aliyun.dart';
 import 'package:translation_azure/translation_azure.dart';
 import 'package:translation_deepl/translation_deepl.dart';
+import 'package:translation_volcengine/translation_volcengine.dart';
 import 'package:tts_azure/tts_azure.dart';
 
 import 'service_test_event.dart';
@@ -714,6 +715,8 @@ class ServiceManagerBridge {
       case 'azure':
       case 'microsoft':
         return TranslationAzurePlugin();
+      case 'volcengine':
+        return TranslationVolcenginePlugin();
       default:
         throw UnimplementedError(
             'Translation vendor "$vendor" not available on web');

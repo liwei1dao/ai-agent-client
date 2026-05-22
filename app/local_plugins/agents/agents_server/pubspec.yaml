@@ -23,6 +23,7 @@ dependencies:
   ast_polychat: ^0.1.0
   translation_deepl: ^0.1.0
   translation_aliyun: ^0.1.0
+  translation_volcengine: ^0.1.0
   mcp: ^0.1.0
   uuid: ^4.5.1
 

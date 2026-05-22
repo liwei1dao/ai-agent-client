@@ -371,6 +371,11 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
           ('appKey', 'App Key *', false),
           ('voiceType', '音色 ID', false),
         ],
+        'translation' => const [
+          ('accessKeyId', 'Access Key ID *', true),
+          ('secretAccessKey', 'Secret Access Key *', true),
+          ('region', 'Region', false),
+        ],
         _ => const [
           ('appId', 'App ID *', false),
           ('accessToken', 'Access Token *', true),
