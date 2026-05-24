@@ -368,7 +368,6 @@ class _ServiceTestScreenState extends ConsumerState<ServiceTestScreen> {
         'sts' => const [
           ('appId', 'App ID *', false),
           ('accessToken', 'Access Token *', true),
-          ('appKey', 'App Key *', false),
           ('voiceType', '音色 ID', false),
         ],
         'translation' => const [

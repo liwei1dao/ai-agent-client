@@ -5,6 +5,7 @@ PODS:
     - ai_plugin_interface
     - Flutter
   - agent_sts_chat (0.1.0):
+    - ai_plugin_interface
     - Flutter
   - agent_translate (0.1.0):
     - Flutter
@@ -167,7 +168,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   agent_ast_translate: f8aca0191d87bf2323572b4b85cdcd10558872ea
   agent_chat: 12df7130fc0a9e863dd5b194ca738c5e4d9be682
-  agent_sts_chat: 5aad863113e6d361ed535d1bd029557a0821932a
+  agent_sts_chat: b52a971d834e452336612bf04c378b3e676e178f
   agent_translate: 8daaec7b2deecdf8bb735f3a402dbb835c032d46
   agents_server: 0079d748490035c3dcbb9a7f1cfbace44755f347
   ai_plugin_interface: 4da398f78177122dc3f6940428769a40c87ddd30
@@ -195,6 +196,6 @@ SPEC CHECKSUMS:
   tts_azure: e3416649c33ce954a89e225baca41270b025a79b
   WebRTC-SDK: d75580e98b394310e934d1b404d19fd54db4b9d2
 
-PODFILE CHECKSUM: 1857a7cdb7dfafe45f2b0e9a9af44644190f7506
+PODFILE CHECKSUM: 6c18c69d5ad963548d466c6bed97e6960edd9350
 
 COCOAPODS: 1.16.2
