@@ -1,5 +1,6 @@
 PODS:
   - agent_ast_translate (0.1.0):
+    - ai_plugin_interface
     - Flutter
   - agent_chat (0.1.0):
     - ai_plugin_interface
@@ -8,6 +9,7 @@ PODS:
     - ai_plugin_interface
     - Flutter
   - agent_translate (0.1.0):
+    - ai_plugin_interface
     - Flutter
   - agents_server (0.1.0):
     - ai_plugin_interface
@@ -166,10 +168,10 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/tts_azure/ios"
 
 SPEC CHECKSUMS:
-  agent_ast_translate: f8aca0191d87bf2323572b4b85cdcd10558872ea
+  agent_ast_translate: 1c1534542c0ce49489b23ea2879e98a305e0d822
   agent_chat: 12df7130fc0a9e863dd5b194ca738c5e4d9be682
   agent_sts_chat: b52a971d834e452336612bf04c378b3e676e178f
-  agent_translate: 8daaec7b2deecdf8bb735f3a402dbb835c032d46
+  agent_translate: 9915e330c9cb92be64a7dea57b878003d022c6be
   agents_server: 0079d748490035c3dcbb9a7f1cfbace44755f347
   ai_plugin_interface: 4da398f78177122dc3f6940428769a40c87ddd30
   assistant_server: ee3abd880222ad0d9db0d8ae9133bdc373ac3233
