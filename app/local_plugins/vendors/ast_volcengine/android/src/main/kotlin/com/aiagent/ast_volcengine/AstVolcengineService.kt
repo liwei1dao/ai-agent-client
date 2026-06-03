@@ -600,8 +600,9 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
 
             EVT_SRC_SUBTITLE_START -> {
                 Log.d(TAG, "SourceSubtitleStart")
-                // 新一句开始：重置段尾信号 flag，允许本轮再发一次 isFinal=true。
-                ttsFinalSentForRound = false
+                // 段尾信号 flag 的重置移到 beginRound() —— 新轮真正建立（newRequestId）时
+                // 才清，确保上一轮若漏发 TTS_ENDED(359)，beginRound(force) 的兜底 flush
+                // 还能看到 flag=false 把尾音刷出去。
                 srcSubtitleAccum.clear()
                 val cb = callback
                 if (cb != null) {
@@ -682,10 +683,11 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
                     closeRole(cb, AstRole.TRANSLATED)
                     maybeEndRound(cb)
                 }
-                // 段尾信号：本句的 trans 文本和 TTS 音频都到此为止，给下游 sink
-                // 一个 isFinal=true 的空帧，杰理那边据此 flush 缓存（不再等更多帧）。
-                // 优先用 EVT_TTS_ENDED；若火山没发 TTS_ENDED 就用 TRANS_END 兜底。
-                emitTtsFinalOnce("trans_end")
+                // 注意：这里 **不** flush。TRANS_SUBTITLE_END(655) 只是译文 **文本**
+                // 结束，本句的 TTS **音频**通常还在后面继续流（350 帧），由
+                // EVT_TTS_ENDED(359) 收尾。早年挂在这里 flush 会把尾音切给下一句，
+                // 导致"说第二句才听到第一句"的 off-by-one。flush 统一交给 359；
+                // 359 漏发时由 beginRound(force) / forceEndRound 兜底。
             }
 
             EVT_TTS_SENTENCE_START -> {
@@ -714,11 +716,17 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
     private fun beginRound(cb: AstCallback, force: Boolean = false) {
         if (currentRequestId != null) {
             if (!force) return
+            // 兜底：强制结束旧轮前，若旧轮 TTS 音频还没靠 TTS_ENDED(359) flush 过，
+            // 这里补一次，避免上一句尾音被压到下一句才送出。359 正常下发时此处
+            // ttsFinalSentForRound 已为 true → no-op。
+            emitTtsFinalOnce("round_force")
             if (sourceRoleOpen) closeRole(cb, AstRole.SOURCE)
             if (translatedRoleOpen) closeRole(cb, AstRole.TRANSLATED)
             endRound(cb)
         }
         currentRequestId = newRequestId()
+        // 新轮真正建立后才清段尾信号 flag（见 EVT_SRC_SUBTITLE_START 注释）。
+        ttsFinalSentForRound = false
     }
 
     private fun openRole(cb: AstCallback, role: AstRole) {
@@ -770,6 +778,10 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
     }
 
     private fun forceEndRound() {
+        // 会话结束兜底：先 flush 可能还压在缓冲里的最后一句尾音（359 未到就断了）。
+        // 不受 currentRequestId 守卫约束——655 之后 currentRequestId 已为 null，
+        // 但 TTS 音频可能仍未 flush。
+        emitTtsFinalOnce("session_end")
         val cb = callback ?: run { resetRoundState(); return }
         if (currentRequestId == null) return
         if (sourceRoleOpen) closeRole(cb, AstRole.SOURCE)

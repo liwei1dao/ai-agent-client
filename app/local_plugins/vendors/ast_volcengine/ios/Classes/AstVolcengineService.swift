@@ -530,7 +530,8 @@ public final class AstVolcengineService: NativeAstService {
             if !audio.isEmpty { writeAudio(audio) }
 
         case Self.evtSrcSubtitleStart:
-            ttsFinalSentForRound = false
+            // ttsFinalSentForRound 的重置移到 beginRound()（新轮真正建立时才清），
+            // 保证上一轮漏发 TTS_ENDED(359) 时 beginRound(force) 的兜底 flush 仍能生效。
             srcSubtitleAccum = ""
             if let cb = callback {
                 beginRound(cb, force: true)
@@ -585,7 +586,10 @@ public final class AstVolcengineService: NativeAstService {
                 closeRole(cb, role: .translated)
                 maybeEndRound(cb)
             }
-            emitTtsFinalOnce(reason: "trans_end")
+            // 不在这里 flush：655 只是译文 **文本** 结束，本句 TTS **音频** 通常还在
+            // 后面继续流（350 帧），由 TTS_ENDED(359) 收尾。早年挂在这里 flush 会把
+            // 尾音切给下一句，造成"说第二句才听到第一句"。flush 统一交给 359，
+            // 359 漏发时由 beginRound(force) / forceEndRound 兜底。
 
         case Self.evtTtsSentenceStart:
             if !audio.isEmpty { writeAudio(audio) }
@@ -606,11 +610,17 @@ public final class AstVolcengineService: NativeAstService {
     private func beginRound(_ cb: AstCallback, force: Bool = false) {
         if currentRequestId != nil {
             if !force { return }
+            // 兜底：强制结束旧轮前，若旧轮 TTS 音频还没靠 TTS_ENDED(359) flush 过，
+            // 这里补一次，避免上一句尾音被压到下一句才送出。359 正常下发时
+            // ttsFinalSentForRound 已为 true → no-op。
+            emitTtsFinalOnce(reason: "round_force")
             if sourceRoleOpen { closeRole(cb, role: .source) }
             if translatedRoleOpen { closeRole(cb, role: .translated) }
             endRound(cb)
         }
         currentRequestId = newRequestId()
+        // 新轮真正建立后才清段尾信号 flag（见 evtSrcSubtitleStart 注释）。
+        ttsFinalSentForRound = false
     }
 
     private func openRole(_ cb: AstCallback, role: AstRole) {
@@ -658,6 +668,10 @@ public final class AstVolcengineService: NativeAstService {
     }
 
     private func forceEndRound() {
+        // 会话结束兜底：先 flush 可能还压在缓冲里的最后一句尾音（359 未到就断了）。
+        // 不受 currentRequestId 守卫约束——655 之后 currentRequestId 已为 nil，
+        // 但 TTS 音频可能仍未 flush。
+        emitTtsFinalOnce(reason: "session_end")
         guard let cb = callback else { resetRoundState(); return }
         if currentRequestId == nil { return }
         if sourceRoleOpen { closeRole(cb, role: .source) }
