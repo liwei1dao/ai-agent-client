@@ -1,26 +1,268 @@
 import 'dart:async';
+
+import 'package:ai_plugin_interface/ai_plugin_interface.dart' as ai;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/services.dart';
+import 'package:llm_openai/llm_openai.dart';
+import 'package:llm_volcengine/llm_volcengine.dart';
+import 'package:local_db/local_db.dart';
+import 'package:translation_aliyun/translation_aliyun.dart';
+import 'package:translation_azure/translation_azure.dart';
+import 'package:translation_deepl/translation_deepl.dart';
+import 'package:translation_volcengine/translation_volcengine.dart';
+import 'package:tts_azure/tts_azure.dart';
+import 'package:sts_volcengine/sts_volcengine.dart';
+import 'package:ast_volcengine/ast_volcengine.dart';
+import 'package:stt_azure/stt_azure.dart';
+
+import 'dart_service_tester.dart';
+import 'service_manager_api.dart';
 import 'service_test_event.dart';
 
-/// ServiceManagerBridge — 服务管理插件的 Dart 薄桥接
+/// ServiceManagerBridge — 服务测试统一门面（default / 非 web 分支）。
 ///
-/// 职责：
-/// 1. 服务测试：传入 serviceId，底层从 DB 加载配置 → 通过 NativeServiceRegistry
-///    创建对应服务实例 → 执行测试 → 通过 EventChannel 推送标准化事件
-/// 2. 服务测试生命周期管理（启动/停止/释放）
-///
-/// Flutter UI 只需要：选择服务 → 调用 testXxx → 监听 eventStream
-class ServiceManagerBridge {
+/// 条件导入无法区分 mobile 与 desktop（都满足 `dart.library.io`），故运行时
+/// [defaultTargetPlatform] 选择后端：
+/// - **移动端**：[_MethodChannelServiceManager] —— MethodChannel → 原生
+///   NativeServiceRegistry。
+/// - **桌面**：[DartServiceTester] + [_DesktopServiceTestFactory] —— 纯 Dart
+///   测试器；文本厂商（LLM / 翻译）可用，语音厂商（STT/TTS/STS/AST）桌面暂未实现，
+///   抛 UnimplementedError 后由测试器转成 *_init_failed 错误事件（不崩溃）。
+class ServiceManagerBridge implements ServiceManagerApi {
+  static final ServiceManagerBridge _instance = ServiceManagerBridge._();
+  ServiceManagerBridge._() : _impl = _pickImpl();
+  factory ServiceManagerBridge() => _instance;
+
+  final ServiceManagerApi _impl;
+
+  static ServiceManagerApi _pickImpl() {
+    final isDesktop = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux);
+    if (isDesktop) {
+      return DartServiceTester(const _DesktopServiceTestFactory(), _loadConfig);
+    }
+    return _MethodChannelServiceManager();
+  }
+
+  static Future<ServiceConfigRecord?> _loadConfig(String serviceId) async {
+    final all = await LocalDbBridge().getAllServiceConfigs();
+    for (final c in all) {
+      if (c.id == serviceId) {
+        return ServiceConfigRecord(
+          type: c.type,
+          vendor: c.vendor,
+          configJson: c.configJson,
+        );
+      }
+    }
+    return null;
+  }
+
+  @override
+  Stream<ServiceTestEvent> get eventStream => _impl.eventStream;
+
+  @override
+  Future<void> testSttStart({
+    required String testId,
+    required String serviceId,
+  }) =>
+      _impl.testSttStart(testId: testId, serviceId: serviceId);
+
+  @override
+  Future<void> testSttStop(String testId) => _impl.testSttStop(testId);
+
+  @override
+  Future<void> testTtsSpeak({
+    required String testId,
+    required String serviceId,
+    required String text,
+    String? voiceName,
+    double speed = 1.0,
+    double pitch = 1.0,
+  }) =>
+      _impl.testTtsSpeak(
+        testId: testId,
+        serviceId: serviceId,
+        text: text,
+        voiceName: voiceName,
+        speed: speed,
+        pitch: pitch,
+      );
+
+  @override
+  Future<void> testTtsStop(String testId) => _impl.testTtsStop(testId);
+
+  @override
+  Future<void> testLlmChat({
+    required String testId,
+    required String serviceId,
+    required String text,
+  }) =>
+      _impl.testLlmChat(testId: testId, serviceId: serviceId, text: text);
+
+  @override
+  Future<void> testLlmCancel(String testId) => _impl.testLlmCancel(testId);
+
+  @override
+  Future<void> testTranslate({
+    required String testId,
+    required String serviceId,
+    required String text,
+    required String targetLang,
+    String? sourceLang,
+  }) =>
+      _impl.testTranslate(
+        testId: testId,
+        serviceId: serviceId,
+        text: text,
+        targetLang: targetLang,
+        sourceLang: sourceLang,
+      );
+
+  @override
+  Future<void> testStsConnect({
+    required String testId,
+    required String serviceId,
+  }) =>
+      _impl.testStsConnect(testId: testId, serviceId: serviceId);
+
+  @override
+  Future<void> testStsStartAudio(String testId) =>
+      _impl.testStsStartAudio(testId);
+
+  @override
+  Future<void> testStsStopAudio(String testId) =>
+      _impl.testStsStopAudio(testId);
+
+  @override
+  Future<void> testStsDisconnect(String testId) =>
+      _impl.testStsDisconnect(testId);
+
+  @override
+  Future<void> testAstConnect({
+    required String testId,
+    required String serviceId,
+    String? extraConfigJson,
+  }) =>
+      _impl.testAstConnect(
+        testId: testId,
+        serviceId: serviceId,
+        extraConfigJson: extraConfigJson,
+      );
+
+  @override
+  Future<void> testAstStartAudio(String testId) =>
+      _impl.testAstStartAudio(testId);
+
+  @override
+  Future<void> testAstStopAudio(String testId) =>
+      _impl.testAstStopAudio(testId);
+
+  @override
+  Future<void> testAstDisconnect(String testId) =>
+      _impl.testAstDisconnect(testId);
+
+  @override
+  Future<void> autoTest({
+    required String testId,
+    required String serviceId,
+  }) =>
+      _impl.autoTest(testId: testId, serviceId: serviceId);
+
+  @override
+  Future<void> releaseTest(String testId) => _impl.releaseTest(testId);
+}
+
+/// 桌面厂商工厂：文本能力真实可用，语音能力暂未实现（抛错由上层转成错误事件）。
+class _DesktopServiceTestFactory implements ServiceTestFactory {
+  const _DesktopServiceTestFactory();
+
+  @override
+  ai.SttPlugin createStt(String vendor) {
+    switch (vendor) {
+      case 'azure':
+        return SttAzurePluginDart();
+      default:
+        throw UnimplementedError('STT vendor "$vendor" 桌面端暂未实现');
+    }
+  }
+
+  @override
+  ai.TtsPlugin createTts(String vendor) {
+    switch (vendor) {
+      case 'azure':
+        return TtsAzurePluginDart();
+      default:
+        throw UnimplementedError('TTS vendor "$vendor" 桌面端暂未实现');
+    }
+  }
+
+  @override
+  ai.LlmPlugin createLlm(String vendor) {
+    switch (vendor) {
+      case 'openai':
+        return LlmOpenaiPlugin();
+      case 'volcengine':
+      case 'doubao':
+        return LlmVolcenginePlugin();
+      default:
+        throw UnimplementedError('LLM vendor "$vendor" 桌面端暂不支持');
+    }
+  }
+
+  @override
+  ai.StsPlugin createSts(String vendor) {
+    switch (vendor) {
+      case 'volcengine':
+      case 'doubao':
+      case 'bytedance':
+        return StsVolcenginePlugin();
+      default:
+        throw UnimplementedError('STS vendor "$vendor" 桌面端暂未实现');
+    }
+  }
+
+  @override
+  ai.AstPlugin createAst(String vendor) {
+    switch (vendor) {
+      case 'volcengine':
+      case 'doubao':
+      case 'bytedance':
+        return AstVolcengineDesktop();
+      default:
+        throw UnimplementedError('AST vendor "$vendor" 桌面端暂未实现');
+    }
+  }
+
+  @override
+  ai.TranslationPlugin createTranslation(String vendor) {
+    switch (vendor) {
+      case 'deepl':
+        return TranslationDeeplPlugin();
+      case 'aliyun':
+        return TranslationAliyunPlugin();
+      case 'azure':
+      case 'microsoft':
+        return TranslationAzurePlugin();
+      case 'volcengine':
+        return TranslationVolcenginePlugin();
+      default:
+        throw UnimplementedError('Translation vendor "$vendor" 桌面端暂不支持');
+    }
+  }
+}
+
+/// 移动端实现：所有命令通过 MethodChannel 发出，事件通过 [eventStream] 接收。
+class _MethodChannelServiceManager implements ServiceManagerApi {
   static const _commandChannel = MethodChannel('service_manager/commands');
   static const _eventChannel = EventChannel('service_manager/events');
 
-  static final ServiceManagerBridge _instance = ServiceManagerBridge._();
-  ServiceManagerBridge._();
-  factory ServiceManagerBridge() => _instance;
-
   Stream<ServiceTestEvent>? _eventStream;
 
-  /// 服务测试事件流（广播流，可多处监听）
+  @override
   Stream<ServiceTestEvent> get eventStream {
     _eventStream ??= _eventChannel
         .receiveBroadcastStream()
@@ -30,11 +272,7 @@ class ServiceManagerBridge {
     return _eventStream!;
   }
 
-  // ─────────────────────────────────────────────────
-  // STT 测试
-  // ─────────────────────────────────────────────────
-
-  /// 启动 STT 测试（底层自动加载 serviceId 对应的配置）
+  @override
   Future<void> testSttStart({
     required String testId,
     required String serviceId,
@@ -44,15 +282,11 @@ class ServiceManagerBridge {
         'serviceId': serviceId,
       });
 
-  /// 停止 STT 测试
+  @override
   Future<void> testSttStop(String testId) =>
       _commandChannel.invokeMethod('testSttStop', {'testId': testId});
 
-  // ─────────────────────────────────────────────────
-  // TTS 测试
-  // ─────────────────────────────────────────────────
-
-  /// 启动 TTS 测试
+  @override
   Future<void> testTtsSpeak({
     required String testId,
     required String serviceId,
@@ -70,15 +304,11 @@ class ServiceManagerBridge {
         'pitch': pitch,
       });
 
-  /// 停止 TTS 测试
+  @override
   Future<void> testTtsStop(String testId) =>
       _commandChannel.invokeMethod('testTtsStop', {'testId': testId});
 
-  // ─────────────────────────────────────────────────
-  // LLM 测试
-  // ─────────────────────────────────────────────────
-
-  /// 发送 LLM 测试请求
+  @override
   Future<void> testLlmChat({
     required String testId,
     required String serviceId,
@@ -90,15 +320,11 @@ class ServiceManagerBridge {
         'text': text,
       });
 
-  /// 取消 LLM 测试
+  @override
   Future<void> testLlmCancel(String testId) =>
       _commandChannel.invokeMethod('testLlmCancel', {'testId': testId});
 
-  // ─────────────────────────────────────────────────
-  // Translation 测试
-  // ─────────────────────────────────────────────────
-
-  /// 翻译测试
+  @override
   Future<void> testTranslate({
     required String testId,
     required String serviceId,
@@ -114,11 +340,7 @@ class ServiceManagerBridge {
         'sourceLang': sourceLang,
       });
 
-  // ─────────────────────────────────────────────────
-  // STS 测试
-  // ─────────────────────────────────────────────────
-
-  /// 连接 STS 测试
+  @override
   Future<void> testStsConnect({
     required String testId,
     required String serviceId,
@@ -128,26 +350,19 @@ class ServiceManagerBridge {
         'serviceId': serviceId,
       });
 
-  /// 开始 STS 音频发送
+  @override
   Future<void> testStsStartAudio(String testId) =>
       _commandChannel.invokeMethod('testStsStartAudio', {'testId': testId});
 
-  /// 停止 STS 音频发送
+  @override
   Future<void> testStsStopAudio(String testId) =>
       _commandChannel.invokeMethod('testStsStopAudio', {'testId': testId});
 
-  /// 断开 STS 测试
+  @override
   Future<void> testStsDisconnect(String testId) =>
       _commandChannel.invokeMethod('testStsDisconnect', {'testId': testId});
 
-  // ─────────────────────────────────────────────────
-  // AST 测试
-  // ─────────────────────────────────────────────────
-
-  /// 连接 AST 测试
-  ///
-  /// [extraConfigJson] 可选；JSON 对象字符串，会**覆盖式**合并到从 DB 加载的
-  /// service config 之上（用于测试面板临时覆盖 srcLang / dstLang / agentId 等）。
+  @override
   Future<void> testAstConnect({
     required String testId,
     required String serviceId,
@@ -159,32 +374,19 @@ class ServiceManagerBridge {
         if (extraConfigJson != null) 'extraConfigJson': extraConfigJson,
       });
 
-  /// 开始 AST 音频发送
+  @override
   Future<void> testAstStartAudio(String testId) =>
       _commandChannel.invokeMethod('testAstStartAudio', {'testId': testId});
 
-  /// 停止 AST 音频发送
+  @override
   Future<void> testAstStopAudio(String testId) =>
       _commandChannel.invokeMethod('testAstStopAudio', {'testId': testId});
 
-  /// 断开 AST 测试
+  @override
   Future<void> testAstDisconnect(String testId) =>
       _commandChannel.invokeMethod('testAstDisconnect', {'testId': testId});
 
-  // ─────────────────────────────────────────────────
-  // 自动化测试
-  // ─────────────────────────────────────────────────
-
-  /// 一键自动化测试：传入 serviceId，底层根据服务类型自动执行完整测试流程。
-  ///
-  /// - STT:  打开麦克风 → 录 5 秒 → 停止 → 检查识别结果
-  /// - TTS:  合成预设文本 → 等待播放完成
-  /// - LLM:  发送预设问题 → 等待回复
-  /// - Translation: 翻译预设文本 → 等待结果
-  /// - STS:  连接 → 通话 5 秒 → 断开
-  /// - AST:  连接 → 通话 5 秒 → 断开
-  ///
-  /// 测试过程中推送中间事件，最终推送 [ServiceTestDoneEvent]。
+  @override
   Future<void> autoTest({
     required String testId,
     required String serviceId,
@@ -194,11 +396,7 @@ class ServiceManagerBridge {
         'serviceId': serviceId,
       });
 
-  // ─────────────────────────────────────────────────
-  // 通用
-  // ─────────────────────────────────────────────────
-
-  /// 释放指定测试会话的所有资源
+  @override
   Future<void> releaseTest(String testId) =>
       _commandChannel.invokeMethod('releaseTest', {'testId': testId});
 }

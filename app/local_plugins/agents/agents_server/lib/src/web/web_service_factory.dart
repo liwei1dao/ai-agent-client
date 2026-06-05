@@ -1,6 +1,6 @@
 import 'package:ai_plugin_interface/ai_plugin_interface.dart';
 import 'package:ast_polychat/ast_polychat_web.dart';
-import 'package:ast_volcengine/ast_volcengine.dart';
+import 'package:ast_volcengine/ast_volcengine_web.dart';
 import 'package:llm_openai/llm_openai.dart';
 import 'package:mcp/mcp.dart';
 import 'package:sts_volcengine/sts_volcengine.dart';
@@ -11,10 +11,15 @@ import 'package:translation_deepl/translation_deepl.dart';
 import 'package:translation_volcengine/translation_volcengine.dart';
 import 'package:tts_azure/tts_azure.dart';
 
+import '../agent_service_factory.dart';
+
 /// Maps vendor names to their web implementation classes. Mirrors the native
 /// `NativeServiceRegistry` on Android but lives entirely in Dart for the web.
-class WebServiceFactory {
-  static SttPlugin createStt(String vendor) {
+class WebServiceFactory implements AgentServiceFactory {
+  const WebServiceFactory();
+
+  @override
+  SttPlugin createStt(String vendor) {
     switch (vendor) {
       case 'azure':
         return SttAzurePluginDart();
@@ -23,7 +28,8 @@ class WebServiceFactory {
     }
   }
 
-  static TtsPlugin createTts(String vendor) {
+  @override
+  TtsPlugin createTts(String vendor) {
     switch (vendor) {
       case 'azure':
         return TtsAzurePluginDart();
@@ -32,7 +38,8 @@ class WebServiceFactory {
     }
   }
 
-  static LlmPlugin createLlm(String vendor) {
+  @override
+  LlmPlugin createLlm(String vendor) {
     switch (vendor) {
       case 'openai':
         return LlmOpenaiPlugin();
@@ -41,7 +48,8 @@ class WebServiceFactory {
     }
   }
 
-  static StsPlugin createSts(String vendor) {
+  @override
+  StsPlugin createSts(String vendor) {
     switch (vendor) {
       case 'volcengine':
       case 'doubao': // legacy alias
@@ -54,7 +62,8 @@ class WebServiceFactory {
     }
   }
 
-  static AstPlugin createAst(String vendor) {
+  @override
+  AstPlugin createAst(String vendor) {
     switch (vendor) {
       case 'volcengine':
       case 'doubao': // legacy alias
@@ -67,7 +76,8 @@ class WebServiceFactory {
     }
   }
 
-  static TranslationPlugin createTranslation(String vendor) {
+  @override
+  TranslationPlugin createTranslation(String vendor) {
     switch (vendor) {
       case 'deepl':
         return TranslationDeeplPlugin();
@@ -83,7 +93,8 @@ class WebServiceFactory {
   }
 
   /// MCP transport 选择。当前仅 streamable_http；后续 SSE 旧版协议加在这里。
-  static McpPlugin createMcp(String transport) {
+  @override
+  McpPlugin createMcp(String transport) {
     switch (transport) {
       case 'streamable_http':
       case 'http':

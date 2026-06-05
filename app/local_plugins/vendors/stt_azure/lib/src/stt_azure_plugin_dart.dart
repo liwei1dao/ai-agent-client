@@ -1,11 +1,52 @@
 import 'dart:async';
-import 'package:flutter/services.dart';
-import 'package:ai_plugin_interface/ai_plugin_interface.dart';
 
-/// SttAzurePluginDart — Dart 侧桥接（封装 MethodChannel + EventChannel）
+import 'package:ai_plugin_interface/ai_plugin_interface.dart';
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/services.dart';
+
+import 'stt_azure_plugin_desktop.dart';
+
+/// SttAzurePluginDart — 非 web 分支统一门面。
 ///
-/// 实现 [SttPlugin] 抽象接口，将 Native 事件转换为 [SttEvent] 流。
+/// 条件导入无法区分 mobile 与 desktop（都满足 `dart.library.io`），运行时分派：
+/// - **移动端（Android / iOS）**：[_SttAzureMethodChannel] —— 原生 Azure SDK。
+/// - **桌面（macOS / Windows / Linux）**：[SttAzureDesktop] —— Azure 语音 WebSocket
+///   + record 采集。
 class SttAzurePluginDart implements SttPlugin {
+  SttAzurePluginDart() : _impl = _pickImpl();
+
+  final SttPlugin _impl;
+
+  static SttPlugin _pickImpl() {
+    final isDesktop = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux);
+    return isDesktop ? SttAzureDesktop() : _SttAzureMethodChannel();
+  }
+
+  @override
+  bool get supportsLanguageDetection => _impl.supportsLanguageDetection;
+
+  @override
+  Future<void> initialize(SttConfig config) => _impl.initialize(config);
+
+  @override
+  Future<void> startListening() => _impl.startListening();
+
+  @override
+  Future<void> stopListening() => _impl.stopListening();
+
+  @override
+  Stream<SttEvent> get eventStream => _impl.eventStream;
+
+  @override
+  Future<void> dispose() => _impl.dispose();
+}
+
+/// 移动端实现：MethodChannel + EventChannel → 原生 Azure SDK。
+class _SttAzureMethodChannel implements SttPlugin {
   static const _cmd = MethodChannel('stt_azure/commands');
   static const _evt = EventChannel('stt_azure/events');
 

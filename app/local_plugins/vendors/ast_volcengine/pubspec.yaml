@@ -16,6 +16,9 @@ dependencies:
   web: ^1.0.0
   web_socket_channel: ^3.0.0
   archive: ^4.0.0
+  # 桌面（macOS / Windows / Linux）音频 I/O
+  record: ^5.2.0
+  flutter_pcm_sound: ^3.1.4
 
 dev_dependencies:
   flutter_test:

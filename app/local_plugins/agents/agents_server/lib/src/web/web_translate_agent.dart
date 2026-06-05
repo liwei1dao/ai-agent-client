@@ -4,14 +4,15 @@ import 'dart:convert';
 import 'package:ai_plugin_interface/ai_plugin_interface.dart' as ai;
 
 import '../agent_event.dart';
+import '../agent_service_factory.dart';
 import 'web_agent.dart';
-import 'web_service_factory.dart';
 
 /// Translate agent — STT + Translation + TTS pipeline. Ports TranslateAgentSession.kt.
 class WebTranslateAgent implements WebAgent {
-  WebTranslateAgent(this._emit);
+  WebTranslateAgent(this._emit, this._factory);
 
   final AgentEventEmitter _emit;
+  final AgentServiceFactory _factory;
 
   late WebAgentConfig _config;
   late ai.SttPlugin _stt;
@@ -50,11 +51,11 @@ class WebTranslateAgent implements WebAgent {
     _bidirectional = config.extraParams['bidirectional'] == 'true';
     _direction = config.extraParams['direction'] ?? directionSrcToDst;
 
-    _stt = WebServiceFactory.createStt(config.sttVendor ?? 'azure');
-    _translation = WebServiceFactory.createTranslation(
+    _stt = _factory.createStt(config.sttVendor ?? 'azure');
+    _translation = _factory.createTranslation(
       config.translationVendor ?? 'deepl',
     );
-    _tts = WebServiceFactory.createTts(config.ttsVendor ?? 'azure');
+    _tts = _factory.createTts(config.ttsVendor ?? 'azure');
 
     await _stt.initialize(
       WebConfigParser.parseStt(config.sttConfigJson ?? '{}'),

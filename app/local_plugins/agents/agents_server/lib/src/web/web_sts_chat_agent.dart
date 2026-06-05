@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:ai_plugin_interface/ai_plugin_interface.dart' as ai;
 
 import '../agent_event.dart';
+import '../agent_service_factory.dart';
 import 'web_agent.dart';
-import 'web_service_factory.dart';
 
 /// STS chat agent — thin wrapper over the STS plugin. Ports StsChatAgentSession.kt.
 ///
@@ -18,9 +18,10 @@ import 'web_service_factory.dart';
 /// * Map the `user` role to [SttEvent] and the `bot` role to [LlmEvent] so the
 ///   existing chat transcript renderer stays unchanged.
 class WebStsChatAgent implements WebAgent {
-  WebStsChatAgent(this._emit);
+  WebStsChatAgent(this._emit, this._factory);
 
   final AgentEventEmitter _emit;
+  final AgentServiceFactory _factory;
 
   late WebAgentConfig _config;
   late ai.StsPlugin _sts;
@@ -36,7 +37,7 @@ class WebStsChatAgent implements WebAgent {
   @override
   Future<void> initialize(WebAgentConfig config) async {
     _config = config;
-    _sts = WebServiceFactory.createSts(config.stsVendor ?? 'volcengine');
+    _sts = _factory.createSts(config.stsVendor ?? 'volcengine');
     await _sts.initialize(
       WebConfigParser.parseSts(config.stsConfigJson ?? '{}'),
     );

@@ -4,16 +4,17 @@ import 'dart:convert';
 import 'package:ai_plugin_interface/ai_plugin_interface.dart' as ai;
 
 import '../agent_event.dart';
+import '../agent_service_factory.dart';
 import '../mcp/mcp_router.dart';
 import 'web_agent.dart';
-import 'web_service_factory.dart';
 
 /// Chat agent — STT + LLM + TTS pipeline. Ports ChatAgentSession.kt.
 /// Message persistence is skipped on web; history is maintained in-memory only.
 class WebChatAgent implements WebAgent {
-  WebChatAgent(this._emit);
+  WebChatAgent(this._emit, this._factory);
 
   final AgentEventEmitter _emit;
+  final AgentServiceFactory _factory;
 
   late WebAgentConfig _config;
   late ai.SttPlugin _stt;
@@ -48,9 +49,9 @@ class WebChatAgent implements WebAgent {
     _config = config;
     _inputMode = config.inputMode;
 
-    _stt = WebServiceFactory.createStt(config.sttVendor ?? 'azure');
-    _llm = WebServiceFactory.createLlm(config.llmVendor ?? 'openai');
-    _tts = WebServiceFactory.createTts(config.ttsVendor ?? 'azure');
+    _stt = _factory.createStt(config.sttVendor ?? 'azure');
+    _llm = _factory.createLlm(config.llmVendor ?? 'openai');
+    _tts = _factory.createTts(config.ttsVendor ?? 'azure');
 
     await _stt.initialize(
       WebConfigParser.parseStt(config.sttConfigJson ?? '{}'),
@@ -82,7 +83,7 @@ class WebChatAgent implements WebAgent {
     final servers = WebConfigParser.parseMcpServers(config.mcpServersJson);
     if (servers.isNotEmpty) {
       _mcp = McpRouter(
-        pluginFactory: WebServiceFactory.createMcp,
+        pluginFactory: _factory.createMcp,
       );
       for (final s in servers) {
         await _mcp!.addServer(s);

@@ -104,6 +104,10 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
     // 横幅（bluetoothEnabledProvider）兜底反馈。
     if (Platform.isIOS) return true;
 
+    // 桌面（macOS / Windows / Linux）暂不支持蓝牙耳机设备域，设备管理器为空 stub，
+    // permission_handler 在桌面也不支持 bluetoothScan 等权限，直接放行避免抛异常。
+    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) return true;
+
     // Android（6~11）的 BLE 扫描强制需要 bluetoothScan / bluetoothConnect /
     // 定位 运行时权限。
     final perms = <Permission>[

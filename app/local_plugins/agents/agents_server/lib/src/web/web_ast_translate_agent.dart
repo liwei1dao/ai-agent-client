@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:ai_plugin_interface/ai_plugin_interface.dart' as ai;
 
 import '../agent_event.dart';
+import '../agent_service_factory.dart';
 import 'web_agent.dart';
-import 'web_service_factory.dart';
 
 /// AST translate agent — bridges the AST recognition five-piece lifecycle
 /// (see [ai.AstEventType]) onto the chat provider's [SttEvent] / [LlmEvent]
@@ -17,9 +17,10 @@ import 'web_service_factory.dart';
 /// - `recognized(translated)`  → `LlmEvent.firstToken` (textDelta = final, requestId)
 /// - `recognitionEnd`       → `LlmEvent.done`          (requestId, fullText = last translated)
 class WebAstTranslateAgent implements WebAgent {
-  WebAstTranslateAgent(this._emit);
+  WebAstTranslateAgent(this._emit, this._factory);
 
   final AgentEventEmitter _emit;
+  final AgentServiceFactory _factory;
 
   late WebAgentConfig _config;
   late ai.AstPlugin _ast;
@@ -33,7 +34,7 @@ class WebAstTranslateAgent implements WebAgent {
   @override
   Future<void> initialize(WebAgentConfig config) async {
     _config = config;
-    _ast = WebServiceFactory.createAst(config.astVendor ?? 'volcengine');
+    _ast = _factory.createAst(config.astVendor ?? 'volcengine');
     await _ast.initialize(
       WebConfigParser.parseAst(
         config.astConfigJson ?? '{}',

@@ -85,9 +85,19 @@ final deviceVendorStatusProvider = StateProvider<String?>((_) => null);
 /// 2. 跟随 `configServiceProvider.deviceVendor` 切换 vendor。
 final deviceManagerProvider = Provider<DeviceManager>((ref) {
   final DeviceManager manager;
+  final isDesktop = !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.linux);
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
     manager = DefaultDeviceManager()
       ..registerVendor(jieliDevicePluginDescriptor);
+  } else if (isDesktop) {
+    // 桌面（macOS / Windows / Linux）暂不支持蓝牙耳机设备域。
+    // 用纯 Dart 编排器 [DefaultDeviceManager] 但**不注册任何 vendor**：
+    // 扫描/连接均为空操作，避免 [MethodChannelDeviceManager] 调用桌面侧
+    // 不存在的 `device_manager/method` 原生 handler 而抛 MissingPluginException。
+    manager = DefaultDeviceManager();
   } else {
     manager = MethodChannelDeviceManager();
   }

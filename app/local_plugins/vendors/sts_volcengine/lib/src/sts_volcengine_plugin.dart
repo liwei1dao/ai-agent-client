@@ -1,18 +1,56 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/services.dart';
-import 'package:ai_plugin_interface/ai_plugin_interface.dart';
 
-/// StsVolcenginePlugin — 火山引擎端到端语音（STS）
+import 'package:ai_plugin_interface/ai_plugin_interface.dart';
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/services.dart';
+
+import 'sts_volcengine_plugin_desktop.dart';
+
+/// StsVolcenginePlugin — 火山引擎端到端语音（STS），非 web 分支统一门面。
 ///
-/// 通过 MethodChannel 调用原生 WebSocket 实现（OkHttp/URLSession）。
-/// agent_sts_chat 在需要 STS 模式时直接调度此插件，绕过 STT→LLM→TTS 管线。
+/// 条件导入无法区分 mobile 与 desktop（都满足 `dart.library.io`），运行时分派：
+/// - **移动端（Android / iOS）**：[_StsVolcengineMethodChannel] —— 原生 WebSocket。
+/// - **桌面（macOS / Windows / Linux）**：[StsVolcengineDesktop] —— 纯 Dart 协议 +
+///   record 采集 + flutter_pcm_sound 播放。
+class StsVolcenginePlugin implements StsPlugin {
+  StsVolcenginePlugin() : _impl = _pickImpl();
+
+  final StsPlugin _impl;
+
+  static StsPlugin _pickImpl() {
+    final isDesktop = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux);
+    return isDesktop ? StsVolcengineDesktop() : _StsVolcengineMethodChannel();
+  }
+
+  @override
+  Future<void> initialize(StsConfig config) => _impl.initialize(config);
+
+  @override
+  Future<void> startCall() => _impl.startCall();
+
+  @override
+  void sendAudio(List<int> pcmData) => _impl.sendAudio(pcmData);
+
+  @override
+  Future<void> stopCall() => _impl.stopCall();
+
+  @override
+  Stream<StsEvent> get eventStream => _impl.eventStream;
+
+  @override
+  Future<void> dispose() => _impl.dispose();
+}
+
+/// 移动端实现：通过 MethodChannel 调用原生 WebSocket（OkHttp/URLSession）。
 ///
 /// 原生侧目前仍在发送旧协议的 `sentenceDone` / `audioChunk` 事件；本 Dart
-/// 包装层做一次"最小翻译"，把它们映射为新的识别生命周期事件
-/// （`recognitionStart` → `recognized` → `recognitionDone` → `recognitionEnd`），
-/// 供上层消费。等 Kotlin / Swift 侧迁移到新协议后可直接透传。
-class StsVolcenginePlugin implements StsPlugin {
+/// 包装层做一次"最小翻译"，把它们映射为新的识别生命周期事件。
+class _StsVolcengineMethodChannel implements StsPlugin {
   static const _channel = MethodChannel('sts_volcengine/commands');
   static const _eventChannel = EventChannel('sts_volcengine/events');
 
