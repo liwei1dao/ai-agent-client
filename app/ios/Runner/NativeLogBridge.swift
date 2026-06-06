@@ -65,6 +65,8 @@ final class NativeLogBridge: NSObject, FlutterStreamHandler {
                 guard let e = raw as? OSLogEntryLog else { continue }
                 if e.date <= since { continue }
                 if e.date > latest { latest = e.date }
+                // 跳过 Flutter/Dart 自产日志，避免桥接回灌形成回环。
+                if isFlutterEcho(e.composedMessage) { continue }
                 let payload: [String: Any] = [
                     "source": "ios",
                     "subsystem": e.subsystem,
@@ -132,11 +134,14 @@ final class NativeLogBridge: NSObject, FlutterStreamHandler {
             }
             if let text = String(data: data, encoding: .utf8) {
                 for line in text.split(separator: "\n") {
+                    let s = String(line)
+                    // 跳过 Flutter/Dart 自产日志，避免桥接回灌形成回环。
+                    if self?.isFlutterEcho(s) == true { continue }
                     self?.emit([
                         "source": "ios",
                         "category": "stderr",
                         "level": "i",
-                        "message": String(line),
+                        "message": s,
                     ])
                 }
             }
@@ -168,6 +173,16 @@ final class NativeLogBridge: NSObject, FlutterStreamHandler {
     }
 
     // MARK: - helpers
+
+    /// 是否是 Flutter/Dart 侧自己产生的日志。这类日志桥接回 Dart 后会被 talker
+    /// 再次 print 到控制台、又被 OSLogStore/stderr 捕获，形成无限放大回环。统一丢弃。
+    /// 判据：Flutter 控制台前缀 `flutter:`、已桥接标记 `[ios]`/`[android]`、talker 边框。
+    private func isFlutterEcho(_ message: String) -> Bool {
+        return message.contains("flutter:")
+            || message.contains("[ios]")
+            || message.contains("[android]")
+            || message.contains("│ [")
+    }
 
     private func emit(_ payload: [String: Any]) {
         guard let sink = sink else { return }

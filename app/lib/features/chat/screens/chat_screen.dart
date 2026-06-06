@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart'
+    show kDebugMode, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -45,6 +46,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             : null,
       ));
       return;
+    }
+    // Android 13+ 前台服务常驻通知需要 POST_NOTIFICATIONS；未授予不影响保活服务运行，
+    // 仅通知不显示。fire-and-forget，不阻塞对话启动。
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await Permission.notification.request();
+      if (!mounted) return;
     }
     ref.read(agentScreenProvider(widget.agentId).notifier).init();
   }

@@ -1,6 +1,7 @@
 package com.aiagent.agents_server
 
 import android.content.*
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.aiagent.plugin_interface.*
@@ -71,6 +72,9 @@ class AgentsServerPlugin : FlutterPlugin {
                     try {
                         val config = NativeAgentConfig.fromMap(call.arguments<Map<*, *>>()!!)
                         val agentType = call.argument<String>("agentType")!!
+                        // 先把 service 提升为 started + foreground，使其脱离 binding 生命周期，
+                        // 划掉 app / 锁屏后进程仍存活，BLE + native agent 继续运行。
+                        promoteServiceToForeground()
                         svc!!.createAgent(agentType, config)
                         result.success(null)
                     } catch (e: Exception) {
@@ -197,5 +201,21 @@ class AgentsServerPlugin : FlutterPlugin {
         val intent = Intent(context, AgentsServerService::class.java)
         // 仅 bind，不 startForegroundService；foreground 在 createAgent 时按需启动
         context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+    }
+
+    /**
+     * 创建 agent 时调用：startForegroundService 让 Service 成为 started 状态，
+     * onStartCommand 内 startForeground 升前台。started 状态使 Service 不随 unbind 销毁，
+     * app 被划掉后进程仍由前台服务保活。最后一个 agent 停止时 Service 自行 stopForegroundAndSelf。
+     */
+    private fun promoteServiceToForeground() {
+        val intent = Intent(context, AgentsServerService::class.java).apply {
+            action = AgentsServerService.ACTION_ENSURE_FOREGROUND
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
+        }
     }
 }

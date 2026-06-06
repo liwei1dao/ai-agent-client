@@ -8,6 +8,9 @@ import 'package:agents_server/agents_server.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_db/local_db.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../desktop_assistant/desktop_assistant_avatar_screen.dart';
+import '../../desktop_assistant/desktop_assistant_avatars.dart';
+import '../../desktop_assistant/desktop_assistant_controller.dart';
 import 'package:tts_azure/tts_azure.dart';
 import '../../../core/security/config_crypto.dart';
 import '../../../core/services/config_service.dart';
@@ -1201,6 +1204,17 @@ class _DeviceSection extends ConsumerWidget {
         ),
         Divider(height: 1, color: colors.border),
 
+        // 桌面悬浮助理（仅 Android：系统级悬浮窗）
+        if (Platform.isAndroid) ...[
+          _DesktopAssistantTile(enabled: config.desktopAssistantEnabled),
+          if (config.desktopAssistantEnabled) ...[
+            Divider(height: 1, color: colors.border),
+            _DesktopAssistantAvatarTile(
+                currentKey: config.desktopAssistantAvatar),
+          ],
+          Divider(height: 1, color: colors.border),
+        ],
+
         // 杰理链接方式（仅杰理厂商可见）
         if (config.deviceVendor == 'jieli') ...[
           _JieliConnectWayTile(current: config.jieliConnectWay),
@@ -1473,6 +1487,78 @@ class _JieliUseDeviceAuthTile extends ConsumerWidget {
       onChanged: (v) {
         ref.read(configServiceProvider.notifier).setJieliUseDeviceAuth(v);
       },
+    );
+  }
+}
+
+/// 桌面悬浮助理开关（仅 Android）。开启前先引导授予悬浮窗权限。
+class _DesktopAssistantTile extends ConsumerWidget {
+  const _DesktopAssistantTile({required this.enabled});
+
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.appColors;
+    return SwitchListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      secondary: const Icon(Icons.smart_toy_outlined,
+          color: AppTheme.primary, size: 20),
+      title: Text('桌面悬浮助理',
+          style: TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w500, color: colors.text1)),
+      subtitle: Text(
+          enabled
+              ? '已开启：桌面常驻助理形象，点击进入对话；app 切后台/划掉仍在'
+              : '已关闭：在桌面显示可拖动的悬浮助理，需要悬浮窗权限',
+          style: TextStyle(fontSize: 11, color: colors.text2)),
+      value: enabled,
+      activeThumbColor: AppTheme.primary,
+      onChanged: (v) async {
+        final notifier = ref.read(configServiceProvider.notifier);
+        if (!v) {
+          notifier.setDesktopAssistantEnabled(false);
+          return;
+        }
+        const controller = DesktopAssistantController();
+        var granted = await controller.isPermissionGranted();
+        if (!granted) granted = await controller.requestPermission();
+        if (granted) {
+          notifier.setDesktopAssistantEnabled(true);
+        } else if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('需要悬浮窗权限才能显示桌面助理'),
+          ));
+        }
+      },
+    );
+  }
+}
+
+/// 「助理形象」入口：显示当前形象，点进去到形象选择界面。
+class _DesktopAssistantAvatarTile extends StatelessWidget {
+  const _DesktopAssistantAvatarTile({required this.currentKey});
+
+  final String currentKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final avatar = desktopAssistantAvatarByKey(currentKey);
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: const Icon(Icons.face_retouching_natural_outlined,
+          color: AppTheme.primary, size: 20),
+      title: Text('助理形象',
+          style: TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w500, color: colors.text1)),
+      subtitle: Text('当前：${avatar.label}',
+          style: TextStyle(fontSize: 11, color: colors.text2)),
+      trailing: Icon(Icons.chevron_right, color: colors.text2),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+            builder: (_) => const DesktopAssistantAvatarScreen()),
+      ),
     );
   }
 }

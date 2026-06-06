@@ -4,10 +4,18 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- 前台服务保活：进程在锁屏/后台/划掉 app 时继续持有 BLE + AI 对话 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Android 13+ 常驻通知需要运行时授权；未授权前台服务仍运行，仅通知不展示 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application>
         <service
             android:name=".AgentsServerService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="microphone|connectedDevice" />
     </application>
 </manifest>

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart' as env;
+import '../../features/desktop_assistant/desktop_assistant_avatars.dart';
 
 /// 杰理设备链接方式偏好（仅 Android）。
 ///
@@ -82,6 +83,8 @@ class AppConfig {
     this.scanNameList = const <String>[],
     this.scanUuidList = const <String>[],
     this.scanSkipUnnamed = true,
+    this.desktopAssistantEnabled = false,
+    this.desktopAssistantAvatar = kDefaultDesktopAssistantAvatar,
   });
 
   final ThemeMode themeMode;
@@ -143,6 +146,13 @@ class AppConfig {
   /// 扫描过滤：是否跳过没有 name 的广播（环境噪声），默认 true。
   final bool scanSkipUnnamed;
 
+  /// 桌面悬浮助理开关（仅 Android）。开启后桌面常驻一个可拖动的助理悬浮窗，
+  /// app 切后台/划掉进程仍存在（由 flutter_overlay_window 的前台服务保活）。
+  final bool desktopAssistantEnabled;
+
+  /// 桌面悬浮助理当前形象 key（见 [kDesktopAssistantAvatars]）。
+  final String desktopAssistantAvatar;
+
   AppConfig copyWith({
     ThemeMode? themeMode,
     int? historyMessageCount,
@@ -164,6 +174,8 @@ class AppConfig {
     List<String>? scanNameList,
     List<String>? scanUuidList,
     bool? scanSkipUnnamed,
+    bool? desktopAssistantEnabled,
+    String? desktopAssistantAvatar,
   }) =>
       AppConfig(
         themeMode: themeMode ?? this.themeMode,
@@ -209,6 +221,10 @@ class AppConfig {
         scanNameList: scanNameList ?? this.scanNameList,
         scanUuidList: scanUuidList ?? this.scanUuidList,
         scanSkipUnnamed: scanSkipUnnamed ?? this.scanSkipUnnamed,
+        desktopAssistantEnabled:
+            desktopAssistantEnabled ?? this.desktopAssistantEnabled,
+        desktopAssistantAvatar:
+            desktopAssistantAvatar ?? this.desktopAssistantAvatar,
       );
 }
 
@@ -272,6 +288,10 @@ class ConfigService extends StateNotifier<AppConfig> {
       scanNameList: prefs.getStringList('scan_name_list') ?? const <String>[],
       scanUuidList: prefs.getStringList('scan_uuid_list') ?? const <String>[],
       scanSkipUnnamed: prefs.getBool('scan_skip_unnamed') ?? true,
+      desktopAssistantEnabled:
+          prefs.getBool('desktop_assistant_enabled') ?? false,
+      desktopAssistantAvatar: prefs.getString('desktop_assistant_avatar') ??
+          kDefaultDesktopAssistantAvatar,
     );
   }
 
@@ -418,5 +438,17 @@ class ConfigService extends StateNotifier<AppConfig> {
     state = state.copyWith(audioOutputMode: mode);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('audio_output_mode', mode.index);
+  }
+
+  Future<void> setDesktopAssistantEnabled(bool enabled) async {
+    state = state.copyWith(desktopAssistantEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('desktop_assistant_enabled', enabled);
+  }
+
+  Future<void> setDesktopAssistantAvatar(String key) async {
+    state = state.copyWith(desktopAssistantAvatar: key);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('desktop_assistant_avatar', key);
   }
 }

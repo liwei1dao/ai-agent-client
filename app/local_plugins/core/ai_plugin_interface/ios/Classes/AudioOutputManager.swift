@@ -27,7 +27,35 @@ public final class AudioOutputManager {
     private let lock = NSLock()
     private var mode: Mode = .auto
 
-    private init() {}
+    private init() {
+        // 监听音频中断（来电 / 被其它 app 抢占）。中断结束后必须重新激活会话，
+        // 否则后台保活依赖的"音频会话持续 active"被打断 → app 在后台被挂起、AI 对话中断。
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleInterruption(_ note: Notification) {
+        guard let info = note.userInfo,
+              let typeRaw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeRaw) else { return }
+        switch type {
+        case .began:
+            os_log("audio interruption began (session deactivated by system)",
+                   log: logger, type: .info)
+        case .ended:
+            // 中断结束：系统已停用会话，重新 applyMode() 恢复 category + setActive(true)，
+            // 保住后台保活所需的活跃音频会话。失败由 applyMode 内部 catch 记录。
+            os_log("audio interruption ended → re-activating session",
+                   log: logger, type: .info)
+            DispatchQueue.main.async { [weak self] in self?.applyMode() }
+        @unknown default:
+            break
+        }
+    }
 
     public var currentMode: Mode {
         lock.lock(); defer { lock.unlock() }
