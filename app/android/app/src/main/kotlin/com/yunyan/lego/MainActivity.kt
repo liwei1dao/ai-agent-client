@@ -1,4 +1,4 @@
-package com.yunyan.unihelper
+package com.yunyan.lego
 
 import android.content.Intent
 import io.flutter.embedding.android.FlutterActivity
