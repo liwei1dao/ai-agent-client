@@ -24,7 +24,7 @@ repositories {
 }
 
 android {
-    namespace = "com.yunyan.lego"
+    namespace = "com.yunyan.unihelper"
     compileSdk = 36
     ndkVersion = "27.0.12077973"
 
@@ -49,7 +49,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.yunyan.lego"
+        applicationId = "com.yunyan.unihelper"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

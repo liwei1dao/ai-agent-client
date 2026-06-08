@@ -32,14 +32,11 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  // PolyChat 平台配置
   late final TextEditingController _vtBaseUrlCtrl;
   late final TextEditingController _vtAppIdCtrl;
   late final TextEditingController _vtAppSecretCtrl;
   bool _vtSyncing = false;
   bool _vtInitialized = false;
-
-  // 日志占用大小
   int _logSize = 0;
 
   @override
@@ -73,7 +70,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               child: const Text('取消')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444)),
             child: const Text('清空'),
           ),
         ],
@@ -86,7 +84,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('日志已清空'), backgroundColor: Color(0xFF10B981)),
+            content: Text('日志已清空'),
+            backgroundColor: Color(0xFF10B981)),
       );
     } catch (e) {
       if (!mounted) return;
@@ -102,10 +101,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final file = await LogService.instance.exportToFile();
       if (!mounted) return;
-      // 优先走系统分享；用户可以选择保存到文件、AirDrop、邮件等
       await Share.shareXFiles(
         [XFile(file.path)],
-        subject: '云衍测试平台 日志',
+        subject: 'Unihelper 日志',
         text: '应用日志导出 ${DateTime.now().toIso8601String()}',
       );
     } catch (e) {
@@ -120,9 +118,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   void dispose() {
-    _vtBaseUrlCtrl.dispose();
-    _vtAppIdCtrl.dispose();
-    _vtAppSecretCtrl.dispose();
+    if (_vtInitialized) {
+      _vtBaseUrlCtrl.dispose();
+      _vtAppIdCtrl.dispose();
+      _vtAppSecretCtrl.dispose();
+    }
     super.dispose();
   }
 
@@ -146,10 +146,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _setAudioOutputMode(AudioOutputMode mode) async {
     await ref.read(configServiceProvider.notifier).setAudioOutputMode(mode);
-    final modeStr = mode.name; // earpiece / speaker / auto
-    // Android: agents_server channel
+    final modeStr = mode.name;
     AgentsServerBridge().setAudioOutputMode(modeStr);
-    // iOS: tts_azure channel
     TtsAzurePluginDart.setAudioOutputMode(modeStr);
   }
 
@@ -160,11 +158,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final config = ref.read(configServiceProvider).polychat;
       final count =
           await ref.read(polychatServiceProvider).syncAgents(config);
-      // Reload agent list and service list after sync
       await ref.read(agentListProvider.notifier).reload();
       await ref.read(serviceLibraryProvider.notifier).reload();
-      // Invalidate any open chat agent state so reopened pages re-init from
-      // the freshly synced config (语言列表 / agentId 等).
       ref.invalidate(agentScreenProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -186,7 +181,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  /// 显示导出范围选择弹窗
   Future<void> _showExportScopeDialog(BuildContext context) async {
     bool exportAgents = true;
     bool exportServices = true;
@@ -246,7 +240,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  /// 显示导入范围选择弹窗
   Future<void> _showImportScopeDialog(BuildContext context) async {
     bool importAgents = true;
     bool importServices = true;
@@ -338,7 +331,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         fileName = 'ai_agent_export.json';
     }
 
-    // 配置中包含 API Key / App Secret 等敏感字段，强制要求设置密码加密。
     final password = await _showExportPasswordDialog(context);
     if (password == null) return;
 
@@ -374,7 +366,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (!mounted) return;
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'application/json')],
-        subject: '云衍测试平台 配置（已加密）',
+        subject: 'Unihelper 配置（已加密）',
         text: '配置导出 ${DateTime.now().toIso8601String()}（已使用密码加密，导入时需输入相同密码）',
       );
     } catch (e) {
@@ -387,7 +379,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  /// 设置导出密码（需两次输入一致）。返回 null 表示取消。
   Future<String?> _showExportPasswordDialog(BuildContext context) {
     return showDialog<String>(
       context: context,
@@ -396,8 +387,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// 在阻塞 loading 浮层下执行耗时任务，结束后自动关闭。
-  /// 用于 PBKDF2 加解密 / DB 批量写入等会让 UI 看起来卡住的步骤。
   Future<T> _runWithLoading<T>(String label, Future<T> Function() task) async {
     if (!mounted) return task();
     final navigator = Navigator.of(context, rootNavigator: true);
@@ -413,7 +402,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  /// 输入解密密码。返回 null 表示取消。
   Future<String?> _showImportPasswordDialog(BuildContext context,
       {String? hint, String? errorText}) {
     return showDialog<String>(
@@ -436,7 +424,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final file = File(result.files.single.path!);
     final rawStr = await file.readAsString();
 
-    // 加密格式检测：若是 ai-agent-export-v2 加密文件，提示输入密码并解密。
     String jsonStr = rawStr;
     if (ConfigCrypto.isEncrypted(rawStr)) {
       String? errorText;
@@ -602,8 +589,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required String Function(T) itemId,
     required String title,
   }) async {
-    // 默认全部覆盖：用户点击「导入」的语义就是让文件内容生效。
-    // 之前默认 false 会导致同设备导出 → 导入时所有冲突项被静默跳过。
     final overwriteMap = <String, bool>{
       for (final c in conflicts) itemId(c): true,
     };
@@ -612,147 +597,224 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          final allOverwrite =
-              overwriteMap.values.every((v) => v);
+          final allOverwrite = overwriteMap.values.every((v) => v);
           final allSkip = overwriteMap.values.every((v) => !v);
           return AlertDialog(
-          title: Text(title,
-              style: const TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w700)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (newCount > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text('$newCount 项新配置将直接导入',
-                        style: const TextStyle(
-                            fontSize: 13, color: AppTheme.text2)),
-                  ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '以下 ${conflicts.length} 项与本地已有配置冲突：',
-                        style: const TextStyle(
-                            fontSize: 13, color: AppTheme.text1),
-                      ),
+            title: Text(title,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700)),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (newCount > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text('$newCount 项新配置将直接导入',
+                          style: const TextStyle(
+                              fontSize: 13, color: AppTheme.text2)),
                     ),
-                    TextButton(
-                      onPressed: () => setDialogState(() {
-                        final next = !allOverwrite;
-                        for (final k in overwriteMap.keys) {
-                          overwriteMap[k] = next;
-                        }
-                      }),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 0),
-                        minimumSize: const Size(0, 28),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text(
-                        allOverwrite
-                            ? '全部跳过'
-                            : (allSkip ? '全部覆盖' : '全部覆盖'),
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: conflicts.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final item = conflicts[i];
-                      final id = itemId(item);
-                      final overwrite = overwriteMap[id] ?? false;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text(itemName(item),
-                                      style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600)),
-                                  const SizedBox(height: 2),
-                                  Text(itemSubtitle(item),
-                                      style: const TextStyle(
-                                          fontSize: 11,
-                                          color: AppTheme.text2)),
-                                ],
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => setDialogState(
-                                  () => overwriteMap[id] = !overwrite),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: overwrite
-                                      ? AppTheme.primary
-                                          .withValues(alpha: 0.1)
-                                      : const Color(0xFFF3F4F6),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: overwrite
-                                        ? AppTheme.primary
-                                        : AppTheme.borderColor,
-                                  ),
-                                ),
-                                child: Text(
-                                  overwrite ? '覆盖' : '跳过',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: overwrite
-                                        ? AppTheme.primary
-                                        : AppTheme.text2,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '以下 ${conflicts.length} 项与本地已有配置冲突：',
+                          style: const TextStyle(
+                              fontSize: 13, color: AppTheme.text1),
                         ),
-                      );
-                    },
+                      ),
+                      TextButton(
+                        onPressed: () => setDialogState(() {
+                          final next = !allOverwrite;
+                          for (final k in overwriteMap.keys) {
+                            overwriteMap[k] = next;
+                          }
+                        }),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 0),
+                          minimumSize: const Size(0, 28),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          allOverwrite
+                              ? '全部跳过'
+                              : (allSkip ? '全部覆盖' : '全部覆盖'),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: conflicts.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final item = conflicts[i];
+                        final id = itemId(item);
+                        final overwrite = overwriteMap[id] ?? false;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(itemName(item),
+                                        style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600)),
+                                    const SizedBox(height: 2),
+                                    Text(itemSubtitle(item),
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.text2)),
+                                  ],
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () => setDialogState(
+                                    () => overwriteMap[id] = !overwrite),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: overwrite
+                                        ? AppTheme.primary
+                                            .withValues(alpha: 0.1)
+                                        : const Color(0xFFF3F4F6),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: overwrite
+                                          ? AppTheme.primary
+                                          : AppTheme.borderColor,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    overwrite ? '覆盖' : '跳过',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: overwrite
+                                          ? AppTheme.primary
+                                          : AppTheme.text2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final ids = overwriteMap.entries
+                      .where((e) => e.value)
+                      .map((e) => e.key)
+                      .toSet();
+                  Navigator.pop(ctx, ids);
+                },
+                style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.primary),
+                child: const Text('确认导入'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPolyChatSection(AppColors colors) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 字段区
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+            child: TextField(
+              controller: _vtBaseUrlCtrl,
+              decoration: const InputDecoration(
+                labelText: '服务器地址',
+                hintText: 'https://your-server.com',
+                prefixIcon: Icon(Icons.dns_outlined, size: 18),
+              ),
+              style: TextStyle(fontSize: 14, color: colors.text1),
+              onChanged: (_) => _saveVtConfig(),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, null),
-              child: const Text('取消'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+            child: TextField(
+              controller: _vtAppIdCtrl,
+              decoration: const InputDecoration(
+                labelText: 'App ID',
+                prefixIcon: Icon(Icons.badge_outlined, size: 18),
+              ),
+              style: TextStyle(fontSize: 14, color: colors.text1),
+              onChanged: (_) => _saveVtConfig(),
             ),
-            FilledButton(
-              onPressed: () {
-                final ids = overwriteMap.entries
-                    .where((e) => e.value)
-                    .map((e) => e.key)
-                    .toSet();
-                Navigator.pop(ctx, ids);
-              },
-              style:
-                  FilledButton.styleFrom(backgroundColor: AppTheme.primary),
-              child: const Text('确认导入'),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+            child: TextField(
+              controller: _vtAppSecretCtrl,
+              decoration: const InputDecoration(
+                labelText: 'App Secret',
+                prefixIcon: Icon(Icons.key_outlined, size: 18),
+              ),
+              style: TextStyle(fontSize: 14, color: colors.text1),
+              obscureText: true,
+              onChanged: (_) => _saveVtConfig(),
             ),
-          ],
-        );
-        },
+          ),
+          // 同步按钮
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: FilledButton.icon(
+              onPressed: _vtSyncing ? null : _syncAgents,
+              icon: _vtSyncing
+                  ? const SizedBox(
+                      width: 15,
+                      height: 15,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.sync_rounded, size: 17),
+              label: Text(_vtSyncing ? '同步中…' : '同步 Agent'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                minimumSize: const Size(double.infinity, 42),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                textStyle: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -764,203 +826,95 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final colors = context.appColors;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
+      backgroundColor: colors.bg,
+      appBar: AppBar(
+        title: const Text('设置'),
+        centerTitle: false,
+      ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.fromLTRB(0, 4, 0, 40),
         children: [
           // ── 外观 ──
-          const _SectionLabel('外观'),
-          _SectionCard(
+          _SectionHeader('外观'),
+          _SettingsGroup(
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text('主题模式',
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: colors.text1)),
-                    ),
-                    _ThemePill(
-                      current: appConfig.themeMode,
-                      onChanged: (mode) => ref
-                          .read(configServiceProvider.notifier)
-                          .setThemeMode(mode),
-                    ),
-                  ],
+              _SettingsTile(
+                badge: const _IconBadge(
+                    icon: Icons.palette_outlined,
+                    color: Color(0xFF6C63FF)),
+                title: '主题模式',
+                trailing: _ThemePill(
+                  current: appConfig.themeMode,
+                  onChanged: (mode) => ref
+                      .read(configServiceProvider.notifier)
+                      .setThemeMode(mode),
                 ),
               ),
             ],
           ),
 
-          // ── 播报设置 ──
-          const _SectionLabel('播报设置'),
-          _SectionCard(
+          // ── 播报 ──
+          _SectionHeader('播报'),
+          _SettingsGroup(
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('音频输出',
-                              style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                  color: colors.text1)),
-                          const SizedBox(height: 2),
-                          Text('自动模式：有耳机走系统路由，无耳机走扬声器',
-                              style: TextStyle(
-                                  fontSize: 11, color: colors.text2)),
-                        ],
-                      ),
-                    ),
-                    _AudioOutputPill(
-                      current: appConfig.audioOutputMode,
-                      onChanged: (mode) => _setAudioOutputMode(mode),
-                    ),
-                  ],
+              _SettingsTile(
+                badge: const _IconBadge(
+                    icon: Icons.volume_up_outlined,
+                    color: Color(0xFF0EA5E9)),
+                title: '音频输出',
+                subtitle: '自动：有耳机走系统路由，无耳机走扬声器',
+                trailing: _AudioOutputPill(
+                  current: appConfig.audioOutputMode,
+                  onChanged: _setAudioOutputMode,
                 ),
               ),
             ],
           ),
 
           // ── 设备 ──
-          const _SectionLabel('设备'),
+          _SectionHeader('设备'),
           _DeviceSection(),
 
           // ── PolyChat 平台 ──
-          const _SectionLabel('PolyChat 平台'),
-          _SectionCard(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: TextField(
-                  controller: _vtBaseUrlCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '服务器地址',
-                    hintText: 'https://your-server.com',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  style: TextStyle(fontSize: 14, color: colors.text1),
-                  onChanged: (_) => _saveVtConfig(),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: TextField(
-                  controller: _vtAppIdCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'App ID',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  style: TextStyle(fontSize: 14, color: colors.text1),
-                  onChanged: (_) => _saveVtConfig(),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: TextField(
-                  controller: _vtAppSecretCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'App Secret',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  style: TextStyle(fontSize: 14, color: colors.text1),
-                  obscureText: true,
-                  onChanged: (_) => _saveVtConfig(),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 40,
-                  child: ElevatedButton.icon(
-                    onPressed: _vtSyncing ? null : _syncAgents,
-                    icon: _vtSyncing
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.sync, size: 18),
-                    label: Text(_vtSyncing ? '同步中...' : '同步 Agent'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                      textStyle: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+          _SectionHeader('PolyChat 平台'),
+          _buildPolyChatSection(colors),
 
           // ── 配置管理 ──
-          const _SectionLabel('配置管理'),
-          _SectionCard(
+          _SectionHeader('配置管理'),
+          _SettingsGroup(
             children: [
-              ListTile(
-                leading: const Icon(Icons.file_upload_outlined,
-                    color: AppTheme.primary, size: 20),
-                title: Text('导出配置',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: colors.text1)),
-                subtitle: Text('选择导出 Agent 或服务配置',
-                    style: TextStyle(fontSize: 12, color: colors.text2)),
-                trailing: Icon(Icons.chevron_right,
-                    color: colors.text2, size: 20),
+              _SettingsTile(
+                badge: const _IconBadge(
+                    icon: Icons.file_upload_outlined,
+                    color: Color(0xFF10B981)),
+                title: '导出配置',
+                subtitle: '加密导出 Agent 和服务配置',
+                showChevron: true,
                 onTap: () => _showExportScopeDialog(context),
               ),
-              Divider(height: 1, color: colors.border),
-              ListTile(
-                leading: const Icon(Icons.file_download_outlined,
-                    color: AppTheme.primary, size: 20),
-                title: Text('导入配置',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: colors.text1)),
-                subtitle: Text('选择导入 Agent 或服务配置',
-                    style: TextStyle(fontSize: 12, color: colors.text2)),
-                trailing: Icon(Icons.chevron_right,
-                    color: colors.text2, size: 20),
+              _SettingsTile(
+                badge: const _IconBadge(
+                    icon: Icons.file_download_outlined,
+                    color: Color(0xFF10B981)),
+                title: '导入配置',
+                subtitle: '从文件还原 Agent 和服务配置',
+                showChevron: true,
                 onTap: () => _showImportScopeDialog(context),
               ),
             ],
           ),
 
-          // ── 日志管理 ──
-          const _SectionLabel('日志管理'),
-          _SectionCard(
+          // ── 日志 ──
+          _SectionHeader('日志'),
+          _SettingsGroup(
             children: [
-              ListTile(
-                leading: const Icon(Icons.description_outlined,
-                    color: AppTheme.primary, size: 20),
-                title: Text('查看日志',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: colors.text1)),
-                subtitle: Text('当前占用 ${_formatSize(_logSize)}',
-                    style: TextStyle(fontSize: 12, color: colors.text2)),
-                trailing: Icon(Icons.chevron_right,
-                    color: colors.text2, size: 20),
+              _SettingsTile(
+                badge: const _IconBadge(
+                    icon: Icons.description_outlined,
+                    color: Color(0xFFF59E0B)),
+                title: '查看日志',
+                subtitle: '当前占用 ${_formatSize(_logSize)}',
+                showChevron: true,
                 onTap: () async {
                   await Navigator.push(
                     context,
@@ -970,121 +924,371 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   _refreshLogSize();
                 },
               ),
-              Divider(height: 1, color: colors.border),
-              ListTile(
-                leading: const Icon(Icons.ios_share,
-                    color: AppTheme.primary, size: 20),
-                title: Text('导出日志',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: colors.text1)),
-                subtitle: Text('合并所有日志文件并分享',
-                    style: TextStyle(fontSize: 12, color: colors.text2)),
-                trailing: Icon(Icons.chevron_right,
-                    color: colors.text2, size: 20),
+              _SettingsTile(
+                badge: const _IconBadge(
+                    icon: Icons.ios_share,
+                    color: Color(0xFFF59E0B)),
+                title: '导出日志',
+                subtitle: '合并所有日志文件并分享',
+                showChevron: true,
                 onTap: _exportLogs,
               ),
-              Divider(height: 1, color: colors.border),
-              ListTile(
-                leading: const Icon(Icons.delete_sweep_outlined,
-                    color: Color(0xFFEF4444), size: 20),
-                title: Text('清空日志',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: colors.text1)),
-                subtitle: Text('删除所有日志文件',
-                    style: TextStyle(fontSize: 12, color: colors.text2)),
-                trailing: Icon(Icons.chevron_right,
-                    color: colors.text2, size: 20),
+              _SettingsTile(
+                badge: const _IconBadge(
+                    icon: Icons.delete_sweep_outlined,
+                    color: Color(0xFFEF4444)),
+                title: '清空日志',
+                subtitle: '删除所有日志文件，不可恢复',
+                titleColor: const Color(0xFFEF4444),
                 onTap: _clearLogs,
               ),
             ],
           ),
 
           // ── 关于 ──
-          const _SectionLabel('关于'),
-          _SectionCard(
+          _SectionHeader('关于'),
+          _SettingsGroup(
             children: [
-              ListTile(
-                leading: const Icon(Icons.smart_toy_outlined,
+              _SettingsTile(
+                badge: const _IconBadge(
+                    icon: Icons.smart_toy_outlined,
                     color: AppTheme.primary),
-                title: Text('云衍测试平台',
+                title: 'Unihelper',
+                trailing: Text('v1.0.0',
                     style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: colors.text1)),
-                subtitle: Text('v1.0.0',
-                    style: TextStyle(fontSize: 12, color: colors.text2)),
+                        fontSize: 13, color: colors.text2)),
               ),
-              Divider(height: 1, color: colors.border),
-              ListTile(
-                leading: const Icon(Icons.code_outlined,
-                    color: AppTheme.primary),
-                title: Text('开源地址',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: colors.text1)),
-                trailing: Icon(Icons.open_in_new,
-                    size: 18, color: colors.text2),
+              _SettingsTile(
+                badge: const _IconBadge(
+                    icon: Icons.code_outlined,
+                    color: Color(0xFF6B7280)),
+                title: '开源地址',
+                showChevron: true,
                 onTap: () {},
               ),
             ],
           ),
-
-          const SizedBox(height: 24),
         ],
       ),
     );
   }
 }
 
-// ── Section label ──
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.title);
+// ─────────────────────────────────────────────────────────────────────────────
+// Layout primitives
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.title);
   final String title;
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-      child: Text(title,
-          style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: context.appColors.text2)),
+      padding: const EdgeInsets.fromLTRB(20, 22, 16, 8),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: colors.text2,
+          letterSpacing: 0.8,
+        ),
+      ),
     );
   }
 }
 
-// ── Section card ──
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.children});
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({required this.children});
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final divided = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      divided.add(children[i]);
+      if (i < children.length - 1) {
+        divided.add(Divider(
+          height: 1,
+          thickness: 1,
+          indent: 58,
+          color: colors.border,
+        ));
+      }
+    }
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: context.appColors.surface,
-        borderRadius: BorderRadius.circular(12),
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 6,
+            blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Column(children: children),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: divided,
+        ),
+      ),
     );
   }
 }
 
-// ── Theme mode segmented button ──
+// ─────────────────────────────────────────────────────────────────────────────
+// Icon badge
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _IconBadge extends StatelessWidget {
+  const _IconBadge({required this.icon, required this.color});
+  final IconData icon;
+  final Color color;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, color: Colors.white, size: 18),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Standard tap / info tile
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SettingsTile extends StatelessWidget {
+  const _SettingsTile({
+    required this.badge,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.titleColor,
+    this.showChevron = false,
+    this.onTap,
+  });
+
+  final Widget badge;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final Color? titleColor;
+  final bool showChevron;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    Widget? effectiveTrailing = trailing;
+    if (showChevron && trailing == null) {
+      effectiveTrailing =
+          Icon(Icons.chevron_right, size: 20, color: colors.text2);
+    }
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
+          children: [
+            badge,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: titleColor ?? colors.text1,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle!,
+                      style: TextStyle(fontSize: 12, color: colors.text2),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (effectiveTrailing != null) ...[
+              const SizedBox(width: 8),
+              effectiveTrailing,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Switch tile
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SwitchTile extends StatelessWidget {
+  const _SwitchTile({
+    required this.badge,
+    required this.title,
+    this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final Widget badge;
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Row(
+        children: [
+          badge,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: colors.text1)),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(subtitle!,
+                      style: TextStyle(fontSize: 12, color: colors.text2)),
+                ],
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: AppTheme.primary,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dropdown tile (label above, full-width dropdown below)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DropdownTile<T> extends StatelessWidget {
+  const _DropdownTile({
+    required this.badge,
+    required this.title,
+    this.subtitle,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
+
+  final Widget badge;
+  final String title;
+  final String? subtitle;
+  final T? value;
+  final List<DropdownMenuItem<T>> items;
+  final ValueChanged<T?>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              badge,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title,
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: colors.text1)),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(subtitle!,
+                          style:
+                              TextStyle(fontSize: 12, color: colors.text2)),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<T>(
+            initialValue: value,
+            isExpanded: true,
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: colors.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: colors.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    const BorderSide(color: AppTheme.primary, width: 1.5),
+              ),
+              filled: true,
+              fillColor: colors.bg,
+            ),
+            items: items,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme mode segmented button
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _ThemePill extends StatelessWidget {
   const _ThemePill({required this.current, required this.onChanged});
   final ThemeMode current;
@@ -1096,15 +1300,15 @@ class _ThemePill extends StatelessWidget {
       segments: const [
         ButtonSegment(
             value: ThemeMode.light,
-            icon: Icon(Icons.light_mode_outlined),
+            icon: Icon(Icons.light_mode_outlined, size: 16),
             tooltip: '浅色'),
         ButtonSegment(
             value: ThemeMode.dark,
-            icon: Icon(Icons.dark_mode_outlined),
+            icon: Icon(Icons.dark_mode_outlined, size: 16),
             tooltip: '深色'),
         ButtonSegment(
             value: ThemeMode.system,
-            icon: Icon(Icons.brightness_auto_outlined),
+            icon: Icon(Icons.brightness_auto_outlined, size: 16),
             tooltip: '跟随系统'),
       ],
       selected: {current},
@@ -1118,7 +1322,47 @@ class _ThemePill extends StatelessWidget {
   }
 }
 
-// ── 设备区块（厂商选择 + 默认 chat/translate agent） ──
+// ─────────────────────────────────────────────────────────────────────────────
+// Audio output segmented button
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AudioOutputPill extends StatelessWidget {
+  const _AudioOutputPill({required this.current, required this.onChanged});
+  final AudioOutputMode current;
+  final ValueChanged<AudioOutputMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton<AudioOutputMode>(
+      segments: const [
+        ButtonSegment(
+            value: AudioOutputMode.auto,
+            icon: Icon(Icons.auto_mode_outlined, size: 16),
+            tooltip: '自动'),
+        ButtonSegment(
+            value: AudioOutputMode.speaker,
+            icon: Icon(Icons.volume_up_outlined, size: 16),
+            tooltip: '扬声器'),
+        ButtonSegment(
+            value: AudioOutputMode.earpiece,
+            icon: Icon(Icons.phone_in_talk_outlined, size: 16),
+            tooltip: '听筒'),
+      ],
+      selected: {current},
+      onSelectionChanged: (v) => onChanged(v.first),
+      showSelectedIcon: false,
+      style: const ButtonStyle(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Device section
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _DeviceSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1133,175 +1377,153 @@ class _DeviceSection extends ConsumerWidget {
         .where((a) => a.type == 'translate' || a.type == 'ast-translate')
         .toList();
 
-    return _SectionCard(
-      children: [
-        // 设备厂商（标题在上，下拉框单独占一行，避免横向挤压）
-        Padding(
-          padding:
-              const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('设备厂商',
-                  style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      color: colors.text1)),
-              const SizedBox(height: 2),
-              Text('切换厂商会断开当前设备',
-                  style:
-                      TextStyle(fontSize: 11, color: colors.text2)),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: DropdownButtonFormField<String?>(
-                  value: config.deviceVendor,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide:
-                          BorderSide(color: colors.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide:
-                          BorderSide(color: colors.border),
-                    ),
-                  ),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('未选择'),
-                    ),
-                    ...vendors.map(
-                      (v) => DropdownMenuItem<String?>(
-                        value: v.key,
-                        enabled: v.available,
-                        child: Text(
-                          v.available
-                              ? v.label
-                              : '${v.label}（敬请期待）',
-                          style: TextStyle(
-                            color: v.available ? null : colors.text2,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                  onChanged: (v) {
-                    ref
-                        .read(configServiceProvider.notifier)
-                        .setDeviceVendor(v);
-                  },
+    // Build items dynamically, then auto-divide them
+    final items = <Widget>[
+      // 设备厂商
+      _DropdownTile<String?>(
+        badge: const _IconBadge(
+            icon: Icons.headphones_outlined, color: Color(0xFF8B5CF6)),
+        title: '设备厂商',
+        subtitle: '切换厂商会断开当前设备',
+        value: config.deviceVendor,
+        items: [
+          const DropdownMenuItem<String?>(
+              value: null, child: Text('未选择')),
+          ...vendors.map(
+            (v) => DropdownMenuItem<String?>(
+              value: v.key,
+              enabled: v.available,
+              child: Text(
+                v.available ? v.label : '${v.label}（敬请期待）',
+                style: TextStyle(
+                  color: v.available ? null : colors.text2,
                 ),
               ),
-            ],
+            ),
           ),
-        ),
-        Divider(height: 1, color: colors.border),
-
-        // 桌面悬浮助理（仅 Android：系统级悬浮窗）
-        if (Platform.isAndroid) ...[
-          _DesktopAssistantTile(enabled: config.desktopAssistantEnabled),
-          if (config.desktopAssistantEnabled) ...[
-            Divider(height: 1, color: colors.border),
-            _DesktopAssistantAvatarTile(
-                currentKey: config.desktopAssistantAvatar),
-          ],
-          Divider(height: 1, color: colors.border),
         ],
+        onChanged: (v) =>
+            ref.read(configServiceProvider.notifier).setDeviceVendor(v),
+      ),
+    ];
 
-        // 杰理链接方式（仅杰理厂商可见）
-        if (config.deviceVendor == 'jieli') ...[
-          _JieliConnectWayTile(current: config.jieliConnectWay),
-          Divider(height: 1, color: colors.border),
-          _JieliUseDeviceAuthTile(enabled: config.jieliUseDeviceAuth),
-          Divider(height: 1, color: colors.border),
+    // Android: 桌面悬浮助理
+    if (Platform.isAndroid) {
+      items.add(_DesktopAssistantTile(enabled: config.desktopAssistantEnabled));
+      if (config.desktopAssistantEnabled) {
+        items.add(_DesktopAssistantAvatarTile(
+            currentKey: config.desktopAssistantAvatar));
+      }
+    }
+
+    // 杰理专属
+    if (config.deviceVendor == 'jieli') {
+      items.add(_JieliConnectWayTile(current: config.jieliConnectWay));
+      items.add(_JieliUseDeviceAuthTile(enabled: config.jieliUseDeviceAuth));
+    }
+
+    // 默认 Agent 选择
+    items.add(_AgentPickerTile(
+      badge: const _IconBadge(
+          icon: Icons.chat_bubble_outline, color: Color(0xFF6C63FF)),
+      title: '默认聊天 Agent',
+      subtitle: '设备唤醒（PTT / 语音唤醒）后自动启动',
+      options: chatAgents,
+      currentId: config.defaultChatAgentId,
+      onChanged: (id) => ref
+          .read(configServiceProvider.notifier)
+          .setDefaultChatAgentId(id),
+    ));
+    items.add(_AgentPickerTile(
+      badge: const _IconBadge(
+          icon: Icons.translate_outlined, color: Color(0xFF0EA5E9)),
+      title: '默认翻译 Agent',
+      subtitle: '设备翻译键触发后自动启动',
+      options: translateAgents,
+      currentId: config.defaultTranslateAgentId,
+      onChanged: (id) => ref
+          .read(configServiceProvider.notifier)
+          .setDefaultTranslateAgentId(id),
+    ));
+    items.add(_AgentPickerTile(
+      badge: const _IconBadge(
+          icon: Icons.assistant_outlined, color: Color(0xFF10B981)),
+      title: 'AI 助理 Agent',
+      subtitle: '在 AI 助理页通过耳机进行语音对话',
+      options: chatAgents,
+      currentId: config.defaultAssistantAgentId,
+      onChanged: (id) => ref
+          .read(configServiceProvider.notifier)
+          .setDefaultAssistantAgentId(id),
+    ));
+    items.add(_LangPickerTile(
+      badge: const _IconBadge(
+          icon: Icons.record_voice_over_outlined, color: Color(0xFFF59E0B)),
+      title: 'AI 助理 用户语言',
+      subtitle: '决定 STT 识别与 TTS 朗读语种',
+      currentCode: config.defaultAssistantUserLanguage,
+      onChanged: (code) => ref
+          .read(configServiceProvider.notifier)
+          .setDefaultAssistantUserLanguage(code),
+    ));
+
+    // 设备扫描
+    final scanEnabled = config.deviceVendor != null;
+    items.add(_SettingsTile(
+      badge: _IconBadge(
+          icon: Icons.bluetooth_searching,
+          color: scanEnabled
+              ? const Color(0xFF3B82F6)
+              : const Color(0xFFD1D5DB)),
+      title: '设备扫描与连接',
+      subtitle: scanEnabled ? '扫描可用耳机并建立连接' : '请先选择厂商',
+      showChevron: scanEnabled,
+      onTap: scanEnabled
+          ? () => GoRouter.of(context).go('/devices')
+          : null,
+    ));
+
+    // Build divided list
+    final divided = <Widget>[];
+    for (var i = 0; i < items.length; i++) {
+      divided.add(items[i]);
+      if (i < items.length - 1) {
+        divided.add(Divider(
+            height: 1, thickness: 1, indent: 58, color: colors.border));
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
         ],
-
-        // 默认聊天 agent
-        _AgentPickerTile(
-          icon: Icons.chat_bubble_outline,
-          title: '默认聊天 Agent',
-          subtitle: '设备唤醒（PTT / 语音唤醒）后自动启动',
-          options: chatAgents,
-          currentId: config.defaultChatAgentId,
-          onChanged: (id) => ref
-              .read(configServiceProvider.notifier)
-              .setDefaultChatAgentId(id),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: divided,
         ),
-        Divider(height: 1, color: colors.border),
-
-        // 默认翻译 agent
-        _AgentPickerTile(
-          icon: Icons.translate_outlined,
-          title: '默认翻译 Agent',
-          subtitle: '设备翻译键触发后自动启动',
-          options: translateAgents,
-          currentId: config.defaultTranslateAgentId,
-          onChanged: (id) => ref
-              .read(configServiceProvider.notifier)
-              .setDefaultTranslateAgentId(id),
-        ),
-        Divider(height: 1, color: colors.border),
-
-        // AI 助理 agent
-        _AgentPickerTile(
-          icon: Icons.assistant_outlined,
-          title: 'AI 助理 Agent',
-          subtitle: '在 AI 助理页通过耳机进行语音对话',
-          options: chatAgents,
-          currentId: config.defaultAssistantAgentId,
-          onChanged: (id) => ref
-              .read(configServiceProvider.notifier)
-              .setDefaultAssistantAgentId(id),
-        ),
-        Divider(height: 1, color: colors.border),
-
-        // AI 助理 用户语言
-        _LangPickerTile(
-          icon: Icons.record_voice_over_outlined,
-          title: 'AI 助理 用户语言',
-          subtitle: '决定 STT 识别与 TTS 朗读语种',
-          currentCode: config.defaultAssistantUserLanguage,
-          onChanged: (code) => ref
-              .read(configServiceProvider.notifier)
-              .setDefaultAssistantUserLanguage(code),
-        ),
-        Divider(height: 1, color: colors.border),
-
-        // 进入设备管理页
-        ListTile(
-          leading: const Icon(Icons.bluetooth_searching,
-              color: AppTheme.primary, size: 20),
-          title: Text('设备扫描与连接',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: colors.text1)),
-          subtitle: Text(config.deviceVendor == null
-              ? '请先选择厂商'
-              : '扫描可用耳机并建立连接',
-              style: TextStyle(fontSize: 12, color: colors.text2)),
-          trailing:
-              Icon(Icons.chevron_right, color: colors.text2, size: 20),
-          enabled: config.deviceVendor != null,
-          onTap: config.deviceVendor == null
-              ? null
-              : () => GoRouter.of(context).go('/devices'),
-        ),
-      ],
+      ),
     );
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Agent picker (label + dropdown inside device section)
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _AgentPickerTile extends StatelessWidget {
   const _AgentPickerTile({
-    required this.icon,
+    required this.badge,
     required this.title,
     required this.subtitle,
     required this.options,
@@ -1309,7 +1531,7 @@ class _AgentPickerTile extends StatelessWidget {
     required this.onChanged,
   });
 
-  final IconData icon;
+  final Widget badge;
   final String title;
   final String subtitle;
   final List<AgentDto> options;
@@ -1320,97 +1542,56 @@ class _AgentPickerTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final exists = options.any((a) => a.id == currentId);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: AppTheme.primary, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            color: colors.text1)),
-                    const SizedBox(height: 2),
-                    Text(subtitle,
-                        style: TextStyle(
-                            fontSize: 11, color: colors.text2)),
-                  ],
-                ),
-              ),
-            ],
+    return _DropdownTile<String?>(
+      badge: badge,
+      title: title,
+      subtitle: subtitle,
+      value: exists ? currentId : null,
+      items: [
+        DropdownMenuItem<String?>(
+          value: null,
+          child:
+              Text(options.isEmpty ? '无可选 Agent' : '未选择',
+                  style: TextStyle(color: colors.text2)),
+        ),
+        ...options.map(
+          (a) => DropdownMenuItem<String?>(
+            value: a.id,
+            child: Text(a.name, style: TextStyle(color: colors.text1)),
           ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: DropdownButtonFormField<String?>(
-              value: exists ? currentId : null,
-              isExpanded: true,
-              hint: Text(options.isEmpty ? '无可选 Agent' : '未选择'),
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: colors.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: colors.border),
-                ),
-              ),
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('未选择'),
-                ),
-                ...options.map(
-                  (a) => DropdownMenuItem<String?>(
-                    value: a.id,
-                    child: Text(a.name,
-                        style: TextStyle(color: colors.text1)),
-                  ),
-                ),
-              ],
-              onChanged: options.isEmpty ? null : onChanged,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
+      onChanged: options.isEmpty ? null : onChanged,
     );
   }
 }
 
-/// 杰理设备链接方式选择（仅 Android 杰理生效）。
+// ─────────────────────────────────────────────────────────────────────────────
+// Jieli connect way
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _JieliConnectWayTile extends ConsumerWidget {
   const _JieliConnectWayTile({required this.current});
-
   final JieliConnectWay current;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.appColors;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.bluetooth_connected,
-                  color: AppTheme.primary, size: 20),
-              const SizedBox(width: 10),
+              const _IconBadge(
+                  icon: Icons.bluetooth_connected,
+                  color: Color(0xFF3B82F6)),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text('链接方式（杰理）',
                         style: TextStyle(
@@ -1419,8 +1600,7 @@ class _JieliConnectWayTile extends ConsumerWidget {
                             color: colors.text1)),
                     const SizedBox(height: 2),
                     Text('自动按设备广播；BLE / SPP 强制下次连接走该协议',
-                        style:
-                            TextStyle(fontSize: 11, color: colors.text2)),
+                        style: TextStyle(fontSize: 12, color: colors.text2)),
                   ],
                 ),
               ),
@@ -1429,25 +1609,18 @@ class _JieliConnectWayTile extends ConsumerWidget {
           const SizedBox(height: 10),
           SegmentedButton<JieliConnectWay>(
             segments: const [
-              ButtonSegment(
-                value: JieliConnectWay.auto,
-                label: Text('自动'),
-              ),
-              ButtonSegment(
-                value: JieliConnectWay.ble,
-                label: Text('BLE'),
-              ),
-              ButtonSegment(
-                value: JieliConnectWay.spp,
-                label: Text('SPP'),
-              ),
+              ButtonSegment(value: JieliConnectWay.auto, label: Text('自动')),
+              ButtonSegment(value: JieliConnectWay.ble, label: Text('BLE')),
+              ButtonSegment(value: JieliConnectWay.spp, label: Text('SPP')),
             ],
             selected: {current},
-            onSelectionChanged: (s) {
-              ref
-                  .read(configServiceProvider.notifier)
-                  .setJieliConnectWay(s.first);
-            },
+            onSelectionChanged: (s) => ref
+                .read(configServiceProvider.notifier)
+                .setJieliConnectWay(s.first),
+            style: const ButtonStyle(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
           ),
         ],
       ),
@@ -1455,65 +1628,48 @@ class _JieliConnectWayTile extends ConsumerWidget {
   }
 }
 
-/// 杰理 RCSP 设备认证开关（仅 Android/iOS 杰理生效）。
-///
-/// 对应 `BluetoothOption.setUseDeviceAuth` / iOS `bleMultiple.authEnable`。
-/// 开启后未签名授权的耳机会在 RCSP 握手阶段被拒（连上就秒断），正式发布机型保持
-/// 开启；调试无签名样机时关闭。修改后需重新连接 / 重启应用才会生效。
+// ─────────────────────────────────────────────────────────────────────────────
+// Jieli device auth toggle
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _JieliUseDeviceAuthTile extends ConsumerWidget {
   const _JieliUseDeviceAuthTile({required this.enabled});
-
   final bool enabled;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.appColors;
-    return SwitchListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      secondary: const Icon(Icons.verified_user_outlined,
-          color: AppTheme.primary, size: 20),
-      title: Text('RCSP 设备认证（杰理）',
-          style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: colors.text1)),
-      subtitle: Text(
-          enabled
-              ? '已开启：仅签名授权的耳机可连接（生产机型推荐）'
-              : '已关闭：跳过认证；可用于调试无签名样机',
-          style: TextStyle(fontSize: 11, color: colors.text2)),
+    return _SwitchTile(
+      badge: const _IconBadge(
+          icon: Icons.verified_user_outlined, color: Color(0xFF8B5CF6)),
+      title: 'RCSP 设备认证（杰理）',
+      subtitle: enabled
+          ? '已开启：仅签名授权的耳机可连接'
+          : '已关闭：跳过认证，可调试无签名样机',
       value: enabled,
-      activeThumbColor: AppTheme.primary,
-      onChanged: (v) {
-        ref.read(configServiceProvider.notifier).setJieliUseDeviceAuth(v);
-      },
+      onChanged: (v) =>
+          ref.read(configServiceProvider.notifier).setJieliUseDeviceAuth(v),
     );
   }
 }
 
-/// 桌面悬浮助理开关（仅 Android）。开启前先引导授予悬浮窗权限。
+// ─────────────────────────────────────────────────────────────────────────────
+// Desktop assistant toggle
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _DesktopAssistantTile extends ConsumerWidget {
   const _DesktopAssistantTile({required this.enabled});
-
   final bool enabled;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.appColors;
-    return SwitchListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      secondary: const Icon(Icons.smart_toy_outlined,
-          color: AppTheme.primary, size: 20),
-      title: Text('桌面悬浮助理',
-          style: TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w500, color: colors.text1)),
-      subtitle: Text(
-          enabled
-              ? '已开启：桌面常驻助理形象，点击进入对话；app 切后台/划掉仍在'
-              : '已关闭：在桌面显示可拖动的悬浮助理，需要悬浮窗权限',
-          style: TextStyle(fontSize: 11, color: colors.text2)),
+    return _SwitchTile(
+      badge: const _IconBadge(
+          icon: Icons.smart_toy_outlined, color: Color(0xFF10B981)),
+      title: '桌面悬浮助理',
+      subtitle: enabled
+          ? '已开启：桌面常驻助理形象，app 划掉仍在'
+          : '开启后显示可拖动的悬浮助理（需要悬浮窗权限）',
       value: enabled,
-      activeThumbColor: AppTheme.primary,
       onChanged: (v) async {
         final notifier = ref.read(configServiceProvider.notifier);
         if (!v) {
@@ -1535,26 +1691,24 @@ class _DesktopAssistantTile extends ConsumerWidget {
   }
 }
 
-/// 「助理形象」入口：显示当前形象，点进去到形象选择界面。
+// ─────────────────────────────────────────────────────────────────────────────
+// Desktop assistant avatar tile
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _DesktopAssistantAvatarTile extends StatelessWidget {
   const _DesktopAssistantAvatarTile({required this.currentKey});
-
   final String currentKey;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
     final avatar = desktopAssistantAvatarByKey(currentKey);
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: const Icon(Icons.face_retouching_natural_outlined,
-          color: AppTheme.primary, size: 20),
-      title: Text('助理形象',
-          style: TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w500, color: colors.text1)),
-      subtitle: Text('当前：${avatar.label}',
-          style: TextStyle(fontSize: 11, color: colors.text2)),
-      trailing: Icon(Icons.chevron_right, color: colors.text2),
+    return _SettingsTile(
+      badge: const _IconBadge(
+          icon: Icons.face_retouching_natural_outlined,
+          color: Color(0xFFEC4899)),
+      title: '助理形象',
+      subtitle: '当前：${avatar.label}',
+      showChevron: true,
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
             builder: (_) => const DesktopAssistantAvatarScreen()),
@@ -1563,41 +1717,70 @@ class _DesktopAssistantAvatarTile extends StatelessWidget {
   }
 }
 
-// ── Audio output mode segmented button ──
-class _AudioOutputPill extends StatelessWidget {
-  const _AudioOutputPill({required this.current, required this.onChanged});
-  final AudioOutputMode current;
-  final ValueChanged<AudioOutputMode> onChanged;
+// ─────────────────────────────────────────────────────────────────────────────
+// Language picker tile
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LangPickerTile extends StatelessWidget {
+  const _LangPickerTile({
+    required this.badge,
+    required this.title,
+    required this.subtitle,
+    required this.currentCode,
+    required this.onChanged,
+  });
+
+  final Widget badge;
+  final String title;
+  final String subtitle;
+  final String? currentCode;
+  final ValueChanged<String?> onChanged;
+
+  Future<void> _pick(BuildContext context) async {
+    final colors = context.appColors;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          children: [
+            for (final code in LocaleService.allCodes)
+              ListTile(
+                title: Text(LocaleService.langNames[code] ?? code,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: colors.text1)),
+                subtitle:
+                    Text(code, style: TextStyle(color: colors.text2)),
+                onTap: () => Navigator.pop(context, code),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    onChanged(picked);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<AudioOutputMode>(
-      segments: const [
-        ButtonSegment(
-            value: AudioOutputMode.auto,
-            icon: Icon(Icons.auto_mode_outlined, size: 18),
-            tooltip: '自动'),
-        ButtonSegment(
-            value: AudioOutputMode.speaker,
-            icon: Icon(Icons.volume_up_outlined, size: 18),
-            tooltip: '扬声器'),
-        ButtonSegment(
-            value: AudioOutputMode.earpiece,
-            icon: Icon(Icons.phone_in_talk_outlined, size: 18),
-            tooltip: '听筒'),
-      ],
-      selected: {current},
-      onSelectionChanged: (v) => onChanged(v.first),
-      showSelectedIcon: false,
-      style: const ButtonStyle(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-      ),
+    final code = currentCode;
+    final label =
+        code == null ? '未选择' : (LocaleService.langNames[code] ?? code);
+    return _SettingsTile(
+      badge: badge,
+      title: title,
+      subtitle: '$subtitle · $label',
+      showChevron: true,
+      onTap: () => _pick(context),
     );
   }
 }
 
-// ── 阻塞加载浮层 ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Loading dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _LoadingDialog extends StatelessWidget {
   const _LoadingDialog({required this.label});
   final String label;
@@ -1611,10 +1794,11 @@ class _LoadingDialog extends StatelessWidget {
         elevation: 0,
         child: Center(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.78),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1623,19 +1807,14 @@ class _LoadingDialog extends StatelessWidget {
                   width: 22,
                   height: 22,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2.4,
-                    color: Colors.white,
-                  ),
+                      strokeWidth: 2.4, color: Colors.white),
                 ),
                 const SizedBox(width: 14),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                Text(label,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500)),
               ],
             ),
           ),
@@ -1645,10 +1824,10 @@ class _LoadingDialog extends StatelessWidget {
   }
 }
 
-// ── 导出密码对话框 ─────────────────────────────────────────────────────
-// 用 StatefulWidget 让 controller 跟随 dialog 生命周期 dispose，
-// 避免「await showDialog 返回后立刻 dispose controller」造成的
-// `TextEditingController was used after being disposed` 崩溃。
+// ─────────────────────────────────────────────────────────────────────────────
+// Export password dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _ExportPasswordDialog extends StatefulWidget {
   const _ExportPasswordDialog();
 
@@ -1735,7 +1914,8 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
         ),
         FilledButton(
           onPressed: _submit,
-          style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+          style:
+              FilledButton.styleFrom(backgroundColor: AppTheme.primary),
           child: const Text('确认导出'),
         ),
       ],
@@ -1743,10 +1923,12 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
   }
 }
 
-// ── 导入解密密码对话框 ─────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Import password dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _ImportPasswordDialog extends StatefulWidget {
   const _ImportPasswordDialog({this.hint, this.initialError});
-
   final String? hint;
   final String? initialError;
 
@@ -1808,73 +1990,11 @@ class _ImportPasswordDialogState extends State<_ImportPasswordDialog> {
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, _pwdCtrl.text),
-          style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+          style:
+              FilledButton.styleFrom(backgroundColor: AppTheme.primary),
           child: const Text('解密导入'),
         ),
       ],
-    );
-  }
-}
-
-class _LangPickerTile extends StatelessWidget {
-  const _LangPickerTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.currentCode,
-    required this.onChanged,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String? currentCode;
-  final ValueChanged<String?> onChanged;
-
-  Future<void> _pick(BuildContext context) async {
-    final colors = context.appColors;
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      builder: (_) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          children: [
-            for (final code in LocaleService.allCodes)
-              ListTile(
-                title: Text(LocaleService.langNames[code] ?? code,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w600, color: colors.text1)),
-                subtitle:
-                    Text(code, style: TextStyle(color: colors.text2)),
-                onTap: () => Navigator.pop(context, code),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (picked == null) return;
-    onChanged(picked);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final code = currentCode;
-    final label = code == null
-        ? '未选择'
-        : (LocaleService.langNames[code] ?? code);
-    return ListTile(
-      leading: Icon(icon, color: AppTheme.primary, size: 20),
-      title: Text(title,
-          style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: colors.text1)),
-      subtitle: Text('$subtitle · $label',
-          style: TextStyle(fontSize: 12, color: colors.text2)),
-      trailing: Icon(Icons.chevron_right, color: colors.text2, size: 20),
-      onTap: () => _pick(context),
     );
   }
 }

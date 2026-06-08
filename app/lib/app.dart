@@ -184,7 +184,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     ref.watch(deviceAutoReconnectProvider);
 
     return MaterialApp.router(
-      title: '云衍测试平台',
+      title: 'Unihelper',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: appConfig.themeMode,
