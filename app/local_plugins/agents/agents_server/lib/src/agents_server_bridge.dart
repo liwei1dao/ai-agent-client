@@ -142,4 +142,17 @@ class AgentsServerBridge {
   /// 设置音频输出模式：earpiece / speaker / auto
   Future<void> setAudioOutputMode(String mode) =>
       _commandChannel.invokeMethod('setAudioOutputMode', {'mode': mode});
+
+  // ─────────────────────────────────────────────────
+  // 运行时保活引用（浮窗 / 音乐等子能力）
+  // ─────────────────────────────────────────────────
+
+  /// 登记一个运行时保活引用（tag），让宿主前台服务把进程钉住——即使没有活跃 agent，
+  /// 划掉 app 后进程仍存活。同一 tag 幂等。常用 tag 见原生侧常量（'overlay'/'music'）。
+  Future<void> acquireRuntime(String tag) =>
+      _commandChannel.invokeMethod('acquireRuntime', {'tag': tag});
+
+  /// 注销运行时保活引用（tag）。当所有引用与活跃 agent 都清空后，宿主服务自行退前台并停止。
+  Future<void> releaseRuntime(String tag) =>
+      _commandChannel.invokeMethod('releaseRuntime', {'tag': tag});
 }

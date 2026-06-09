@@ -60,6 +60,19 @@ class AgentsServerPlugin : FlutterPlugin {
                 return@setMethodCallHandler
             }
 
+            // acquireRuntime/releaseRuntime 走 intent action 独立于 binding：
+            // 登记/注销一个运行时保活引用（浮窗、音乐等），让进程随宿主服务常驻。
+            if (call.method == "acquireRuntime") {
+                acquireRuntimeRef(call.argument<String>("tag") ?: "default")
+                result.success(null)
+                return@setMethodCallHandler
+            }
+            if (call.method == "releaseRuntime") {
+                releaseRuntimeRef(call.argument<String>("tag") ?: "default")
+                result.success(null)
+                return@setMethodCallHandler
+            }
+
             val svc = service
             if (svc == null && call.method != "notifyAppForeground") {
                 Log.w(TAG, "Service not bound, ignoring ${call.method}")
@@ -217,5 +230,35 @@ class AgentsServerPlugin : FlutterPlugin {
         } else {
             context.startService(intent)
         }
+    }
+
+    /**
+     * 登记一个运行时保活引用（如桌面浮窗 "overlay"）。走 startForegroundService 触发
+     * onStartCommand(ACTION_ACQUIRE_REF)，使 Service 进入 started + foreground 状态、
+     * 脱离 binding 生命周期，进程随宿主服务在划掉 app 后仍存活。
+     */
+    private fun acquireRuntimeRef(tag: String) {
+        val intent = Intent(context, AgentsServerService::class.java).apply {
+            action = AgentsServerService.ACTION_ACQUIRE_REF
+            putExtra(AgentsServerService.EXTRA_REF_TAG, tag)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
+        }
+    }
+
+    /**
+     * 注销一个运行时引用。用 startService（非 foreground）唤起 Service 处理 RELEASE：
+     * 若已无任何持有者则 Service 自行退前台并停止，否则按新维度降级 FGS type。
+     */
+    private fun releaseRuntimeRef(tag: String) {
+        val intent = Intent(context, AgentsServerService::class.java).apply {
+            action = AgentsServerService.ACTION_RELEASE_REF
+            putExtra(AgentsServerService.EXTRA_REF_TAG, tag)
+        }
+        // Service 已在前台运行（持有引用时必然如此），普通 startService 不受后台启动限制。
+        context.startService(intent)
     }
 }

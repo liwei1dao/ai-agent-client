@@ -150,4 +150,10 @@ class AgentsServerBridge {
   Future<void> setAudioOutputMode(String mode) async {
     // Browsers don't expose earpiece/speaker routing — no-op.
   }
+
+  /// No-op on web — there is no host foreground service to pin the process.
+  Future<void> acquireRuntime(String tag) async {}
+
+  /// No-op on web — see [acquireRuntime].
+  Future<void> releaseRuntime(String tag) async {}
 }

@@ -17,17 +17,25 @@ import androidx.core.app.ServiceCompat
 import com.aiagent.plugin_interface.*
 
 /**
- * AgentsServerService — Agent 容器服务（前台保活）
+ * AgentsServerService — 助理运行时宿主服务（前台保活）
  *
  * 职责：
  * 1. 持有所有活跃 NativeAgent 实例的生命周期（创建/停止/删除）
  * 2. 实现 AgentEventSink，接收 Agent 事件
  * 3. 通过 eventCallback 将事件转发给 Plugin 层（→ EventChannel → Flutter）
- * 4. 作为 **started + foreground** 服务运行：有活跃 agent 时升为前台服务，
- *    使整个进程（含 BLE 连接、native agent）在锁屏/切后台/划掉 app 时不被系统回收。
+ * 4. 作为 **started + foreground** 服务运行：只要进程内还有任一"在线持有者"
+ *    （活跃 agent / 桌面浮窗 / 音乐播放 …）就保持前台，使整个进程在锁屏/切后台/
+ *    划掉 app 时不被系统回收。
  *
- * Plugin 层只做 MethodChannel 调度，将命令委托到此 Service；
- * createAgent 时由 Plugin 调 startForegroundService 触发 onStartCommand → startForeground。
+ * 「在线持有者」分两类：
+ * - 活跃 agent（[agents] 非空）——createAgent/stopAgent 自动登记/注销；
+ * - 显式运行时引用（[runtimeRefs]）——浮窗、音乐等子能力通过 acquireRef/releaseRef 登记。
+ *
+ * 前台服务 type 随当前活跃维度动态合并（[computeForegroundType]）：有 agent →
+ * microphone+connectedDevice；有 music → mediaPlayback；仅浮窗等 → specialUse 兜底。
+ *
+ * Plugin 层只做 MethodChannel 调度，将命令委托给此 Service；保活的提升/降级/退出统一
+ * 走 [onStartCommand] 的 action 分派，从而独立于 binding 生命周期。
  */
 class AgentsServerService : Service(), AgentEventSink {
 
@@ -35,6 +43,14 @@ class AgentsServerService : Service(), AgentEventSink {
         private const val TAG = "AgentsServerService"
 
         const val ACTION_ENSURE_FOREGROUND = "com.aiagent.agents_server.ENSURE_FOREGROUND"
+        const val ACTION_ACQUIRE_REF = "com.aiagent.agents_server.ACQUIRE_REF"
+        const val ACTION_RELEASE_REF = "com.aiagent.agents_server.RELEASE_REF"
+        const val EXTRA_REF_TAG = "ref_tag"
+
+        /** 运行时引用标签：桌面浮窗常驻。 */
+        const val REF_OVERLAY = "overlay"
+        /** 运行时引用标签：音乐播放（触发 mediaPlayback FGS type）。 */
+        const val REF_MUSIC = "music"
 
         private const val CHANNEL_ID = "agents_server_running"
         private const val CHANNEL_NAME = "AI 对话运行中"
@@ -44,6 +60,9 @@ class AgentsServerService : Service(), AgentEventSink {
     /** 是否已处于前台状态，避免重复 startForeground */
     private var isForeground = false
 
+    /** 当前已应用的前台 type，用于判断是否需要因 type 变化重新 startForeground。 */
+    private var currentFgsType = 0
+
     inner class LocalBinder : Binder() {
         fun getService(): AgentsServerService = this@AgentsServerService
     }
@@ -52,6 +71,9 @@ class AgentsServerService : Service(), AgentEventSink {
 
     /** 活跃 Agent 实例: agentId → NativeAgent */
     private val agents = mutableMapOf<String, NativeAgent>()
+
+    /** 显式运行时引用（浮窗 / 音乐 …）；与 [agents] 一起决定进程是否保活。 */
+    private val runtimeRefs = mutableSetOf<String>()
 
     /** Plugin 层设置的事件回调（转发到 EventChannel） */
     var eventCallback: ((Map<String, Any?>) -> Unit)? = null
@@ -68,22 +90,41 @@ class AgentsServerService : Service(), AgentEventSink {
     override fun onBind(intent: Intent): IBinder = binder
 
     /**
-     * 由 Plugin 的 startForegroundService(ACTION_ENSURE_FOREGROUND) 触发。
-     * 必须在 5s 内调用 startForeground，否则系统抛 ANR；这里立即提升前台。
+     * 保活的提升/降级/退出统一入口，按 action 分派：
+     * - ACTION_ACQUIRE_REF：登记一个运行时引用（浮窗/音乐），刷新前台（必要时改 type）；
+     * - ACTION_RELEASE_REF：注销引用，若已无任何持有者则退前台并停止，否则降级 type；
+     * - 其它（ACTION_ENSURE_FOREGROUND / 进程被回收后的 null 重启）：按当前状态刷新前台。
+     *
+     * 必须在 5s 内调用 startForeground，否则系统抛 ANR；各分支都会立即 [refreshForeground]。
      * START_STICKY：进程被系统回收后，资源允许时重建 service（intent 为 null）。
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        ensureForeground()
+        when (intent?.action) {
+            ACTION_ACQUIRE_REF -> {
+                val tag = intent.getStringExtra(EXTRA_REF_TAG) ?: "default"
+                runtimeRefs.add(tag)
+                Log.d(TAG, "acquireRef: $tag (refs=$runtimeRefs)")
+                refreshForeground()
+            }
+            ACTION_RELEASE_REF -> {
+                val tag = intent.getStringExtra(EXTRA_REF_TAG) ?: "default"
+                runtimeRefs.remove(tag)
+                Log.d(TAG, "releaseRef: $tag (refs=$runtimeRefs)")
+                stopIfIdleElseRefresh()
+            }
+            else -> refreshForeground()
+        }
         return START_STICKY
     }
 
     /**
-     * 用户从最近任务划掉 app。只要还有活跃 agent，就保持前台服务运行（不 stopSelf），
-     * 让 BLE + native agent 在无 UI 状态下继续工作；没有 agent 时正常退出。
+     * 用户从最近任务划掉 app。只要还有任一在线持有者（活跃 agent 或运行时引用），
+     * 就保持前台服务运行（不 stopSelf），让 BLE + native agent + 浮窗在无 UI 状态下继续；
+     * 没有任何持有者时正常退出。
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.d(TAG, "onTaskRemoved: activeAgents=${agents.size}")
-        if (agents.isEmpty()) {
+        Log.d(TAG, "onTaskRemoved: agents=${agents.size} refs=$runtimeRefs")
+        if (!shouldStayAlive()) {
             stopForegroundAndSelf()
         }
         super.onTaskRemoved(rootIntent)
@@ -92,10 +133,12 @@ class AgentsServerService : Service(), AgentEventSink {
     override fun onDestroy() {
         agents.values.forEach { it.release() }
         agents.clear()
+        runtimeRefs.clear()
         eventCallback = null
         if (isForeground) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             isForeground = false
+            currentFgsType = 0
         }
         super.onDestroy()
     }
@@ -104,19 +147,56 @@ class AgentsServerService : Service(), AgentEventSink {
     // 前台服务保活
     // ─────────────────────────────────────────────────
 
-    /** 升为前台服务（幂等）。声明 microphone|connectedDevice 类型以覆盖录音 + BLE 设备。 */
-    private fun ensureForeground() {
-        if (isForeground) return
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+    /** 是否还有在线持有者（活跃 agent 或运行时引用），决定进程是否保活。 */
+    private fun shouldStayAlive(): Boolean = agents.isNotEmpty() || runtimeRefs.isNotEmpty()
+
+    /** 引用/agent 注销后调用：无持有者则退前台并停止，否则按新维度刷新前台 type。 */
+    private fun stopIfIdleElseRefresh() {
+        if (shouldStayAlive()) refreshForeground() else stopForegroundAndSelf()
+    }
+
+    /**
+     * 按当前活跃维度合并前台服务 type：
+     * - 有活跃 agent → microphone + connectedDevice（录音 + BLE 耳机）；
+     * - 有 music 引用 → mediaPlayback；
+     * - 仅浮窗等无媒体维度 → specialUse 兜底（FGS 必须至少声明一种 type）。
+     *
+     * Android < R（API 30）不支持带 type 的 startForeground，返回 0（ServiceCompat 忽略 type）。
+     */
+    private fun computeForegroundType(): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0
+        var type = 0
+        if (agents.isNotEmpty()) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-        } else {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         }
+        if (runtimeRefs.contains(REF_MUSIC)) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        }
+        if (type == 0) {
+            // 仅浮窗等：无麦克风/媒体维度时用 specialUse 维持前台。
+            // specialUse 常量需 API 34；API 30-33 上退回 connectedDevice 兜底保活。
+            type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            } else {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            }
+        }
+        return type
+    }
+
+    /**
+     * 提升/刷新前台服务（幂等）。未在前台则提升；已在前台但目标 type 变化（如 agent 启动
+     * 让 specialUse → microphone）则以新 type 重新 startForeground。
+     */
+    private fun refreshForeground() {
+        val targetType = computeForegroundType()
+        if (isForeground && targetType == currentFgsType) return
         try {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), type)
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), targetType)
             isForeground = true
-            Log.d(TAG, "Promoted to foreground service")
+            currentFgsType = targetType
+            Log.d(TAG, "foreground refreshed: type=$targetType")
         } catch (e: Exception) {
             // Android 12+ 后台启动前台服务受限（ForegroundServiceStartNotAllowedException）等
             Log.e(TAG, "startForeground failed: ${e.message}", e)
@@ -127,6 +207,7 @@ class AgentsServerService : Service(), AgentEventSink {
         if (isForeground) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             isForeground = false
+            currentFgsType = 0
         }
         stopSelf()
     }
@@ -183,8 +264,9 @@ class AgentsServerService : Service(), AgentEventSink {
             agent.initialize(config, this, applicationContext)
             agents[agentId] = agent
             Log.d(TAG, "Created agent: type=$agentType id=$agentId (total=${agents.size})")
-            // 兜底：有活跃 agent 即保证前台（onStartCommand 时序异常时也能提升）
-            ensureForeground()
+            // 兜底：有活跃 agent 即保证前台（onStartCommand 时序异常时也能提升），
+            // 并把 type 升到 microphone+connectedDevice（覆盖之前可能的 specialUse）。
+            refreshForeground()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create agent: ${e.message}", e)
             onError(agentId, "create_error", e.message ?: "Unknown error", null)
@@ -194,10 +276,8 @@ class AgentsServerService : Service(), AgentEventSink {
     fun stopAgent(agentId: String) {
         agents.remove(agentId)?.release()
         Log.d(TAG, "Stopped agent: $agentId (remaining=${agents.size})")
-        if (agents.isEmpty()) {
-            // 最后一个 agent 结束：撤下前台通知并停止 started 状态
-            stopForegroundAndSelf()
-        }
+        // 最后一个 agent 结束：若仍有运行时引用（如浮窗常驻）则只降级 type，否则退前台并停止。
+        stopIfIdleElseRefresh()
     }
 
     fun deleteAgent(agentId: String) {

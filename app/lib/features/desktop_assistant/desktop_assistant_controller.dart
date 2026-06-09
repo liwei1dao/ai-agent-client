@@ -1,12 +1,19 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:agents_server/agents_server.dart';
 
 /// 桌面悬浮助理的显示控制器（仅 Android）。
 ///
-/// 封装 `flutter_overlay_window` 的权限检查与 show/close。悬浮窗的常驻保活由
-/// 插件自带的 OverlayService（前台服务）负责——app 切后台/划掉进程后仍存在。
+/// 封装 `flutter_overlay_window` 的权限检查与 show/close。浮窗的**常驻保活**挂在
+/// agents_server 的宿主前台服务上：显示时 acquireRuntime('overlay') 登记一个保活引用，
+/// 使进程在划掉 app 后仍存活（浮窗 + AI 一起活）；隐藏时 releaseRuntime 注销。
+/// 注意：flutter_overlay_window 自带的 OverlayService 与主 app 同进程，单靠它在
+/// 国产 ROM 上划掉即被杀，故改由宿主服务统一保活。
 class DesktopAssistantController {
   const DesktopAssistantController();
+
+  /// 运行时保活引用 tag，对应原生 `AgentsServerService.REF_OVERLAY`。
+  static const _overlayRefTag = 'overlay';
 
   bool get _supported => defaultTargetPlatform == TargetPlatform.android;
 
@@ -27,6 +34,8 @@ class DesktopAssistantController {
   Future<void> enable() async {
     if (!_supported) return;
     if (!await FlutterOverlayWindow.isPermissionGranted()) return;
+    // 先登记保活引用，让宿主前台服务把进程钉住（划掉 app 后浮窗仍在）。幂等。
+    await AgentsServerBridge().acquireRuntime(_overlayRefTag);
     if (await FlutterOverlayWindow.isActive()) return;
     try {
       await FlutterOverlayWindow.showOverlay(
@@ -35,8 +44,9 @@ class DesktopAssistantController {
         alignment: OverlayAlignment.centerRight,
         flag: OverlayFlag.defaultFlag,
         enableDrag: true,
-        // none：停在初始/拖动位置，不自动吸附到屏幕边缘外（避免只露半个圆）。
-        positionGravity: PositionGravity.none,
+        // auto：松手后自动吸附到最近的左/右屏幕边缘并完整可见（球宽 < window 宽，
+        // 贴边后仍整圆露出），避免 none 模式下被拖到屏幕外卡死抓不回来。
+        positionGravity: PositionGravity.auto,
         overlayTitle: '桌面助理',
         overlayContent: '点击与 AI 助理对话',
         visibility: NotificationVisibility.visibilityPublic,
@@ -52,5 +62,7 @@ class DesktopAssistantController {
     if (await FlutterOverlayWindow.isActive()) {
       await FlutterOverlayWindow.closeOverlay();
     }
+    // 注销保活引用；若已无其它持有者（活跃 agent 等），宿主服务自行退前台并停止。
+    await AgentsServerBridge().releaseRuntime(_overlayRefTag);
   }
 }

@@ -26,7 +26,8 @@ repositories {
 android {
     namespace = "com.yunyan.unihelper"
     compileSdk = 36
-    ndkVersion = "27.0.12077973"
+    // 取插件中最高的 NDK 版本（jni 要求 28.2，向后兼容）。
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

@@ -149,11 +149,16 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final avatarChanged = _currentAvatarKey != avatarKey;
     _currentAvatarKey = avatarKey;
     if (_lastDesktopAssistantEnabled != enabled) {
+      // 首次 sync 且 enabled=false 是 config 加载完成前的默认值（AppConfig() 默认 false，
+      // 随后 _load() 异步把持久化的 true 补上）。此时浮窗本就没显示，绝不能调 disable——
+      // 否则它的 releaseRuntime 会和紧接着 enable() 的 acquireRuntime 并发竞态，
+      // 因 await 链长短不同导致 release 后到、把保活引用干掉（划掉 app 浮窗即消失）。
+      final firstSync = _lastDesktopAssistantEnabled == null;
       _lastDesktopAssistantEnabled = enabled;
       if (enabled) {
         // enable 后 overlay 会发 'ready'，届时回推 _currentAvatarKey。
         _desktopAssistant.enable();
-      } else {
+      } else if (!firstSync) {
         _desktopAssistant.disable();
       }
     } else if (enabled &&
