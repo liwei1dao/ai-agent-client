@@ -697,10 +697,16 @@ class StsVolcengineService(private val appContext: Context) : NativeStsService {
         ar.startRecording()
         pumpJob = scope.launch {
             val buf = ByteArray(FRAME_BYTES)
-            while (isActive && isAudioRunning &&
-                ar.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                val read = ar.read(buf, 0, buf.size)
-                if (read > 0) sendAudioFrame(buf, read)
+            // teardown 竞态：ar.read() 阻塞期间资源被关闭，read 返回后复检 isActive，
+            // 并用 try-catch 兜底，避免子协程未捕获异常崩溃整个进程。
+            try {
+                while (isActive && isAudioRunning &&
+                    ar.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    val read = ar.read(buf, 0, buf.size)
+                    if (read > 0 && isActive) sendAudioFrame(buf, read)
+                }
+            } catch (_: Exception) {
+                // teardown 期间资源被关闭，正常收尾，忽略。
             }
             Log.d(TAG, "Audio pump stopped")
         }

@@ -120,15 +120,24 @@ class SttAzureService(private val appContext: Context) : NativeSttService {
                 // Pump PCM from AudioRecord → PushAudioInputStream
                 pumpJob = scope.launch {
                     val buf = ByteArray(3200) // 100ms @ 16kHz 16bit mono
-                    while (isActive && ar.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                        val read = ar.read(buf, 0, buf.size)
-                        if (read > 0) {
-                            if (read == buf.size) {
-                                ps.write(buf)
-                            } else {
-                                ps.write(buf.copyOf(read))
+                    // teardown 竞态：ar.read() 是阻塞调用，无法被协程 cancel 中断。
+                    // release() 在 read 阻塞期间 close 了 pushStream，read 返回后若直接
+                    // write 会触发 Azure CloseGuard 的 IllegalStateException —— 该异常在
+                    // 子协程里未捕获会让**整个进程崩溃**。故 read 后复检 isActive，并用
+                    // runCatching 兜住"写入已关闭 stream"的竞态窗口。
+                    try {
+                        while (isActive &&
+                            ar.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                            val read = ar.read(buf, 0, buf.size)
+                            if (read > 0 && isActive) {
+                                runCatching {
+                                    if (read == buf.size) ps.write(buf)
+                                    else ps.write(buf.copyOf(read))
+                                }
                             }
                         }
+                    } catch (_: Exception) {
+                        // AudioRecord/stream 在 teardown 中被关闭，正常收尾，忽略。
                     }
                 }
 

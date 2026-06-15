@@ -75,8 +75,29 @@ class AgentsServerService : Service(), AgentEventSink {
     /** 显式运行时引用（浮窗 / 音乐 …）；与 [agents] 一起决定进程是否保活。 */
     private val runtimeRefs = mutableSetOf<String>()
 
-    /** Plugin 层设置的事件回调（转发到 EventChannel） */
-    var eventCallback: ((Map<String, Any?>) -> Unit)? = null
+    /**
+     * Plugin 层注册的事件回调（转发到各自 engine 的 EventChannel）。
+     *
+     * 必须是**集合**而非单个变量：本进程可能同时存在多个 FlutterEngine
+     * （主 app engine + flutter_overlay_window 的悬浮窗 engine），每个 engine
+     * 都会通过 GeneratedPluginRegistrant 实例化一份 AgentsServerPlugin 并 bind
+     * 同一个单例 Service。若用单变量保存回调，后 bind 的 engine（悬浮窗，其
+     * isolate 并不监听 agents_server 事件）会覆盖主 engine 的回调，导致主界面
+     * 收不到任何 agent 事件（STS 连上但 UI 永远停在“正在连接”）。改为 fan-out
+     * 后每个 engine 各注册各的回调，事件广播给所有订阅方。
+     */
+    private val eventCallbacks =
+        java.util.concurrent.CopyOnWriteArraySet<(Map<String, Any?>) -> Unit>()
+
+    fun addEventCallback(cb: (Map<String, Any?>) -> Unit) {
+        eventCallbacks.add(cb)
+        Log.d(TAG, "addEventCallback (total=${eventCallbacks.size})")
+    }
+
+    fun removeEventCallback(cb: (Map<String, Any?>) -> Unit) {
+        eventCallbacks.remove(cb)
+        Log.d(TAG, "removeEventCallback (total=${eventCallbacks.size})")
+    }
 
     // ─────────────────────────────────────────────────
     // Service 生命周期
@@ -134,7 +155,7 @@ class AgentsServerService : Service(), AgentEventSink {
         agents.values.forEach { it.release() }
         agents.clear()
         runtimeRefs.clear()
-        eventCallback = null
+        eventCallbacks.clear()
         if (isForeground) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             isForeground = false
@@ -167,8 +188,13 @@ class AgentsServerService : Service(), AgentEventSink {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0
         var type = 0
         if (agents.isNotEmpty()) {
-            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            // 仅 MICROPHONE：AI 对话走系统麦克风，只需已声明的 RECORD_AUDIO。
+            // ⚠️ 不要加 CONNECTED_DEVICE —— targetSDK 34+ 该类型强制要求声明蓝牙
+            // 权限之一（BLUETOOTH_CONNECT/SCAN…），而本 app manifest 未声明，组合
+            // 类型会让整个 startForeground 抛 SecurityException、连 MICROPHONE 也起
+            // 不来（前台服务起不来 → 后台录音被系统限制/杀）。BLE 耳机翻译若日后需要
+            // CONNECTED_DEVICE，须先在 manifest 补蓝牙权限并按设备连接状态条件化添加。
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         }
         if (runtimeRefs.contains(REF_MUSIC)) {
             type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
@@ -378,6 +404,8 @@ class AgentsServerService : Service(), AgentEventSink {
     }
 
     private fun pushEvent(data: Map<String, Any?>) {
-        eventCallback?.invoke(data)
+        // fan-out 到所有已注册 engine 的回调；某个 engine 的 sink 为 null 时其回调
+        // 内部会自行忽略，互不影响。
+        for (cb in eventCallbacks) cb(data)
     }
 }

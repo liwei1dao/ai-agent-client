@@ -1413,6 +1413,7 @@ class _DeviceSection extends ConsumerWidget {
       if (config.desktopAssistantEnabled) {
         items.add(_DesktopAssistantAvatarTile(
             currentKey: config.desktopAssistantAvatar));
+        items.add(const _DesktopAssistantKeepAliveTile());
       }
     }
 
@@ -1685,6 +1686,52 @@ class _DesktopAssistantTile extends ConsumerWidget {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('需要悬浮窗权限才能显示桌面助理'),
           ));
+        }
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Desktop assistant keep-alive tile
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DesktopAssistantKeepAliveTile extends StatelessWidget {
+  const _DesktopAssistantKeepAliveTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsTile(
+      badge: const _IconBadge(
+          icon: Icons.battery_saver_outlined, color: Color(0xFFF59E0B)),
+      title: '后台保活设置',
+      subtitle: '国产手机需开启「自启动」并加入电池白名单，划掉 app 后助理才不会被系统杀掉',
+      showChevron: true,
+      onTap: () async {
+        final go = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('后台保活设置'),
+            content: const Text(
+              '为了让悬浮助理在划掉 app 后仍然常驻，国产手机需要两项设置：\n\n'
+              '1. 把本应用加入「电池优化白名单 / 允许后台高耗电」\n'
+              '2. 在「自启动管理」里允许本应用自启动\n\n'
+              '点击「去设置」将依次打开这两个设置页。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('去设置'),
+              ),
+            ],
+          ),
+        );
+        if (go == true) {
+          await const DesktopAssistantController().openKeepAliveSettings();
         }
       },
     );

@@ -1,23 +1,18 @@
-import 'dart:async';
-
-import 'package:assistant_server/assistant_server.dart';
-import 'package:device_manager/device_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_db/local_db.dart';
 
-import '../../../core/services/agent_config_builder.dart';
-import '../../../core/services/assistant_service.dart';
 import '../../../core/services/config_service.dart';
-import '../../../core/services/device_service.dart';
 import '../../../core/services/locale_service.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../../agents/providers/agent_list_provider.dart';
+import '../providers/assistant_chat_provider.dart';
 
 /// AI 助理界面（聊天气泡风格）。
 ///
-/// 单 agent / 单语言场景：用户语音通过耳机麦上行 → chat agent STT/LLM/TTS →
-/// AI 回复 PCM 通过 RCSP 回灌耳机扬声器。
+/// 单 agent / 单语言场景：用户语音通过**系统麦克风**上行（Android 上经经典蓝牙
+/// HFP/SCO 自动路由到已连接的蓝牙耳机）→ chat / sts-chat agent 做 STT/LLM/TTS →
+/// AI 回复通过系统扬声器播放。不再依赖 BLE 设备连接。
 /// user 消息显示在右侧紫色气泡，assistant 消息显示在左侧白色气泡。
 class AssistantScreen extends ConsumerStatefulWidget {
   const AssistantScreen({super.key});
@@ -27,26 +22,29 @@ class AssistantScreen extends ConsumerStatefulWidget {
 }
 
 class _AssistantScreenState extends ConsumerState<AssistantScreen> {
-  AssistantSession? _session;
-  StreamSubscription<AssistantMessageEvent>? _messageSub;
-  StreamSubscription<AssistantErrorEvent>? _errorSub;
-  StreamSubscription<AssistantSessionState>? _stateSub;
-
-  final AssistantMessageAggregator _aggregator = AssistantMessageAggregator();
-  final List<AssistantErrorEvent> _errors = [];
+  late final AssistantChatController _controller;
   final ScrollController _scrollController = ScrollController();
-  AssistantSessionState _sessionState = AssistantSessionState.stopped;
-  bool _starting = false;
   bool _configExpanded = true;
 
   @override
+  void initState() {
+    super.initState();
+    _controller = AssistantChatController();
+    _controller.addListener(_onControllerChanged);
+  }
+
+  @override
   void dispose() {
-    _messageSub?.cancel();
-    _errorSub?.cancel();
-    _stateSub?.cancel();
+    _controller.removeListener(_onControllerChanged);
+    _controller.dispose();
     _scrollController.dispose();
-    _session?.stop();
     super.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (!mounted) return;
+    setState(() {});
+    _scrollToBottom();
   }
 
   // ─── lifecycle ──────────────────────────────────────────────────────────
@@ -65,64 +63,23 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
 
     final services = await LocalDbBridge().getAllServiceConfigs();
 
-    final req = AssistantRequest(
-      agentType: agent.type,
-      agentConfig: AgentConfigBuilder.forChat(
-        agent: agent,
-        allServices: services,
-        userLanguage: userLang,
-        inputMode: 'external',
-      ).build(),
+    await _controller.start(
+      agent: agent,
       userLanguage: userLang,
+      services: services,
     );
 
-    setState(() => _starting = true);
-    try {
-      final server = ref.read(assistantServerProvider);
-      final session = await server.startAssistant(req);
-      _bindSession(session);
+    if (!mounted) return;
+    if (_controller.isActive) {
       // 启动后自动折叠配置区，把空间让给对话。
       setState(() => _configExpanded = false);
-    } on AssistantException catch (e) {
-      _toast('启动失败：${e.code}\n${e.message ?? ''}');
-    } catch (e) {
-      _toast('启动失败：$e');
-    } finally {
-      if (mounted) setState(() => _starting = false);
+    } else if (_controller.lastError != null) {
+      _toast('启动失败：${_controller.lastError}');
     }
   }
 
   Future<void> _stop() async {
-    await _session?.stop();
-  }
-
-  void _bindSession(AssistantSession session) {
-    _session = session;
-    _aggregator.reset();
-    _errors.clear();
-    _messageSub = session.messages.listen((e) {
-      _aggregator.feed(e);
-      if (mounted) {
-        setState(() {});
-        _scrollToBottom();
-      }
-    });
-    _errorSub = session.errors.listen((e) {
-      if (!mounted) return;
-      setState(() => _errors.add(e));
-    });
-    _stateSub = session.stateStream.listen((s) {
-      if (!mounted) return;
-      setState(() => _sessionState = s);
-      if (s == AssistantSessionState.stopped ||
-          s == AssistantSessionState.error) {
-        _messageSub?.cancel();
-        _errorSub?.cancel();
-        _stateSub?.cancel();
-        _session = null;
-      }
-    });
-    setState(() => _sessionState = session.state);
+    await _controller.stop();
   }
 
   void _scrollToBottom() {
@@ -179,36 +136,15 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     final colors = context.appColors;
     final config = ref.watch(configServiceProvider);
     final agents = ref.watch(agentListProvider);
-    final session = ref.watch(activeDeviceSessionProvider).valueOrNull;
-
-    // 设备断开 → 自动结束助理会话。
-    ref.listen<AsyncValue<DeviceSession?>>(activeDeviceSessionProvider,
-        (prev, next) {
-      if (_session == null) return;
-      final s = next.valueOrNull;
-      final ready = s != null && s.state == DeviceConnectionState.ready;
-      if (!ready) {
-        _stop();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('耳机已断开，已自动结束 AI 助理')),
-          );
-        }
-      }
-    });
 
     final agent = _findAgent(agents, config.defaultAssistantAgentId);
     final userLang = config.defaultAssistantUserLanguage;
 
-    final isActive = _sessionState == AssistantSessionState.active ||
-        _sessionState == AssistantSessionState.starting;
+    final isActive = _controller.isActive;
     final canStart = !isActive &&
-        !_starting &&
+        !_controller.isStarting &&
         agent != null &&
-        userLang != null &&
-        session != null &&
-        session.state == DeviceConnectionState.ready &&
-        config.deviceVendor == 'jieli';
+        userLang != null;
 
     return Scaffold(
       backgroundColor: colors.bg,
@@ -230,10 +166,10 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
           children: [
             Column(
               children: [
-                _buildDeviceStatusBar(config, session, colors),
+                _buildStatusBar(agent, colors),
                 if (_configExpanded)
                   _buildConfigCard(agent, userLang, colors, isActive),
-                if (_errors.isNotEmpty) _buildErrorChip(),
+                if (_controller.lastError != null) _buildErrorChip(),
                 Expanded(child: _buildChatList(colors, userLang)),
               ],
             ),
@@ -251,21 +187,11 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     );
   }
 
-  Widget _buildDeviceStatusBar(
-      AppConfig config, DeviceSession? session, AppColors colors) {
-    final vendor = config.deviceVendor;
-    final ok = vendor == 'jieli' &&
-        session != null &&
-        session.state == DeviceConnectionState.ready;
-    final hint = vendor == null
-        ? '未选择设备厂商；请前往设置选择「杰理」'
-        : vendor != 'jieli'
-            ? 'AI 助理当前仅支持「杰理」设备'
-            : session == null
-                ? '未连接耳机；请先到「设备」连接'
-                : session.state != DeviceConnectionState.ready
-                    ? '设备未就绪：${session.state.name}'
-                    : '设备已就绪：${session.info.name}';
+  Widget _buildStatusBar(AgentDto? agent, AppColors colors) {
+    final ok = agent != null;
+    final hint = agent == null
+        ? '请先选择 AI 助理使用的 agent（chat / sts-chat）'
+        : '系统麦克风对话；连接蓝牙耳机后自动经耳机收音/播放';
     final color = ok ? const Color(0xFF10B981) : const Color(0xFFEF4444);
     return Container(
       width: double.infinity,
@@ -277,8 +203,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
       ),
       child: Row(
         children: [
-          Icon(ok ? Icons.headset_mic : Icons.headset_off,
-              size: 16, color: color),
+          Icon(ok ? Icons.mic_none : Icons.mic_off, size: 16, color: color),
           const SizedBox(width: 8),
           Expanded(
             child: Text(hint,
@@ -420,7 +345,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   }
 
   Widget _buildFloatingActionButton(bool canStart, bool isActive) {
-    final bool busy = _starting;
+    final bool busy = _controller.isStarting;
     final bool enabled = isActive ? !busy : (canStart && !busy);
     final Color bg = isActive
         ? const Color(0xFFEF4444)
@@ -482,7 +407,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   }
 
   Widget _buildErrorChip() {
-    final last = _errors.last;
+    final last = _controller.lastError ?? '';
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.all(8),
@@ -496,7 +421,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              '${last.code}${last.role != null ? ' [${last.role!.name}]' : ''}: ${last.message ?? ''}',
+              last,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444)),
@@ -505,7 +430,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
           IconButton(
             icon: const Icon(Icons.close, size: 14),
             color: const Color(0xFFEF4444),
-            onPressed: () => setState(_errors.clear),
+            onPressed: _controller.clearError,
             visualDensity: VisualDensity.compact,
           ),
         ],
@@ -514,21 +439,11 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   }
 
   Widget _buildChatList(AppColors colors, String? userLang) {
-    final lines = _aggregator.lines;
-    final userPartial = _aggregator.partialUserText;
+    final bubbles = _controller.bubbles;
 
-    // finalized lines + 一条 in-progress 用户 partial 拼成渲染序列。
-    final items = <_ChatItem>[
-      for (final line in lines) ..._splitLine(line),
-      if ((userPartial ?? '').isNotEmpty)
-        _ChatItem.partialUser(userPartial!),
-    ];
-
-    if (items.isEmpty) {
+    if (bubbles.isEmpty) {
       return Center(
-        child: Text(_sessionState == AssistantSessionState.active
-            ? '说话开始与 AI 助理对话…'
-            : '点击下方按钮开始通话',
+        child: Text(_controller.isActive ? '说话开始与 AI 助理对话…' : '点击下方按钮开始通话',
             style: TextStyle(fontSize: 12, color: colors.text2)),
       );
     }
@@ -536,26 +451,13 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-      itemCount: items.length,
+      itemCount: bubbles.length,
       itemBuilder: (_, i) => _ChatBubble(
-        item: items[i],
+        bubble: bubbles[i],
         userLangLabel: _langLabel(userLang),
         colors: colors,
       ),
     );
-  }
-
-  /// 把一行（user+assistant）拆成两个气泡 item 顺序渲染（先 user 再 assistant）。
-  List<_ChatItem> _splitLine(AssistantConversationLine line) {
-    final out = <_ChatItem>[];
-    if (line.userText.isNotEmpty) {
-      out.add(_ChatItem.user(line.userText));
-    }
-    final assistantText = line.assistantText ?? '';
-    if (assistantText.isNotEmpty) {
-      out.add(_ChatItem.assistant(assistantText, line.assistantPartial));
-    }
-    return out;
   }
 
   // ─── helpers ────────────────────────────────────────────────────────────
@@ -581,63 +483,24 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   }
 }
 
-// ─── 对话气泡数据模型 ──────────────────────────────────────────────────────
-
-class _ChatItem {
-  _ChatItem({
-    required this.role,
-    required this.text,
-    required this.partial,
-    required this.isInProgress,
-  });
-
-  factory _ChatItem.user(String text) => _ChatItem(
-        role: AssistantRole.user,
-        text: text,
-        partial: false,
-        isInProgress: false,
-      );
-
-  factory _ChatItem.assistant(String text, bool partial) => _ChatItem(
-        role: AssistantRole.assistant,
-        text: text,
-        partial: partial,
-        isInProgress: false,
-      );
-
-  factory _ChatItem.partialUser(String text) => _ChatItem(
-        role: AssistantRole.user,
-        text: text,
-        partial: false,
-        isInProgress: true,
-      );
-
-  final AssistantRole role;
-  final String text;
-
-  /// assistant 是否为流式 partial 状态（半透明斜体）。
-  final bool partial;
-
-  /// 用户在途 STT partial（半透明斜体气泡）。
-  final bool isInProgress;
-}
+// ─── 对话气泡 ───────────────────────────────────────────────────────────────
 
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({
-    required this.item,
+    required this.bubble,
     required this.userLangLabel,
     required this.colors,
   });
-  final _ChatItem item;
+  final AssistantBubble bubble;
   final String userLangLabel;
   final AppColors colors;
 
   @override
   Widget build(BuildContext context) {
-    final isUser = item.role == AssistantRole.user;
+    final isUser = bubble.isUser;
     final bubbleColor = isUser ? AppTheme.primary : Colors.white;
     final textColor = isUser ? Colors.white : colors.text1;
-    final softAlpha = item.isInProgress || item.partial ? 0.7 : 1.0;
+    final softAlpha = bubble.streaming ? 0.7 : 1.0;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -678,14 +541,13 @@ class _ChatBubble extends StatelessWidget {
                       ],
               ),
               child: Text(
-                item.text,
+                bubble.text,
                 style: TextStyle(
                   fontSize: 14,
                   color: textColor,
                   height: 1.4,
-                  fontStyle: (item.isInProgress || item.partial)
-                      ? FontStyle.italic
-                      : FontStyle.normal,
+                  fontStyle:
+                      bubble.streaming ? FontStyle.italic : FontStyle.normal,
                 ),
               ),
             ),

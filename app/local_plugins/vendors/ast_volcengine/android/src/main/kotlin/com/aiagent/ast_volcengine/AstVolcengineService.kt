@@ -880,32 +880,38 @@ class AstVolcengineService(private val appContext: Context) : NativeAstService {
             var sentBytes = 0L
             var lastReportMs = System.currentTimeMillis()
             var maxAmp = 0
-            while (isActive && isAudioRunning &&
-                ar.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                val read = ar.read(buf, 0, buf.size)
-                if (read > 0) {
-                    // sample peak amplitude (16-bit PCM little-endian)
-                    var i = 0
-                    while (i + 1 < read) {
-                        val s = (buf[i + 1].toInt() shl 8) or (buf[i].toInt() and 0xFF)
-                        val abs = if (s < 0) -s else s
-                        if (abs > maxAmp) maxAmp = abs
-                        i += 2
+            // teardown 竞态：ar.read() 阻塞期间资源被关闭，read 返回后复检 isActive，
+            // 并用 try-catch 兜底，避免子协程未捕获异常崩溃整个进程。
+            try {
+                while (isActive && isAudioRunning &&
+                    ar.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    val read = ar.read(buf, 0, buf.size)
+                    if (read > 0 && isActive) {
+                        // sample peak amplitude (16-bit PCM little-endian)
+                        var i = 0
+                        while (i + 1 < read) {
+                            val s = (buf[i + 1].toInt() shl 8) or (buf[i].toInt() and 0xFF)
+                            val abs = if (s < 0) -s else s
+                            if (abs > maxAmp) maxAmp = abs
+                            i += 2
+                        }
+                        sendProto(buildAudioFrame(buf.copyOf(read)))
+                        sentCount++
+                        sentBytes += read
+                        val now = System.currentTimeMillis()
+                        if (now - lastReportMs >= 1000L) {
+                            Log.d(TAG, "audioPump stats (last ${now - lastReportMs}ms): frames=$sentCount bytes=$sentBytes peakAmp=$maxAmp wsAlive=${webSocket != null}")
+                            sentCount = 0
+                            sentBytes = 0
+                            maxAmp = 0
+                            lastReportMs = now
+                        }
+                    } else if (read < 0) {
+                        Log.e(TAG, "audioPump: AudioRecord.read returned error $read")
                     }
-                    sendProto(buildAudioFrame(buf.copyOf(read)))
-                    sentCount++
-                    sentBytes += read
-                    val now = System.currentTimeMillis()
-                    if (now - lastReportMs >= 1000L) {
-                        Log.d(TAG, "audioPump stats (last ${now - lastReportMs}ms): frames=$sentCount bytes=$sentBytes peakAmp=$maxAmp wsAlive=${webSocket != null}")
-                        sentCount = 0
-                        sentBytes = 0
-                        maxAmp = 0
-                        lastReportMs = now
-                    }
-                } else if (read < 0) {
-                    Log.e(TAG, "audioPump: AudioRecord.read returned error $read")
                 }
+            } catch (_: Exception) {
+                // teardown 期间资源被关闭，正常收尾，忽略。
             }
             Log.d(TAG, "Audio pump stopped (isActive=$isActive isAudioRunning=$isAudioRunning recState=${ar.recordingState})")
         }

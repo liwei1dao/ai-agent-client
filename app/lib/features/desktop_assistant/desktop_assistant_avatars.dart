@@ -25,6 +25,28 @@ class DesktopAssistantAvatar {
 }
 
 const List<DesktopAssistantAvatar> kDesktopAssistantAvatars = [
+  // —— 2026-06 新增精选角色（来源与许可证见各行注释）——
+  // 浅蓝微笑悬浮小机器人，3s 无缝待机循环。LottieFiles 免费动画
+  // （Lottie Simple License，免费可商用、无需署名）。
+  DesktopAssistantAvatar(
+      key: 'cutebot', asset: 'assets/lottie/cute_bot.json', label: '波比'),
+  // 圆滚滚小幽灵：漂浮+眨眼+吐舌。Google Noto Animated Emoji（CC BY 4.0，
+  // 可商用，需在「关于」页署名 Google）。
+  DesktopAssistantAvatar(
+      key: 'ghost', asset: 'assets/lottie/ghost.json', label: '小幽'),
+  // 橘色猫脸：眨眼+耳朵抖动，满画幅构图最贴圆形气泡。Google Noto Animated
+  // Emoji（CC BY 4.0，同上需署名）。
+  DesktopAssistantAvatar(
+      key: 'cat', asset: 'assets/lottie/cat_face.json', label: '橘喵'),
+  // 扁平卡通小鸡 1s 短循环舞蹈，动作幅度大、存在感强。airbnb/lottie-android
+  // 样例资源（Apache-2.0）。
+  DesktopAssistantAvatar(
+      key: 'chicken', asset: 'assets/lottie/chicken.json', label: '跳跳鸡'),
+  // 呆萌多眼小外星人：星星眼轮流闪烁，深紫主体与品牌色同色系。
+  // LottieFiles/dotlottie-web 测试资源（MIT）。
+  DesktopAssistantAvatar(
+      key: 'alien', asset: 'assets/lottie/alien.json', label: '星宝'),
+  // —— 旧形象 ——
   DesktopAssistantAvatar(
       key: 'robot', asset: 'assets/lottie/assistant.json', label: '小安'),
   DesktopAssistantAvatar(
@@ -46,7 +68,7 @@ const List<DesktopAssistantAvatar> kDesktopAssistantAvatars = [
 ];
 
 /// 默认形象 key。
-const String kDefaultDesktopAssistantAvatar = 'robot';
+const String kDefaultDesktopAssistantAvatar = 'cutebot';
 
 /// 按 key 取形象；找不到回退到第一个。
 DesktopAssistantAvatar desktopAssistantAvatarByKey(String? key) {

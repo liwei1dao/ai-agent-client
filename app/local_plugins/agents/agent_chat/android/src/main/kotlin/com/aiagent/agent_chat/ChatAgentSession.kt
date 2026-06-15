@@ -264,33 +264,38 @@ class ChatAgentSession : NativeAgent {
                 }
             }
 
-            // Write user message to DB
+            // Write user + placeholder assistant message。
+            // 落库失败（如 agentId 对应的 agent 记录不存在 → 外键约束失败）只放弃
+            // 本轮，绝不让异常逃逸到 scope.launch 成为未捕获异常崩溃整个 app。
             val now = System.currentTimeMillis()
-            db.messageDao().insert(
-                MessageEntity(
-                    id = requestId,
-                    agentId = config.agentId,
-                    role = "user",
-                    content = text,
-                    status = "done",
-                    createdAt = now,
-                    updatedAt = now,
-                )
-            )
-
-            // Write placeholder assistant message
             val assistantId = UUID.randomUUID().toString()
-            db.messageDao().insert(
-                MessageEntity(
-                    id = assistantId,
-                    agentId = config.agentId,
-                    role = "assistant",
-                    content = "",
-                    status = "pending",
-                    createdAt = now + 1,
-                    updatedAt = now + 1,
+            try {
+                db.messageDao().insert(
+                    MessageEntity(
+                        id = requestId,
+                        agentId = config.agentId,
+                        role = "user",
+                        content = text,
+                        status = "done",
+                        createdAt = now,
+                        updatedAt = now,
+                    )
                 )
-            )
+                db.messageDao().insert(
+                    MessageEntity(
+                        id = assistantId,
+                        agentId = config.agentId,
+                        role = "assistant",
+                        content = "",
+                        status = "pending",
+                        createdAt = now + 1,
+                        updatedAt = now + 1,
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "persist message failed (agentId=${config.agentId}): ${e.message}")
+                return@launch
+            }
 
             // ── LLM 推理（流式）+ 句级 TTS 队列 ──
             transitionTo(State.LLM)

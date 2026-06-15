@@ -1,6 +1,9 @@
 package com.yunyan.unihelper
 
+import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -37,6 +40,10 @@ class MainActivity : FlutterActivity() {
                         val r = pendingRoute
                         pendingRoute = null
                         result.success(r)
+                    }
+                    "openKeepAliveSettings" -> {
+                        openKeepAliveSettings()
+                        result.success(true)
                     }
                     else -> result.notImplemented()
                 }
@@ -81,5 +88,53 @@ class MainActivity : FlutterActivity() {
 
     private fun consumeRouteFromIntent(intent: Intent?) {
         intent?.getStringExtra(EXTRA_ROUTE)?.let { pendingRoute = it }
+    }
+
+    /**
+     * 引导用户进入「自启动 / 后台运行」管理页。国产 ROM 各家入口不同，逐个尝试
+     * 主流厂商的自启动 Activity，全部不可用时回退到应用详情页（用户从那里手动找
+     * 「自启动 / 省电策略 / 后台运行」）。电池优化白名单在 Dart 侧用
+     * permission_handler 另行请求。
+     */
+    private fun openKeepAliveSettings() {
+        val candidates = listOf(
+            // 小米 MIUI / HyperOS
+            ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+            // 华为 EMUI / HarmonyOS
+            ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+            ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"),
+            // OPPO ColorOS
+            ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+            ComponentName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"),
+            ComponentName("com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"),
+            // vivo Funtouch / OriginOS
+            ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+            ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity"),
+            // 魅族 Flyme
+            ComponentName("com.meizu.safe", "com.meizu.safe.security.SHOW_APPSEC"),
+            // 一加 OnePlus
+            ComponentName("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"),
+        )
+        for (cn in candidates) {
+            try {
+                startActivity(Intent().apply {
+                    component = cn
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+                return
+            } catch (_: Exception) {
+                // 该厂商组件不存在 / 无权限，继续尝试下一个
+            }
+        }
+        // 全部失败：回退到应用详情页，用户从那里手动进入自启动 / 后台运行设置。
+        try {
+            startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", packageName, null),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (_: Exception) {
+        }
     }
 }

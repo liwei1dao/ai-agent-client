@@ -31,6 +31,15 @@ class AgentsServerPlugin : FlutterPlugin {
     private lateinit var eventChannel: EventChannel
     private var eventSinkStream: EventChannel.EventSink? = null
 
+    /**
+     * 本插件实例（= 本 FlutterEngine）注册到 Service 的事件回调引用。
+     * 进程内可能存在多个 engine（主 app + 悬浮窗）共享同一单例 Service，必须保留
+     * 自己的回调引用以便 detach 时精确注销，不能用单变量覆盖（详见 Service 注释）。
+     */
+    private val eventCallback: (Map<String, Any?>) -> Unit = { data ->
+        mainScope.launch { eventSinkStream?.success(data) }
+    }
+
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var context: Context
 
@@ -180,7 +189,7 @@ class AgentsServerPlugin : FlutterPlugin {
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
-        service?.eventCallback = null
+        service?.removeEventCallback(eventCallback)
         if (isBound) {
             context.unbindService(serviceConnection)
             isBound = false
@@ -196,14 +205,13 @@ class AgentsServerPlugin : FlutterPlugin {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             service = (binder as AgentsServerService.LocalBinder).getService()
             isBound = true
-            // 设置事件回调：Service → Plugin → EventChannel → Flutter
-            service?.eventCallback = { data ->
-                mainScope.launch { eventSinkStream?.success(data) }
-            }
+            // 注册事件回调：Service → Plugin → EventChannel → Flutter。
+            // 用 add 而非赋值，避免多 engine 场景下相互覆盖（详见 Service 注释）。
+            service?.addEventCallback(eventCallback)
             Log.d(TAG, "Service bound")
         }
         override fun onServiceDisconnected(name: ComponentName?) {
-            service?.eventCallback = null
+            service?.removeEventCallback(eventCallback)
             service = null
             isBound = false
             Log.d(TAG, "Service unbound")

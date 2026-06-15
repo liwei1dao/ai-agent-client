@@ -2,26 +2,18 @@ import 'package:device_manager/device_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:local_db/local_db.dart';
 
 import '../../../core/services/config_service.dart';
 import '../../../core/services/device_service.dart';
 import '../../../shared/themes/app_theme.dart';
-import '../../agents/providers/agent_list_provider.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.appColors;
     final config = ref.watch(configServiceProvider);
-    final agents = ref.watch(agentListProvider);
     final sessionAsync = ref.watch(activeDeviceSessionProvider);
-
-    final defaultChat = _findAgent(agents, config.defaultChatAgentId);
-    final defaultTranslate =
-        _findAgent(agents, config.defaultTranslateAgentId);
 
     return Scaffold(
       appBar: AppBar(
@@ -40,51 +32,12 @@ class HomeScreen extends ConsumerWidget {
             onTap: () => context.push('/devices'),
           ),
           const _SectionLabel('快捷入口'),
-          _QuickEntryCard(
-            icon: Icons.chat_bubble_outline,
-            iconColor: AppTheme.primary,
-            label: '默认聊天',
-            agent: defaultChat,
-            emptyHint: '请在设置中选择默认聊天 Agent',
-            onTap: defaultChat == null
-                ? null
-                : () => context.push('/agent/${defaultChat.id}/chat'),
-          ),
-          const SizedBox(height: 8),
-          _QuickEntryCard(
-            icon: Icons.translate_outlined,
-            iconColor: const Color(0xFF10B981),
-            label: '默认翻译',
-            agent: defaultTranslate,
-            emptyHint: '请在设置中选择默认翻译 Agent',
-            onTap: defaultTranslate == null
-                ? null
-                : () => context.push('/agent/${defaultTranslate.id}/translate'),
-          ),
-          const SizedBox(height: 8),
           _CallTranslateEntry(onTap: () => context.push('/call-translate')),
           const SizedBox(height: 8),
           _AssistantEntry(onTap: () => context.push('/ai-assistant')),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              '提示：耳机端唤醒后会自动启动「默认聊天」；'
-              '若耳机支持翻译键，则启动「默认翻译」。',
-              style: TextStyle(fontSize: 12, color: colors.text2),
-            ),
-          ),
         ],
       ),
     );
-  }
-
-  AgentDto? _findAgent(List<AgentDto> list, String? id) {
-    if (id == null) return null;
-    for (final a in list) {
-      if (a.id == id) return a;
-    }
-    return null;
   }
 }
 
@@ -211,93 +164,6 @@ class _DeviceCard extends StatelessWidget {
         DeviceConnectionState.ready => '已连接',
         DeviceConnectionState.disconnecting => '断开中…',
       };
-}
-
-class _QuickEntryCard extends StatelessWidget {
-  const _QuickEntryCard({
-    required this.icon,
-    required this.iconColor,
-    required this.label,
-    required this.agent,
-    required this.emptyHint,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final Color iconColor;
-  final String label;
-  final AgentDto? agent;
-  final String emptyHint;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final hasAgent = agent != null;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: iconColor, size: 22),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: colors.text2,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      hasAgent ? agent!.name : emptyHint,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: hasAgent ? colors.text1 : colors.text2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                hasAgent ? Icons.play_circle_outline : Icons.tune,
-                color: hasAgent ? iconColor : colors.text2,
-                size: 26,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _CallTranslateEntry extends StatelessWidget {

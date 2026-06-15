@@ -16,8 +16,13 @@ class AgentListNotifier extends StateNotifier<List<AgentDto>> {
   final _db = LocalDbBridge();
   final _uuid = const Uuid();
 
+  /// 内部占位 agent，不对用户展示。`desktop_pet` 是桌面悬浮助理
+  /// （OverlayAssistantSession.sessionId）落库 message 时的外键占位记录。
+  static const _hiddenAgentIds = {'desktop_pet'};
+
   Future<void> _load() async {
-    state = await _db.getAllAgents();
+    final all = await _db.getAllAgents();
+    state = all.where((a) => !_hiddenAgentIds.contains(a.id)).toList();
   }
 
   Future<void> reload() => _load();
