@@ -1,4 +1,8 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_db/local_db.dart';
 
@@ -6,6 +10,8 @@ import '../../../core/services/config_service.dart';
 import '../../../core/services/locale_service.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../../agents/providers/agent_list_provider.dart';
+import '../../desktop_assistant/overlay/overlay_sync.dart';
+import '../../desktop_assistant/overlay_bus.dart';
 import '../providers/assistant_chat_provider.dart';
 
 /// AI 助理界面（聊天气泡风格）。
@@ -26,15 +32,53 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _configExpanded = true;
 
+  /// 悬浮窗桌宠侧的会话状态（经 shareData 同步而来）；用于让本界面的「连接/挂断」
+  /// 与桌宠保持一致：桌宠在通话时本界面也显示「挂断」，且能直接挂断它。
+  OverlaySessionState _remotePet = OverlaySessionState.idle;
+  OverlaySessionState _lastBroadcast = OverlaySessionState.idle;
+  StreamSubscription? _overlaySub;
+
+  bool get _overlayCapable =>
+      defaultTargetPlatform == TargetPlatform.android;
+
   @override
   void initState() {
     super.initState();
     _controller = AssistantChatController();
     _controller.addListener(_onControllerChanged);
+    if (_overlayCapable) {
+      // 经 OverlayBus 订阅（底层 overlayListener 是单订阅流，app.dart 已占用，
+      // 必须共用广播总线，否则二次 listen 会抛异常）。
+      _overlaySub = OverlayBus.instance.stream.listen(_onPetMessage);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 打开即加载该 agent 的历史对话（含桌宠刚聊的内容）。
+      _loadHistory();
+      // 请求桌宠回播当前状态（桌宠可能正在通话）。
+      if (_overlayCapable) {
+        try {
+          FlutterOverlayWindow.shareData(OverlaySyncMsg.syncRequest);
+        } catch (_) {}
+      }
+    });
+  }
+
+  Future<void> _loadHistory() async {
+    final id = ref.read(configServiceProvider).defaultAssistantAgentId;
+    if (id != null) await _controller.loadHistory(id);
   }
 
   @override
   void dispose() {
+    // 离开界面前告知桌宠本界面已不再持有会话（本界面会话随 controller.dispose
+    // 一并 stopAgent，状态需同步给桌宠以免它一直显示「通话中」）。
+    if (_overlayCapable) {
+      try {
+        FlutterOverlayWindow.shareData(
+            OverlaySyncMsg.state(OverlaySessionState.idle));
+      } catch (_) {}
+    }
+    _overlaySub?.cancel();
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     _scrollController.dispose();
@@ -45,6 +89,61 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     if (!mounted) return;
     setState(() {});
     _scrollToBottom();
+    _broadcastState();
+    // 自身会话状态变化后重新评估是否该被动镜像桌宠（如自己挂断后桌宠仍在通话）。
+    _syncPassiveMirror();
+  }
+
+  /// 桌宠持有会话、本界面自己未通话 → 被动镜像桌宠会话，让聊天内容面板也实时同步
+  /// （不只是连接状态）；否则退出镜像（自己接管会话 / 桌宠已挂断）。幂等，可重复调。
+  void _syncPassiveMirror() {
+    if (!_overlayCapable) return;
+    final petBusy = _remotePet == OverlaySessionState.active ||
+        _remotePet == OverlaySessionState.starting;
+    final selfBusy = _controller.isActive || _controller.isStarting;
+    if (petBusy && !selfBusy) {
+      final id = ref.read(configServiceProvider).defaultAssistantAgentId;
+      if (id != null) _controller.startPassive(id);
+    } else {
+      _controller.stopPassive();
+    }
+  }
+
+  /// 本界面会话的粗粒度状态。
+  OverlaySessionState get _ownState => _controller.isActive
+      ? OverlaySessionState.active
+      : (_controller.isStarting
+          ? OverlaySessionState.starting
+          : OverlaySessionState.idle);
+
+  /// 状态变化时广播给桌宠（默认仅在变化时发，避免流式 notify 刷屏；[force] 用于
+  /// 响应桌宠的 sync 请求）。
+  void _broadcastState({bool force = false}) {
+    if (!_overlayCapable) return;
+    final s = _ownState;
+    if (!force && s == _lastBroadcast) return;
+    _lastBroadcast = s;
+    try {
+      FlutterOverlayWindow.shareData(OverlaySyncMsg.state(s));
+    } catch (_) {}
+  }
+
+  /// 收到桌宠的消息：状态同步 / 要求本界面挂断 / 请求回播状态。
+  void _onPetMessage(dynamic event) {
+    if (event is! String || event.isEmpty || !mounted) return;
+    final st = OverlaySyncMsg.parseState(event);
+    if (st != null) {
+      if (_remotePet != st) setState(() => _remotePet = st);
+      // 桌宠开始/结束通话 → 进入/退出被动镜像，让聊天内容实时同步。
+      _syncPassiveMirror();
+      return;
+    }
+    if (event == OverlaySyncMsg.hangup) {
+      if (_controller.isActive || _controller.isStarting) _controller.stop();
+    } else if (event == OverlaySyncMsg.syncRequest) {
+      // 桌宠（刚启动）请求本界面状态 → 强制回播一次。
+      _broadcastState(force: true);
+    }
   }
 
   // ─── lifecycle ──────────────────────────────────────────────────────────
@@ -78,8 +177,18 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     }
   }
 
-  Future<void> _stop() async {
-    await _controller.stop();
+  /// 挂断：本界面持有会话则停自己；否则（桌宠持有）请求桌宠挂断。
+  Future<void> _hangup() async {
+    if (_controller.isActive || _controller.isStarting) {
+      await _controller.stop();
+    } else if (_remotePet != OverlaySessionState.idle) {
+      if (_overlayCapable) {
+        try {
+          FlutterOverlayWindow.shareData(OverlaySyncMsg.hangup);
+        } catch (_) {}
+      }
+      setState(() => _remotePet = OverlaySessionState.idle);
+    }
   }
 
   void _scrollToBottom() {
@@ -140,9 +249,14 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     final agent = _findAgent(agents, config.defaultAssistantAgentId);
     final userLang = config.defaultAssistantUserLanguage;
 
-    final isActive = _controller.isActive;
+    // 有效状态 = 本界面会话 或 桌宠会话（任一在通话 → 统一显示「通话中/挂断」）。
+    final localBusy = _controller.isStarting;
+    final remoteActive = _remotePet == OverlaySessionState.active;
+    final remoteBusy = _remotePet == OverlaySessionState.starting;
+    final isActive = _controller.isActive || remoteActive;
+    final isBusy = localBusy || remoteBusy;
     final canStart = !isActive &&
-        !_controller.isStarting &&
+        !isBusy &&
         agent != null &&
         userLang != null;
 
@@ -178,7 +292,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
               right: 0,
               bottom: 20,
               child: Center(
-                child: _buildFloatingActionButton(canStart, isActive),
+                child: _buildFloatingActionButton(canStart, isActive, isBusy),
               ),
             ),
           ],
@@ -344,16 +458,18 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     );
   }
 
-  Widget _buildFloatingActionButton(bool canStart, bool isActive) {
-    final bool busy = _controller.isStarting;
-    final bool enabled = isActive ? !busy : (canStart && !busy);
+  Widget _buildFloatingActionButton(
+      bool canStart, bool isActive, bool busy) {
+    // active 时永远可挂断；非 active 时连接中(busy)不可点，仅就绪可发起。
+    final bool enabled = isActive ? true : (canStart && !busy);
     final Color bg = isActive
         ? const Color(0xFFEF4444)
         : (enabled ? const Color(0xFF10B981) : const Color(0xFFCBD5E1));
     final IconData icon = isActive ? Icons.call_end : Icons.call;
+    final bool spinner = busy && !isActive;
     final String hint = isActive
-        ? (busy ? '正在停止…' : '挂断')
-        : (busy ? '正在启动…' : '通话');
+        ? '挂断'
+        : (busy ? '正在连接…' : '通话');
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -363,7 +479,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
           shape: const CircleBorder(),
           child: InkWell(
             customBorder: const CircleBorder(),
-            onTap: enabled ? (isActive ? _stop : _start) : null,
+            onTap: enabled ? (isActive ? _hangup : _start) : null,
             child: Container(
               width: 68,
               height: 68,
@@ -378,7 +494,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
                   ),
                 ],
               ),
-              child: busy
+              child: spinner
                   ? const Padding(
                       padding: EdgeInsets.all(22),
                       child: CircularProgressIndicator(

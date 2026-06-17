@@ -8,8 +8,6 @@ import 'package:agents_server/agents_server.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_db/local_db.dart';
 import 'package:share_plus/share_plus.dart';
-import '../../desktop_assistant/desktop_assistant_avatar_screen.dart';
-import '../../desktop_assistant/desktop_assistant_avatars.dart';
 import '../../desktop_assistant/desktop_assistant_controller.dart';
 import 'package:tts_azure/tts_azure.dart';
 import '../../../core/security/config_crypto.dart';
@@ -1411,8 +1409,8 @@ class _DeviceSection extends ConsumerWidget {
     if (Platform.isAndroid) {
       items.add(_DesktopAssistantTile(enabled: config.desktopAssistantEnabled));
       if (config.desktopAssistantEnabled) {
-        items.add(_DesktopAssistantAvatarTile(
-            currentKey: config.desktopAssistantAvatar));
+        // 形象已改为每个聊天 agent 自带（在 agent 配置里设），桌宠跟随 AI 助理当前
+        // 选中的 agent 显示，故此处不再有全局「助理形象」入口。
         items.add(const _DesktopAssistantKeepAliveTile());
       }
     }
@@ -1734,32 +1732,6 @@ class _DesktopAssistantKeepAliveTile extends StatelessWidget {
           await const DesktopAssistantController().openKeepAliveSettings();
         }
       },
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Desktop assistant avatar tile
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _DesktopAssistantAvatarTile extends StatelessWidget {
-  const _DesktopAssistantAvatarTile({required this.currentKey});
-  final String currentKey;
-
-  @override
-  Widget build(BuildContext context) {
-    final avatar = desktopAssistantAvatarByKey(currentKey);
-    return _SettingsTile(
-      badge: const _IconBadge(
-          icon: Icons.face_retouching_natural_outlined,
-          color: Color(0xFFEC4899)),
-      title: '助理形象',
-      subtitle: '当前：${avatar.label}',
-      showChevron: true,
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-            builder: (_) => const DesktopAssistantAvatarScreen()),
-      ),
     );
   }
 }

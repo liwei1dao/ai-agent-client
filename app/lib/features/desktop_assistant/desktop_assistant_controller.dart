@@ -4,9 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:agents_server/agents_server.dart';
-
-import 'overlay/overlay_assistant_session.dart';
 
 /// 桌面悬浮助理的显示控制器（仅 Android）。
 ///
@@ -84,11 +83,16 @@ class DesktopAssistantController {
   Future<void> disable() async {
     if (!_supported) return;
     // 桌宠可能正处于对话中：closeOverlay 直接销毁 overlay engine，不会走它的
-    // dispose，这里按固定 sessionId 防御性收尾，避免 agent 泄漏在前台服务里。
-    // stopAgent 已含 release（native deleteAgent==stopAgent），单次即可。
+    // dispose，这里按浮窗会话用的 agent id（= 默认 agent 真实 id，与 AssistantScreen
+    // 共用）防御性收尾，避免 agent 泄漏在前台服务里继续拾音。stopAgent 已含
+    // release（native deleteAgent==stopAgent），单次即可。
     try {
-      await AgentsServerBridge()
-          .stopAgent(OverlayAssistantSession.sessionId);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final agentId = prefs.getString('default_assistant_agent_id');
+      if (agentId != null) {
+        await AgentsServerBridge().stopAgent(agentId);
+      }
     } catch (_) {}
     if (await FlutterOverlayWindow.isActive()) {
       await FlutterOverlayWindow.closeOverlay();

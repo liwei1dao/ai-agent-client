@@ -45,13 +45,77 @@ class AssistantChatController extends ChangeNotifier {
 
   bool _starting = false;
   bool _active = false;
+  bool _passive = false;
   String? _lastError;
   final List<AssistantBubble> _bubbles = [];
 
   bool get isStarting => _starting;
   bool get isActive => _active;
+
+  /// 是否处于「被动镜像」：会话由对端（桌宠悬浮助理）持有，本控制器只订阅事件流
+  /// 同步聊天内容，不持有 agent。
+  bool get isPassive => _passive;
   String? get lastError => _lastError;
   List<AssistantBubble> get bubbles => List.unmodifiable(_bubbles);
+
+  /// 从本地库加载该 agent 的历史消息作为对话基底。
+  ///
+  /// 浮窗桌宠现在与本界面共用同一个 agent 会话（同一份消息历史），所以这里加载到
+  /// 的内容也包含桌宠刚刚聊过的对话——这是「浮窗 ↔ 界面同步」的关键。界面打开时
+  /// 与每次 [start] 前都会调用。
+  Future<void> loadHistory(String agentId) async {
+    try {
+      final msgs = await LocalDbBridge().getMessages(agentId, limit: 100);
+      _bubbles
+        ..clear()
+        // getMessages 按 createdAt DESC 返回，reversed 还原为时间正序。
+        ..addAll(msgs.reversed
+            .where((m) => m.content.trim().isNotEmpty)
+            .map((m) => AssistantBubble(
+                  id: m.id,
+                  isUser: m.role == 'user',
+                  text: m.content,
+                  streaming: false,
+                )));
+      notifyListeners();
+    } catch (_) {
+      // 历史加载失败不阻塞对话启动。
+    }
+  }
+
+  /// 进入「被动镜像」：对端（桌宠悬浮助理）持有会话时，本控制器订阅同一 agent 的
+  /// 事件流，把 STT / LLM 消息实时映射到聊天面板——让「界面打开着、桌宠正在通话」
+  /// 时聊天内容也实时同步，而不只是连接状态。
+  ///
+  /// 与 [start] 的根本区别：**不** createAgent、**不** stopAgent——会话归对端，本控制
+  /// 器只是旁听者。两者跑在同一 native agent（sessionId = agent.id），事件经 native
+  /// 多 engine fan-out 也会送到主 app 这侧，故订阅同一 sessionId 即可收到。
+  Future<void> startPassive(String agentId) async {
+    if (_active || _starting) return; // 自己（将）持有会话时无需镜像
+    if (_passive && _sessionId == agentId) return; // 已在镜像同一会话
+    await _sub?.cancel();
+    _passive = true;
+    _sessionId = agentId;
+    await loadHistory(agentId);
+    // loadHistory 是异步的，期间可能被 start()/stopPassive 抢断（_passive 置回
+    // false）；若已不再处于本次镜像则放弃订阅，避免覆盖 start() 建立的订阅。
+    if (!_passive || _sessionId != agentId) return;
+    _sub = _bridge.eventStream
+        .where((e) => e.sessionId == agentId)
+        .listen(_handleEvent);
+    notifyListeners();
+  }
+
+  /// 退出被动镜像（仅取消订阅，**绝不** stopAgent——会话是对端持有的）。已加载的
+  /// 气泡保留在面板上。
+  Future<void> stopPassive() async {
+    if (!_passive) return;
+    _passive = false;
+    await _sub?.cancel();
+    _sub = null;
+    _sessionId = null;
+    notifyListeners();
+  }
 
   /// 启动一次 AI 助理通话。[agent] 必须是 chat / sts-chat 类型。
   Future<void> start({
@@ -60,14 +124,23 @@ class AssistantChatController extends ChangeNotifier {
     required List<ServiceConfigDto> services,
   }) async {
     if (_active || _starting) return;
+    // 若正处于被动镜像（对端会话），先退出：会话即将由本界面持有，旧镜像订阅必须
+    // 取消以免对同一事件流重复订阅。只取消订阅，绝不动对端 agent。
+    if (_passive) {
+      _passive = false;
+      await _sub?.cancel();
+      _sub = null;
+    }
     _starting = true;
     _lastError = null;
-    _bubbles.clear();
     notifyListeners();
 
     final sessionId = agent.id;
     _sessionId = sessionId;
     try {
+      // 以持久化历史为基底（含浮窗桌宠刚聊的内容），再在其上追加本次实时消息。
+      await loadHistory(sessionId);
+
       final cfg = AgentConfigBuilder.forChat(
         agent: agent,
         allServices: services,
@@ -163,8 +236,14 @@ class AssistantChatController extends ChangeNotifier {
 
   @override
   void dispose() {
-    // fire-and-forget 释放原生资源。
-    unawaited(_teardown());
+    if (_passive) {
+      // 被动镜像：会话归对端，只取消订阅；绝不 _teardown（它会 stopAgent，把桌宠
+      // 正在用的 agent 杀掉）。
+      _sub?.cancel();
+    } else {
+      // fire-and-forget 释放原生资源。
+      unawaited(_teardown());
+    }
     super.dispose();
   }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
@@ -7,10 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:agents_server/agents_server.dart';
+import 'package:local_db/local_db.dart';
 import 'package:tts_azure/tts_azure.dart';
 
 import 'core/services/config_service.dart';
 import 'core/services/device_service.dart';
+import 'features/agents/providers/agent_list_provider.dart';
 import 'features/agents/screens/agent_panel_screen.dart';
 import 'features/assistant/screens/assistant_screen.dart';
 import 'features/call_translate/screens/call_translate_screen.dart';
@@ -19,6 +22,7 @@ import 'features/chat/screens/translate_screen.dart';
 import 'features/devices/screens/device_ota_screen.dart';
 import 'features/desktop_assistant/desktop_assistant_avatars.dart';
 import 'features/desktop_assistant/desktop_assistant_controller.dart';
+import 'features/desktop_assistant/overlay_bus.dart';
 import 'features/devices/screens/device_screen.dart';
 import 'features/home/screens/home_screen.dart';
 import 'features/services/screens/services_screen.dart';
@@ -101,7 +105,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   static const _navChannel = MethodChannel('desktop_assistant/nav');
   static const _desktopAssistant = DesktopAssistantController();
   bool? _lastDesktopAssistantEnabled;
-  String _currentAvatarKey = kDefaultDesktopAssistantAvatar;
+  String _currentAvatarKey = kHiddenAvatarKey;
   StreamSubscription<dynamic>? _overlaySub;
 
   @override
@@ -112,7 +116,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) => _consumePendingRoute());
     // overlay 启动后发 'ready'（它读不到 config）→ 主 app 回推当前形象 key。
     if (defaultTargetPlatform == TargetPlatform.android) {
-      _overlaySub = FlutterOverlayWindow.overlayListener.listen((event) {
+      // 经 OverlayBus 订阅（底层流单订阅，多个消费者必须共用一份广播）。
+      _overlaySub = OverlayBus.instance.stream.listen((event) {
         if (event == 'ready') {
           FlutterOverlayWindow.shareData(_currentAvatarKey);
         }
@@ -142,6 +147,25 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     } catch (_) {
       // channel 未就绪 / 非 Android：忽略。
     }
+  }
+
+  /// 解析 AI 助理当前 agent 应在桌宠上显示的形象 key。无 agent / 关闭显示 / 配置
+  /// 损坏 → 返回 [kHiddenAvatarKey]（桌宠退回极简图标）。旧 agent 缺字段按「显示 +
+  /// 默认形象」兜底，与 agent 配置表单一致。
+  String _resolveOverlayAvatar(List<AgentDto> agents, String? agentId) {
+    if (agentId == null) return kHiddenAvatarKey;
+    for (final a in agents) {
+      if (a.id != agentId) continue;
+      try {
+        final cfg = jsonDecode(a.configJson) as Map<String, dynamic>;
+        final show = cfg['showAvatar'] as bool? ?? true;
+        if (!show) return kHiddenAvatarKey;
+        return cfg['avatarKey'] as String? ?? kDefaultDesktopAssistantAvatar;
+      } catch (_) {
+        return kHiddenAvatarKey;
+      }
+    }
+    return kHiddenAvatarKey;
   }
 
   /// 跟随配置开关/形象，显示·隐藏·切换桌面悬浮助理（初始值 + 后续变化都触发）。
@@ -180,9 +204,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final appConfig = ref.watch(configServiceProvider);
+    final agents = ref.watch(agentListProvider);
     _syncAudioOutputMode(appConfig.audioOutputMode);
+    // 桌宠形象跟随 AI 助理当前选中的 agent：解析该 agent 配置里的 avatarKey /
+    // showAvatar；切换 agent 或改其形象配置都会经此 build 重新推送给 overlay。
     _syncDesktopAssistant(
-        appConfig.desktopAssistantEnabled, appConfig.desktopAssistantAvatar);
+        appConfig.desktopAssistantEnabled,
+        _resolveOverlayAvatar(agents, appConfig.defaultAssistantAgentId));
     // 触发 DeviceManager 初始化（注册厂商 + 跟随配置切换 vendor）。
     ref.watch(deviceManagerProvider);
     // 自动重连守护：监听远端断开 → 退避重连 lastDeviceId。

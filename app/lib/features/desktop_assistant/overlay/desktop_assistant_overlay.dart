@@ -9,6 +9,7 @@ import 'package:rive/rive.dart' show RiveAnimation;
 
 import '../desktop_assistant_avatars.dart';
 import 'overlay_assistant_session.dart';
+import 'overlay_sync.dart';
 
 /// 桌面悬浮助理形象，跑在 `flutter_overlay_window` 的**独立 overlay isolate**。
 ///
@@ -43,10 +44,47 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
   static const _brand = Color(0xFF6C63FF);
   static const _danger = Color(0xFFEF4444);
 
-  String _avatarKey = kDesktopAssistantAvatars.first.key;
+  // 初值用「不显示」哨兵：主 app 回推真实 key（或显式隐藏）前先按隐藏渲染极简
+  // 图标，避免短暂闪现默认角色。
+  String _avatarKey = kHiddenAvatarKey;
   StreamSubscription? _sub;
   bool _pressed = false;
   late final OverlayAssistantSession _session = OverlayAssistantSession();
+
+  /// 主 app（AssistantScreen）侧会话状态，经 shareData 同步而来。自己没在通话时，
+  /// 桌宠据此镜像显示对方的「通话中 / 连接中」状态，并把单击改为「挂断对方」。
+  OverlaySessionState _remoteState = OverlaySessionState.idle;
+
+  /// 上次广播给主 app 的状态（去重，避免流式 notify 时反复打 channel）。
+  OverlaySessionState _lastBroadcast = OverlaySessionState.idle;
+
+  /// 自己会话的粗粒度状态（广播给主 app）。
+  OverlaySessionState get _ownState => switch (_session.phase) {
+        OverlayAssistantPhase.starting => OverlaySessionState.starting,
+        OverlayAssistantPhase.listening ||
+        OverlayAssistantPhase.speaking =>
+          OverlaySessionState.active,
+        OverlayAssistantPhase.idle ||
+        OverlayAssistantPhase.error =>
+          OverlaySessionState.idle,
+      };
+
+  /// 是否正由「自己」持有会话（自己非待机/出错）。
+  bool get _ownsSession =>
+      _session.phase != OverlayAssistantPhase.idle &&
+      _session.phase != OverlayAssistantPhase.error;
+
+  /// 用于驱动形象动效的有效阶段：自己持有会话时用自己的阶段，否则镜像对方状态。
+  OverlayAssistantPhase get _effectivePhase {
+    if (_ownsSession || _session.phase == OverlayAssistantPhase.error) {
+      return _session.phase;
+    }
+    return switch (_remoteState) {
+      OverlaySessionState.starting => OverlayAssistantPhase.starting,
+      OverlaySessionState.active => OverlayAssistantPhase.listening,
+      OverlaySessionState.idle => OverlayAssistantPhase.idle,
+    };
+  }
 
   /// 入场弹跳；切换形象时 forward(from: 0.55) 复用为一次小弹跳。
   late final AnimationController _entrance = AnimationController(
@@ -68,16 +106,14 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
     super.initState();
     _entrance.forward();
     _session.addListener(_onSessionChanged);
-    // 主 app 推送形象 key；收到即切换，并弹跳一下提示形象已换。
-    _sub = FlutterOverlayWindow.overlayListener.listen((event) {
-      if (event is String && event.isNotEmpty && mounted) {
-        final changed = event != _avatarKey;
-        setState(() => _avatarKey = event);
-        if (changed) _entrance.forward(from: 0.55);
-      }
-    });
+    // 主 app 推送的消息：会话同步协议（带前缀） / 形象 key（裸字符串）。
+    _sub = FlutterOverlayWindow.overlayListener.listen(_onAppMessage);
     // 通知主 app overlay 已就绪 → 主 app 回推当前形象。
     FlutterOverlayWindow.shareData('ready');
+    // 请求主 app 回播会话状态（界面可能正在通话，桌宠需镜像显示）。
+    try {
+      FlutterOverlayWindow.shareData(OverlaySyncMsg.syncRequest);
+    } catch (_) {}
   }
 
   @override
@@ -91,9 +127,57 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
     super.dispose();
   }
 
+  /// 自己会话状态变化：刷新动效 + 把状态广播给主 app（保持两边「连接/挂断」同步）。
   void _onSessionChanged() {
     if (!mounted) return;
-    final phase = _session.phase;
+    _applyAnimations();
+    setState(() {});
+    _broadcastState();
+  }
+
+  /// 收到主 app 的 shareData 消息：先按会话同步协议判前缀，否则当作形象 key。
+  void _onAppMessage(dynamic event) {
+    if (event is! String || event.isEmpty || !mounted) return;
+
+    if (OverlaySyncMsg.isProtocol(event)) {
+      final st = OverlaySyncMsg.parseState(event);
+      if (st != null) {
+        // 主 app 会话状态变化 → 镜像显示。
+        if (_remoteState != st) {
+          setState(() => _remoteState = st);
+          _applyAnimations();
+        }
+      } else if (event == OverlaySyncMsg.hangup) {
+        // 主 app 要求桌宠挂断自己持有的会话。
+        if (_ownsSession || _session.phase == OverlayAssistantPhase.starting) {
+          _session.stop();
+        }
+      } else if (event == OverlaySyncMsg.syncRequest) {
+        // 主 app（刚打开界面）请求当前状态 → 立即强制回播。
+        _broadcastState(force: true);
+      }
+      return;
+    }
+
+    // 形象 key（裸字符串）。
+    final changed = event != _avatarKey;
+    setState(() => _avatarKey = event);
+    if (changed) _entrance.forward(from: 0.55);
+  }
+
+  /// 把自己的会话状态广播给主 app（默认仅在变化时发；[force] 用于响应 sync 请求）。
+  void _broadcastState({bool force = false}) {
+    final s = _ownState;
+    if (!force && s == _lastBroadcast) return;
+    _lastBroadcast = s;
+    try {
+      FlutterOverlayWindow.shareData(OverlaySyncMsg.state(s));
+    } catch (_) {}
+  }
+
+  /// 漂浮/波纹动效跟随**有效阶段**（自己的或镜像对方的）。
+  void _applyAnimations() {
+    final phase = _effectivePhase;
     // 漂浮节奏跟随状态：越"兴奋"动得越快。repeat() 从当前值续跑，不会跳变。
     _idle.duration = Duration(
         milliseconds: switch (phase) {
@@ -110,10 +194,20 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
       _ripple.stop();
       _ripple.reset();
     }
-    setState(() {});
   }
 
   Future<void> _onTap() async {
+    // 对方（主界面）持有会话、自己空闲 → 单击 = 挂断对方（乐观清掉镜像状态）。
+    if (!_ownsSession &&
+        _session.phase != OverlayAssistantPhase.starting &&
+        _remoteState != OverlaySessionState.idle) {
+      try {
+        FlutterOverlayWindow.shareData(OverlaySyncMsg.hangup);
+      } catch (_) {}
+      setState(() => _remoteState = OverlaySessionState.idle);
+      _applyAnimations();
+      return;
+    }
     try {
       await _session.toggle();
     } on OverlayAssistantUnavailable {
@@ -130,18 +224,51 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
     }
   }
 
-  /// 状态提示条文案；null = 不显示。
-  String? get _hint => switch (_session.phase) {
-        OverlayAssistantPhase.starting => '正在连接…',
-        OverlayAssistantPhase.error => _session.lastError ?? '出错了',
-        _ => null,
-      };
+  /// 头顶气泡内容：状态符号 + 文案（text 为 null = 只显示图标）。整体 null = 不显示。
+  ///
+  /// 需求：桌宠**只显示用户说的话**；AI 说话时只显示一个说话图标、不显示回复文字。
+  /// - 连接中：「正在连接…」；
+  /// - 聆听（自己通话）：麦克风符号 + 实时识别文本（无文本时「聆听中…」，明确告知已连上）；
+  /// - 聆听（镜像主界面通话）：麦克风符号 +「通话中…」（拿不到主界面逐字文本）；
+  /// - 说话：仅说话图标，不显示 AI 文字；
+  /// - 出错：红色错误提示。
+  ({String? text, IconData? icon, bool danger, bool italic})? get _head {
+    switch (_effectivePhase) {
+      case OverlayAssistantPhase.starting:
+        return (text: '正在连接…', icon: null, danger: false, italic: true);
+      case OverlayAssistantPhase.error:
+        return (
+          text: _session.lastError ?? '出错了',
+          icon: Icons.error_outline,
+          danger: true,
+          italic: false,
+        );
+      case OverlayAssistantPhase.listening:
+        if (_ownsSession) {
+          final u = _session.userText;
+          return (
+            text: u.isEmpty ? '聆听中…' : u,
+            icon: Icons.mic,
+            danger: false,
+            italic: u.isEmpty,
+          );
+        }
+        return (text: '通话中…', icon: Icons.mic, danger: false, italic: true);
+      case OverlayAssistantPhase.speaking:
+        return (text: null, icon: Icons.graphic_eq, danger: false, italic: false);
+      case OverlayAssistantPhase.idle:
+        return null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // 当前 agent 关闭了「显示虚拟形象」（或无可用 agent）→ 不渲染角色，退回极简
+    // 图标；其余手势 / 状态光环 / 头顶气泡照常。
+    final hidden = _avatarKey == kHiddenAvatarKey;
     final avatar = desktopAssistantAvatarByKey(_avatarKey);
-    final phase = _session.phase;
-    final hint = _hint;
+    final phase = _effectivePhase;
+    final head = _head;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: Scaffold(
@@ -278,30 +405,65 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
                         ),
                       ),
                     ),
-                    // 状态提示条（连接中 / 错误），常态不占视觉。
-                    if (hint != null)
+                    // 头顶气泡：状态符号 + 用户识别文本（说话时仅图标）。待机不显示。
+                    if (head != null)
                       Positioned(
                         top: 0,
+                        left: 0,
+                        right: 0,
                         child: IgnorePointer(
-                          child: Container(
-                            constraints: BoxConstraints(maxWidth: s - 8),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: phase == OverlayAssistantPhase.error
-                                  ? const Color(0xCCB91C1C)
-                                  : const Color(0xB3000000),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              hint,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  decoration: TextDecoration.none),
-                            ),
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: Builder(builder: (_) {
+                              final hasText =
+                                  head.text != null && head.text!.isNotEmpty;
+                              return Container(
+                                constraints: BoxConstraints(maxWidth: s - 8),
+                                padding: hasText
+                                    ? const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 6)
+                                    : const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: head.danger
+                                      ? const Color(0xD6B91C1C)
+                                      : const Color(0xD61A1A1A),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    if (head.icon != null) ...[
+                                      Icon(
+                                        head.icon,
+                                        size: hasText ? 13 : 18,
+                                        color: head.danger
+                                            ? Colors.white
+                                            : const Color(0xFFB7B1FF),
+                                      ),
+                                      if (hasText) const SizedBox(width: 5),
+                                    ],
+                                    if (hasText)
+                                      Flexible(
+                                        child: Text(
+                                          head.text!,
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            height: 1.25,
+                                            fontStyle: head.italic
+                                                ? FontStyle.italic
+                                                : FontStyle.normal,
+                                            decoration: TextDecoration.none,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }),
                           ),
                         ),
                       ),
@@ -316,21 +478,46 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
                   opacity: anim,
                   child: ScaleTransition(scale: anim, child: child),
                 ),
-                child: KeyedSubtree(
-                  key: ValueKey(avatar.key),
-                  child: avatar.isRive
-                      ? RiveAnimation.asset(avatar.asset, fit: BoxFit.contain)
-                      : Lottie.asset(
-                          avatar.asset,
-                          fit: BoxFit.contain,
-                          repeat: true,
-                          // 资源加载失败时给个可见兜底，避免空白。
-                          errorBuilder: (_, __, ___) => const Icon(
-                              Icons.smart_toy,
-                              size: 64,
-                              color: Color(0xFF6C5CE7)),
+                child: hidden
+                    // 「不显示形象」：极简圆形图标，仍可单击发起对话 / 长按进 app。
+                    ? KeyedSubtree(
+                        key: const ValueKey(kHiddenAvatarKey),
+                        child: Center(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _brand.withValues(alpha: 0.14),
+                              border: Border.all(
+                                  color: _brand.withValues(alpha: 0.55),
+                                  width: 2),
+                            ),
+                            child: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Icon(Icons.smart_toy,
+                                    size: 48, color: _brand),
+                              ),
+                            ),
+                          ),
                         ),
-                ),
+                      )
+                    : KeyedSubtree(
+                        key: ValueKey(avatar.key),
+                        child: avatar.isRive
+                            ? RiveAnimation.asset(avatar.asset,
+                                fit: BoxFit.contain)
+                            : Lottie.asset(
+                                avatar.asset,
+                                fit: BoxFit.contain,
+                                repeat: true,
+                                // 资源加载失败时给个可见兜底，避免空白。
+                                errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.smart_toy,
+                                    size: 64,
+                                    color: Color(0xFF6C5CE7)),
+                              ),
+                      ),
               ),
             ),
           );

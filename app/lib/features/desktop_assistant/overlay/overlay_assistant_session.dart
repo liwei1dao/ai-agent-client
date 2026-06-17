@@ -48,15 +48,14 @@ class _Cancelled implements Exception {
 /// - 配置自取：SharedPreferences（默认 agent/语言；进程级共享，读前 reload
 ///   防主 app 改完配置这边读到陈值）+ LocalDbBridge（agent/服务配置，走
 ///   native SQLite，跨 engine 天然共享）；
-/// - sessionId 固定 [sessionId]，与主界面会话（agent.id）隔离；主 app 关闭
-///   浮窗时也按此 id 防御性收尾（overlay engine 被销毁不会走 dispose）；
-/// - 不收集对话文本，只产出驱动形象动效的 [phase]。
+/// - sessionId **复用默认 agent 的真实 id**（不再用独立的 desktop_pet），所以浮窗
+///   与主界面 AssistantScreen 是**同一段对话、同一份消息历史**：native 把每轮消息
+///   落库到该 agent，AssistantScreen 打开时加载历史即可看到桌宠刚聊的内容；
+/// - 除了驱动形象动效的 [phase]，还产出头顶展示用的识别文本 [userText] 与
+///   AI 回复 [aiText]。
 class OverlayAssistantSession extends ChangeNotifier {
   OverlayAssistantSession({AgentsServerBridge? bridge})
       : _bridge = bridge ?? AgentsServerBridge();
-
-  /// 桌宠会话的固定 agent 实例 id。
-  static const String sessionId = 'desktop_pet';
 
   final AgentsServerBridge _bridge;
   StreamSubscription<AgentEvent>? _sub;
@@ -64,11 +63,27 @@ class OverlayAssistantSession extends ChangeNotifier {
   Timer? _errorReset;
   bool _cancelRequested = false;
 
+  /// 本次会话使用的 agent id（= 默认 agent 的真实 id）；start() 时确定。
+  String? _sessionId;
+
   OverlayAssistantPhase _phase = OverlayAssistantPhase.idle;
   String? _lastError;
 
+  // 头顶展示用的对话文本。用户识别文本拆成「已定稿(committed) + 当前句(current)」
+  // 两段（遵循 STT §3.1 覆盖/累加语义）；AI 回复按 requestId 累积。
+  String _sttCommitted = '';
+  String _sttCurrent = '';
+  String _aiText = '';
+  String _aiRequestId = '';
+
   OverlayAssistantPhase get phase => _phase;
   String? get lastError => _lastError;
+
+  /// 用户最新识别文本（头顶气泡展示）。
+  String get userText => (_sttCommitted + _sttCurrent).trim();
+
+  /// AI 最新回复文本（头顶气泡展示）。
+  String get aiText => _aiText.trim();
 
   bool get _isActive =>
       _phase == OverlayAssistantPhase.listening ||
@@ -100,6 +115,7 @@ class OverlayAssistantSession extends ChangeNotifier {
     _errorReset?.cancel();
     _lastError = null;
     _cancelRequested = false;
+    _resetTranscript();
     _setPhase(OverlayAssistantPhase.starting);
     try {
       // 权限申请对话框需要 Activity，overlay isolate 弹不出来 → 没权限只能
@@ -135,27 +151,19 @@ class OverlayAssistantSession extends ChangeNotifier {
         inputMode: 'call',
       ).build();
 
-      // native ChatAgentSession 落库每轮 message 时，agentId 外键指向 agents
-      // 表（onDelete CASCADE）。桌宠用固定 [sessionId] 作 agentId，必须先在库里
-      // 放一条同 id 的占位记录，否则首条 message 插入即触发 FOREIGN KEY 约束
-      // 失败、未捕获异常崩溃整个 app。configJson 仅 Dart UI 读取，给空对象即可；
-      // 该 id 在 agentListProvider 中被过滤，不对用户可见。
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
-      await LocalDbBridge().upsertAgent(AgentDto(
-        id: sessionId,
-        name: '桌面助理',
-        type: agent.type,
-        configJson: '{}',
-        createdAt: nowMs,
-        updatedAt: nowMs,
-      ));
+      // 复用默认 agent 的真实 id：浮窗与主界面 AssistantScreen 是同一段会话、同一份
+      // 消息历史。native 落库每轮 message 的 agentId 外键指向 agents 表，该 agent
+      // 已在库（用户创建过、上面也校验过存在），外键天然满足——无需占位记录，也
+      // 不会污染用户可见列表。
+      final sid = agent.id;
+      _sessionId = sid;
 
       _sub = _bridge.eventStream
-          .where((e) => e.sessionId == sessionId)
+          .where((e) => e.sessionId == sid)
           .listen(_onEvent);
 
       await _bridge.createAgent(
-        agentId: sessionId,
+        agentId: sid,
         agentType: agent.type,
         inputMode: 'call',
         sttVendor: cfg['sttVendor'] as String?,
@@ -178,7 +186,7 @@ class OverlayAssistantSession extends ChangeNotifier {
 
       // connectService 后必派发恰好一次 AgentReadyEvent（同主界面链路）。
       _ready = Completer<bool>();
-      await _bridge.connectService(sessionId);
+      await _bridge.connectService(sid);
       final ok = await _ready!.future
           .timeout(const Duration(seconds: 20), onTimeout: () => false);
       if (_cancelRequested) throw const _Cancelled();
@@ -186,7 +194,7 @@ class OverlayAssistantSession extends ChangeNotifier {
         throw Exception(_lastError ?? '连接超时');
       }
 
-      await _bridge.setInputMode(sessionId, 'call');
+      await _bridge.setInputMode(sid, 'call');
       _setPhase(OverlayAssistantPhase.listening);
     } on OverlayAssistantUnavailable {
       await _teardown();
@@ -210,24 +218,36 @@ class OverlayAssistantSession extends ChangeNotifier {
   }
 
   Future<void> _teardown() async {
-    // 逐个 best-effort 释放（与主界面 AssistantChatController 一致）。
-    try {
-      await _bridge.stopListening(sessionId);
-    } catch (_) {}
-    try {
-      await _bridge.interrupt(sessionId);
-    } catch (_) {}
-    try {
-      await _bridge.disconnectService(sessionId);
-    } catch (_) {}
-    try {
-      await _bridge.stopAgent(sessionId);
-    } catch (_) {}
-    try {
-      await _bridge.deleteAgent(sessionId);
-    } catch (_) {}
+    final id = _sessionId;
+    if (id != null) {
+      // 逐个 best-effort 释放（与主界面 AssistantChatController 一致）。
+      try {
+        await _bridge.stopListening(id);
+      } catch (_) {}
+      try {
+        await _bridge.interrupt(id);
+      } catch (_) {}
+      try {
+        await _bridge.disconnectService(id);
+      } catch (_) {}
+      try {
+        await _bridge.stopAgent(id);
+      } catch (_) {}
+      try {
+        await _bridge.deleteAgent(id);
+      } catch (_) {}
+    }
     await _sub?.cancel();
     _sub = null;
+    _sessionId = null;
+    _resetTranscript();
+  }
+
+  void _resetTranscript() {
+    _sttCommitted = '';
+    _sttCurrent = '';
+    _aiText = '';
+    _aiRequestId = '';
   }
 
   @override
@@ -279,12 +299,61 @@ class OverlayAssistantSession extends ChangeNotifier {
             break;
         }
 
+      case SttEvent(:final kind, :final text):
+        _handleStt(kind, text);
+
+      case LlmEvent(:final kind, :final textDelta, :final requestId, :final fullText):
+        _handleLlm(kind, textDelta, requestId, fullText);
+
       case AgentErrorEvent(:final errorCode, :final message):
         _lastError = '[$errorCode] $message';
         _completeReady(false);
 
       default:
         break;
+    }
+  }
+
+  /// 识别文本 → 头顶气泡。partial 覆盖当前句、final 累加（STT §3.1）；当上一轮
+  /// AI 已回复后收到新的识别文本，视作新一轮，先清掉上轮文本。
+  void _handleStt(SttEventKind kind, String? text) {
+    if (kind != SttEventKind.partialResult &&
+        kind != SttEventKind.finalResult) {
+      return;
+    }
+    final t = text ?? '';
+    if (t.isEmpty) return;
+    if (_aiText.isNotEmpty) {
+      _sttCommitted = '';
+      _sttCurrent = '';
+      _aiText = '';
+      _aiRequestId = '';
+    }
+    if (kind == SttEventKind.partialResult) {
+      _sttCurrent = t;
+    } else {
+      _sttCommitted += t;
+      _sttCurrent = '';
+    }
+    notifyListeners();
+  }
+
+  /// AI 回复文本 → 头顶气泡。按 requestId 区分轮次：新轮次重置，同轮 append。
+  void _handleLlm(
+      LlmEventKind kind, String? textDelta, String requestId, String? fullText) {
+    if (kind == LlmEventKind.firstToken && textDelta != null) {
+      if (requestId != _aiRequestId) {
+        _aiRequestId = requestId;
+        _aiText = textDelta;
+      } else {
+        _aiText += textDelta;
+      }
+      notifyListeners();
+    } else if (kind == LlmEventKind.done) {
+      if (_aiText.isEmpty && (fullText ?? '').isNotEmpty) {
+        _aiText = fullText!;
+        notifyListeners();
+      }
     }
   }
 

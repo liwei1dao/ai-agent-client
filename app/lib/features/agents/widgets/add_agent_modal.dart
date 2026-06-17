@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_db/local_db.dart';
+import 'package:lottie/lottie.dart';
+import 'package:rive/rive.dart' show RiveAnimation;
 import '../../../core/services/locale_service.dart';
 import '../../../shared/themes/app_theme.dart';
+import '../../desktop_assistant/desktop_assistant_avatars.dart';
 import '../providers/agent_list_provider.dart';
 import '../../services/providers/service_library_provider.dart';
 
@@ -39,6 +42,11 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
 
   // LLM 深度思考开关（chat 类型；覆盖 LLM 服务自身配置）
   bool _enableThinking = false;
+
+  // 虚拟形象（chat / sts-chat 类型）：是否显示 + 选中的形象 key。AI 助理选中本
+  // agent 时，桌面悬浮助理（桌宠）按此显示对应形象，关闭则不显示角色。
+  bool _showAvatar = true;
+  String? _avatarKey;
 
   // 音频配置（每个 Agent 独立）
   bool _vadEnabled = true;
@@ -85,6 +93,10 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
       _silenceTimeout = cfg['silenceTimeout'] as int? ?? 3;
       _speechMinDuration = cfg['speechMinDuration'] as int? ?? 300;
       _enableThinking = cfg['enableThinking'] as bool? ?? false;
+      // 旧 agent 缺字段时兜底为「显示 + 默认形象」，升级后桌宠仍有形象，不突兀。
+      _showAvatar = cfg['showAvatar'] as bool? ?? true;
+      _avatarKey =
+          cfg['avatarKey'] as String? ?? kDefaultDesktopAssistantAvatar;
       _promptCtrl = TextEditingController(
           text: cfg['systemPrompt'] as String? ??
               '你是一位专业的 AI 助手，请简洁准确地回答用户问题。');
@@ -119,6 +131,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
       _tags = [];
       _mcpIds = [];
       _promptCtrl = TextEditingController(text: '你是一位专业的 AI 助手，请简洁准确地回答用户问题。');
+      _avatarKey = kDefaultDesktopAssistantAvatar;
       _srcLangs = {'auto', 'zh-CN', 'en-US'};
       _dstLangs = {'en-US'};
     }
@@ -406,6 +419,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                     )),
                     const SizedBox(height: 6),
                     _addMcpButton(AppTheme.primary, AppTheme.primaryLight),
+                    _buildAvatarSection(),
                   ],
 
                   // ══════════════════════════════════════════════════════════
@@ -483,6 +497,7 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
                     )),
                     const SizedBox(height: 6),
                     _addMcpButton(const Color(0xFFB45309), const Color(0xFFFFFBEB)),
+                    _buildAvatarSection(),
                   ],
 
                   // ══════════════════════════════════════════════════════════
@@ -833,6 +848,107 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
 
   // ── Config & validation ─────────────────────────────────────────────────────
 
+  /// 虚拟形象区（chat / sts-chat 共用）：「显示虚拟形象」开关 + 横向形象选择器。
+  /// 开关关闭时只显示开关；开启时下方横滑选择形象，桌宠跟随当前 agent 显示。
+  Widget _buildAvatarSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppTheme.bgColor,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.borderColor),
+          ),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('显示虚拟形象',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.text1)),
+                    SizedBox(height: 2),
+                    Text('开启后，AI 助理选中本 agent 时桌面悬浮助理以选中形象显示',
+                        style: TextStyle(fontSize: 11, color: AppTheme.text2)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _showAvatar,
+                activeColor: _accentColor,
+                onChanged: (v) => setState(() => _showAvatar = v),
+              ),
+            ],
+          ),
+        ),
+        if (_showAvatar) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 96,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: kDesktopAssistantAvatars.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) {
+                final a = kDesktopAssistantAvatars[i];
+                final selected = a.key == _avatarKey;
+                return GestureDetector(
+                  onTap: () => setState(() => _avatarKey = a.key),
+                  child: Container(
+                    width: 76,
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: selected ? _accentColor : AppTheme.borderColor,
+                        width: selected ? 2 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(6),
+                            child: a.isRive
+                                ? RiveAnimation.asset(a.asset,
+                                    fit: BoxFit.contain)
+                                : Lottie.asset(a.asset,
+                                    fit: BoxFit.contain, repeat: true),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Text(
+                            a.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: selected
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color:
+                                    selected ? _accentColor : AppTheme.text1),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Map<String, dynamic> _buildConfig() => {
     if (_tags.isNotEmpty) 'tags': _tags,
     if (_llmId != null) 'llmServiceId': _llmId,
@@ -844,6 +960,10 @@ class _AddAgentModalState extends ConsumerState<AddAgentModal> {
     if ((_type == 'chat' || _type == 'sts-chat') && _mcpIds.isNotEmpty) 'mcpServiceIds': _mcpIds,
     if (_type == 'chat' || _type == 'sts-chat') 'systemPrompt': _promptCtrl.text.trim(),
     if (_type == 'chat') 'enableThinking': _enableThinking,
+    if (_type == 'chat' || _type == 'sts-chat') ...{
+      'showAvatar': _showAvatar,
+      if (_avatarKey != null) 'avatarKey': _avatarKey,
+    },
     if (_type == 'translate') ...{
       if (_translationId != null) 'translationServiceId': _translationId,
       'srcLangs': _srcLangs.toList(),

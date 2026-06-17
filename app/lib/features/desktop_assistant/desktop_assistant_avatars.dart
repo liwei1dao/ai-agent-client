@@ -70,6 +70,14 @@ const List<DesktopAssistantAvatar> kDesktopAssistantAvatars = [
 /// 默认形象 key。
 const String kDefaultDesktopAssistantAvatar = 'cutebot';
 
+/// 「不显示形象」哨兵 key。
+///
+/// 当前选中 agent 关闭了「显示虚拟形象」、或没有可用 agent 时，主 app 把这个 key
+/// 经 shareData 推给 overlay，桌宠据此退回极简图标、不渲染角色动画。它不在
+/// [kDesktopAssistantAvatars] 里，[desktopAssistantAvatarByKey] 解析它会回退到首个
+/// 形象——所以渲染前必须先判 `key == kHiddenAvatarKey`，不要直接拿去解析。
+const String kHiddenAvatarKey = '__none__';
+
 /// 按 key 取形象；找不到回退到第一个。
 DesktopAssistantAvatar desktopAssistantAvatarByKey(String? key) {
   for (final a in kDesktopAssistantAvatars) {
