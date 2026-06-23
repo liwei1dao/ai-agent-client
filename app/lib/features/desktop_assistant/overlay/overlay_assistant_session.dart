@@ -85,6 +85,10 @@ class OverlayAssistantSession extends ChangeNotifier {
   /// AI 最新回复文本（头顶气泡展示）。
   String get aiText => _aiText.trim();
 
+  /// 自己持有会话时，一条消息定稿（用户一句识别完 / AI 一段回复结束）的回调——桌宠
+  /// widget 据此把该消息经 shareData 同步给界面对端，实现两个窗口的聊天内容同步。
+  void Function(String role, String text)? onFinalized;
+
   bool get _isActive =>
       _phase == OverlayAssistantPhase.listening ||
       _phase == OverlayAssistantPhase.speaking;
@@ -334,6 +338,7 @@ class OverlayAssistantSession extends ChangeNotifier {
     } else {
       _sttCommitted += t;
       _sttCurrent = '';
+      onFinalized?.call('user', t);
     }
     notifyListeners();
   }
@@ -354,6 +359,8 @@ class OverlayAssistantSession extends ChangeNotifier {
         _aiText = fullText!;
         notifyListeners();
       }
+      final out = _aiText.isNotEmpty ? _aiText : (fullText ?? '');
+      if (out.isNotEmpty) onFinalized?.call('assistant', out);
     }
   }
 

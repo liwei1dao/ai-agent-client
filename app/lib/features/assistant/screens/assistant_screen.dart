@@ -46,6 +46,8 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     super.initState();
     _controller = AssistantChatController();
     _controller.addListener(_onControllerChanged);
+    // 自己持有会话时一条消息定稿 → 同步给桌宠对端（聊天内容双窗口同步）。
+    _controller.onFinalized = _onLocalFinalized;
     if (_overlayCapable) {
       // 经 OverlayBus 订阅（底层 overlayListener 是单订阅流，app.dart 已占用，
       // 必须共用广播总线，否则二次 listen 会抛异常）。
@@ -54,11 +56,13 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 打开即加载该 agent 的历史对话（含桌宠刚聊的内容）。
       _loadHistory();
-      // 请求桌宠回播当前状态（桌宠可能正在通话）。
       if (_overlayCapable) {
+        // 请求桌宠回播当前状态（兜底；overlay→主app 通道可能失效）。
         try {
           FlutterOverlayWindow.shareData(OverlaySyncMsg.syncRequest);
         } catch (_) {}
+        // 开始观察当前 agent 的事件流：桌宠可能正用它通话，据此同步内容与状态。
+        _syncPassiveMirror();
       }
     });
   }
@@ -94,16 +98,14 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     _syncPassiveMirror();
   }
 
-  /// 桌宠持有会话、本界面自己未通话 → 被动镜像桌宠会话，让聊天内容面板也实时同步
-  /// （不只是连接状态）；否则退出镜像（自己接管会话 / 桌宠已挂断）。幂等，可重复调。
+  /// 自己未持有会话时，持续「观察」当前 agent 的 native 事件流（桌宠可能正在用它
+  /// 通话）——据此实时同步聊天内容与通话状态；自己接管会话时退出观察。幂等，可重复调。
   void _syncPassiveMirror() {
     if (!_overlayCapable) return;
-    final petBusy = _remotePet == OverlaySessionState.active ||
-        _remotePet == OverlaySessionState.starting;
     final selfBusy = _controller.isActive || _controller.isStarting;
-    if (petBusy && !selfBusy) {
-      final id = ref.read(configServiceProvider).defaultAssistantAgentId;
-      if (id != null) _controller.startPassive(id);
+    final id = ref.read(configServiceProvider).defaultAssistantAgentId;
+    if (!selfBusy && id != null) {
+      _controller.startPassive(id);
     } else {
       _controller.stopPassive();
     }
@@ -123,19 +125,32 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     final s = _ownState;
     if (!force && s == _lastBroadcast) return;
     _lastBroadcast = s;
+    debugPrint('[SYNC] screen→pet ${OverlaySyncMsg.state(s)}'); // 诊断，待删
     try {
       FlutterOverlayWindow.shareData(OverlaySyncMsg.state(s));
     } catch (_) {}
   }
 
-  /// 收到桌宠的消息：状态同步 / 要求本界面挂断 / 请求回播状态。
+  /// 自己持有会话时一条消息定稿 → 经 shareData 同步给桌宠对端。
+  void _onLocalFinalized(String role, String text) {
+    if (!_overlayCapable) return;
+    debugPrint('[SYNC] screen→pet msg role=$role len=${text.length}'); // 诊断
+    try {
+      FlutterOverlayWindow.shareData(OverlaySyncMsg.message(role, text));
+    } catch (_) {}
+  }
+
+  /// 收到桌宠的消息：状态同步 / 聊天内容同步 / 要求本界面挂断 / 请求回播状态。
   void _onPetMessage(dynamic event) {
     if (event is! String || event.isEmpty || !mounted) return;
+    debugPrint('[SYNC] screen←pet ' // 诊断，待删
+        '${event.length > 60 ? '${event.substring(0, 60)}…' : event}');
+    // 注意：overlay→主app 方向的 shareData 在插件层失效（见 controller startPassive
+    // 注释），桌宠发来的 sess:/msg: 实际收不到——桌宠的状态与内容改由 controller 订阅
+    // native 事件流（[_syncPassiveMirror] → startPassive）获取。此处仅作兜底保留。
     final st = OverlaySyncMsg.parseState(event);
     if (st != null) {
       if (_remotePet != st) setState(() => _remotePet = st);
-      // 桌宠开始/结束通话 → 进入/退出被动镜像，让聊天内容实时同步。
-      _syncPassiveMirror();
       return;
     }
     if (event == OverlaySyncMsg.hangup) {
@@ -181,7 +196,11 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   Future<void> _hangup() async {
     if (_controller.isActive || _controller.isStarting) {
       await _controller.stop();
-    } else if (_remotePet != OverlaySessionState.idle) {
+    } else if (_controller.isObservedActive ||
+        _remotePet != OverlaySessionState.idle) {
+      // 桌宠持有会话：经 shareData（界面→桌宠 main→overlay 方向可靠）请求它挂断。
+      // 桌宠 stop 后，其 native 事件流（disconnected）会通知本界面退出「通话中」。
+      // 用 isObservedActive 判断，因为 _remotePet 依赖已失效的 overlay→主app 通道。
       if (_overlayCapable) {
         try {
           FlutterOverlayWindow.shareData(OverlaySyncMsg.hangup);
@@ -222,6 +241,9 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     await ref
         .read(configServiceProvider.notifier)
         .setDefaultAssistantAgentId(picked.id);
+    // AI 助理界面是「当前 agent 的聊天列表视图」：切换 agent → 聊天内容随之切到该
+    // agent 的历史。（agent 选择器仅在双方空闲时可用，故此处不会打断进行中的对话。）
+    await _controller.loadHistory(picked.id);
   }
 
   Future<void> _pickLang() async {
@@ -251,7 +273,10 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
 
     // 有效状态 = 本界面会话 或 桌宠会话（任一在通话 → 统一显示「通话中/挂断」）。
     final localBusy = _controller.isStarting;
-    final remoteActive = _remotePet == OverlaySessionState.active;
+    // 桌宠的通话状态主要来自 controller 对 native 事件流的观察（overlay→主app 的
+    // shareData 失效）；_remotePet 仅作兜底。
+    final remoteActive = _controller.isObservedActive ||
+        _remotePet == OverlaySessionState.active;
     final remoteBusy = _remotePet == OverlaySessionState.starting;
     final isActive = _controller.isActive || remoteActive;
     final isBusy = localBusy || remoteBusy;

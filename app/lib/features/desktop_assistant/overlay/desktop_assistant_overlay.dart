@@ -55,6 +55,10 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
   /// 桌宠据此镜像显示对方的「通话中 / 连接中」状态，并把单击改为「挂断对方」。
   OverlaySessionState _remoteState = OverlaySessionState.idle;
 
+  /// 镜像对端（界面）会话时，对端最近一句用户话（经 shareData `msg:` 同步而来），
+  /// 显示在头顶气泡。对端会话结束即清空。
+  String _remoteUserText = '';
+
   /// 上次广播给主 app 的状态（去重，避免流式 notify 时反复打 channel）。
   OverlaySessionState _lastBroadcast = OverlaySessionState.idle;
 
@@ -106,6 +110,13 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
     super.initState();
     _entrance.forward();
     _session.addListener(_onSessionChanged);
+    // 自己持有会话时一条消息定稿 → 同步给界面对端（聊天内容双窗口同步）。
+    _session.onFinalized = (role, text) {
+      debugPrint('[SYNC] pet→screen msg role=$role len=${text.length}'); // 诊断
+      try {
+        FlutterOverlayWindow.shareData(OverlaySyncMsg.message(role, text));
+      } catch (_) {}
+    };
     // 主 app 推送的消息：会话同步协议（带前缀） / 形象 key（裸字符串）。
     _sub = FlutterOverlayWindow.overlayListener.listen(_onAppMessage);
     // 通知主 app overlay 已就绪 → 主 app 回推当前形象。
@@ -138,16 +149,33 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
   /// 收到主 app 的 shareData 消息：先按会话同步协议判前缀，否则当作形象 key。
   void _onAppMessage(dynamic event) {
     if (event is! String || event.isEmpty || !mounted) return;
+    debugPrint('[SYNC] pet←screen ' // 诊断，待删
+        '${event.length > 60 ? '${event.substring(0, 60)}…' : event}');
 
     if (OverlaySyncMsg.isProtocol(event)) {
       final st = OverlaySyncMsg.parseState(event);
       if (st != null) {
         // 主 app 会话状态变化 → 镜像显示。
         if (_remoteState != st) {
-          setState(() => _remoteState = st);
+          setState(() {
+            _remoteState = st;
+            // 界面会话结束 → 清掉镜像显示的用户话。
+            if (st == OverlaySessionState.idle) _remoteUserText = '';
+          });
           _applyAnimations();
         }
-      } else if (event == OverlaySyncMsg.hangup) {
+        return;
+      }
+      final msg = OverlaySyncMsg.parseMessage(event);
+      if (msg != null) {
+        // 界面（对端）持有会话时把定稿消息同步过来：桌宠只在头顶展示用户话（遵循
+        // 「桌宠只显示用户说的话」），AI 回复仅由说话图标体现、不展示文字。
+        if (!_ownsSession && msg.role == 'user') {
+          setState(() => _remoteUserText = msg.text);
+        }
+        return;
+      }
+      if (event == OverlaySyncMsg.hangup) {
         // 主 app 要求桌宠挂断自己持有的会话。
         if (_ownsSession || _session.phase == OverlayAssistantPhase.starting) {
           _session.stop();
@@ -170,6 +198,7 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
     final s = _ownState;
     if (!force && s == _lastBroadcast) return;
     _lastBroadcast = s;
+    debugPrint('[SYNC] pet→screen ${OverlaySyncMsg.state(s)}'); // 诊断，待删
     try {
       FlutterOverlayWindow.shareData(OverlaySyncMsg.state(s));
     } catch (_) {}
@@ -253,7 +282,14 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
             italic: u.isEmpty,
           );
         }
-        return (text: '通话中…', icon: Icons.mic, danger: false, italic: true);
+        // 镜像界面会话：显示界面同步来的用户话（拿不到则「通话中…」）。
+        final r = _remoteUserText.trim();
+        return (
+          text: r.isEmpty ? '通话中…' : r,
+          icon: Icons.mic,
+          danger: false,
+          italic: r.isEmpty,
+        );
       case OverlayAssistantPhase.speaking:
         return (text: null, icon: Icons.graphic_eq, danger: false, italic: false);
       case OverlayAssistantPhase.idle:

@@ -46,6 +46,7 @@ class AssistantChatController extends ChangeNotifier {
   bool _starting = false;
   bool _active = false;
   bool _passive = false;
+  bool _observedActive = false;
   String? _lastError;
   final List<AssistantBubble> _bubbles = [];
 
@@ -53,10 +54,18 @@ class AssistantChatController extends ChangeNotifier {
   bool get isActive => _active;
 
   /// 是否处于「被动镜像」：会话由对端（桌宠悬浮助理）持有，本控制器只订阅事件流
-  /// 同步聊天内容，不持有 agent。
+  /// 同步聊天内容与状态，不持有 agent。
   bool get isPassive => _passive;
+
+  /// 被动镜像下，是否观察到对端（桌宠）正在通话（据 native 事件推断）。界面据此显示
+  /// 「通话中 / 挂断」——因为 overlay→主app 的 shareData 状态广播在插件层失效。
+  bool get isObservedActive => _passive && _observedActive;
   String? get lastError => _lastError;
   List<AssistantBubble> get bubbles => List.unmodifiable(_bubbles);
+
+  /// 自己持有会话时，一条消息定稿（用户一句识别完 / AI 一段回复结束）的回调——
+  /// 界面据此把该消息经 shareData 同步给桌宠对端（主app→overlay 方向可靠）。
+  void Function(String role, String text)? onFinalized;
 
   /// 从本地库加载该 agent 的历史消息作为对话基底。
   ///
@@ -83,38 +92,59 @@ class AssistantChatController extends ChangeNotifier {
     }
   }
 
-  /// 进入「被动镜像」：对端（桌宠悬浮助理）持有会话时，本控制器订阅同一 agent 的
-  /// 事件流，把 STT / LLM 消息实时映射到聊天面板——让「界面打开着、桌宠正在通话」
-  /// 时聊天内容也实时同步，而不只是连接状态。
-  ///
-  /// 与 [start] 的根本区别：**不** createAgent、**不** stopAgent——会话归对端，本控制
-  /// 器只是旁听者。两者跑在同一 native agent（sessionId = agent.id），事件经 native
-  /// 多 engine fan-out 也会送到主 app 这侧，故订阅同一 sessionId 即可收到。
+  /// 进入「被动镜像」：把聊天面板切到该 agent 的列表，并**订阅该 agent 的 native
+  /// 事件流**——桌宠（overlay isolate）持有会话时，事件经 native 多 engine fan-out 也
+  /// 送到主 app 这侧，故界面据此实时同步聊天内容**与**通话状态。这是可靠通道：
+  /// overlay→主app 的 `shareData` 因插件 `WindowSetup.messenger` 被 overlay engine
+  /// 覆盖而回环失效，不能用于桌宠→界面同步。**不** createAgent、**不** stopAgent。
   Future<void> startPassive(String agentId) async {
     if (_active || _starting) return; // 自己（将）持有会话时无需镜像
     if (_passive && _sessionId == agentId) return; // 已在镜像同一会话
     await _sub?.cancel();
     _passive = true;
     _sessionId = agentId;
+    _observedActive = false;
     await loadHistory(agentId);
     // loadHistory 是异步的，期间可能被 start()/stopPassive 抢断（_passive 置回
     // false）；若已不再处于本次镜像则放弃订阅，避免覆盖 start() 建立的订阅。
     if (!_passive || _sessionId != agentId) return;
     _sub = _bridge.eventStream
         .where((e) => e.sessionId == agentId)
-        .listen(_handleEvent);
-    notifyListeners();
+        .listen(_handlePassiveEvent);
   }
 
   /// 退出被动镜像（仅取消订阅，**绝不** stopAgent——会话是对端持有的）。已加载的
-  /// 气泡保留在面板上。
+  /// 气泡保留。
   Future<void> stopPassive() async {
     if (!_passive) return;
     _passive = false;
+    _observedActive = false;
     await _sub?.cancel();
     _sub = null;
     _sessionId = null;
     notifyListeners();
+  }
+
+  /// 被动镜像下处理 native 事件：复用 [_handleEvent] 更新气泡，并据事件推断对端
+  /// （桌宠）会话是否活跃以驱动界面「通话中/挂断」。
+  void _handlePassiveEvent(AgentEvent event) {
+    debugPrint('[SYNC] screen observed ${event.runtimeType}'); // 诊断，待删
+    switch (event) {
+      case AgentReadyEvent(:final ready):
+        if (ready) _observedActive = true;
+      case SessionStateEvent():
+      case SttEvent():
+      case LlmEvent():
+        _observedActive = true;
+      case ServiceConnectionStateEvent(:final connectionState):
+        if (connectionState == ServiceConnectionState.disconnected ||
+            connectionState == ServiceConnectionState.error) {
+          _observedActive = false;
+        }
+      default:
+        break;
+    }
+    _handleEvent(event);
   }
 
   /// 启动一次 AI 助理通话。[agent] 必须是 chat / sts-chat 类型。
@@ -124,10 +154,11 @@ class AssistantChatController extends ChangeNotifier {
     required List<ServiceConfigDto> services,
   }) async {
     if (_active || _starting) return;
-    // 若正处于被动镜像（对端会话），先退出：会话即将由本界面持有，旧镜像订阅必须
-    // 取消以免对同一事件流重复订阅。只取消订阅，绝不动对端 agent。
+    // 若正处于被动镜像（对端会话），先退出：会话即将由本界面持有。取消旧的观察订阅
+    // 以免与下面自己会话的订阅重复；绝不动对端 agent。
     if (_passive) {
       _passive = false;
+      _observedActive = false;
       await _sub?.cancel();
       _sub = null;
     }
@@ -237,11 +268,10 @@ class AssistantChatController extends ChangeNotifier {
   @override
   void dispose() {
     if (_passive) {
-      // 被动镜像：会话归对端，只取消订阅；绝不 _teardown（它会 stopAgent，把桌宠
-      // 正在用的 agent 杀掉）。
+      // 被动镜像：会话归对端，只取消观察订阅；绝不 _teardown（它会 stopAgent 把
+      // 桌宠正在用的 agent 杀掉）。
       _sub?.cancel();
     } else {
-      // fire-and-forget 释放原生资源。
       unawaited(_teardown());
     }
     super.dispose();
@@ -310,7 +340,16 @@ class AssistantChatController extends ChangeNotifier {
         _bubbles.add(AssistantBubble(
             id: 'user_${_seq++}', isUser: true, text: t, streaming: false));
       }
+      _emitFinalized(true, t);
     }
+  }
+
+  /// 一条消息定稿 → 通知界面同步给对端（仅自己持有会话时；被动方只接收不发送）。
+  void _emitFinalized(bool isUser, String text) {
+    if (_passive) return;
+    final t = text.trim();
+    if (t.isEmpty) return;
+    onFinalized?.call(isUser ? 'user' : 'assistant', t);
   }
 
   void _handleLlm(
@@ -335,6 +374,7 @@ class AssistantChatController extends ChangeNotifier {
         _bubbles.add(AssistantBubble(
             id: requestId, isUser: false, text: fullText!, streaming: false));
       }
+      _emitFinalized(false, idx != -1 ? _bubbles[idx].text : (fullText ?? ''));
     } else if (kind == LlmEventKind.error) {
       _lastError = '回复失败';
     }
