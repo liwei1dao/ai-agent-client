@@ -59,6 +59,24 @@ class LocalDbBridge {
         .toList();
   }
 
+  // ── MessageEvent ─────────────────────────────────────────────────────────
+
+  /// 取某 agent 最近 limit 条过程事件（工具调用 / thinking / instruction）。
+  /// 返回按 createdAt DESC；上层按 messageId 分组、seq 升序挂回消息。
+  Future<List<MessageEventDto>> getMessageEventsByAgent(
+    String agentId, {
+    int limit = 200,
+  }) async {
+    final list = await _channel.invokeMethod<List>('getMessageEventsByAgent', {
+      'agentId': agentId,
+      'limit': limit,
+    });
+    return (list ?? [])
+        .cast<Map<Object?, Object?>>()
+        .map(MessageEventDto.fromMap)
+        .toList();
+  }
+
   // ── McpServer ──────────────────────────────────────────────────────────
 
   Future<void> upsertMcpServer(McpServerDto dto) =>
@@ -174,6 +192,51 @@ class MessageDto {
         status: m['status'] as String,
         createdAt: m['createdAt'] as int,
         updatedAt: m['updatedAt'] as int,
+      );
+}
+
+class MessageEventDto {
+  const MessageEventDto({
+    required this.id,
+    required this.messageId,
+    required this.agentId,
+    required this.seq,
+    required this.kind,
+    this.toolCallId,
+    required this.label,
+    required this.inputJson,
+    this.outputJson,
+    required this.status,
+    required this.createdAt,
+    this.completedAt,
+  });
+
+  final String id;
+  final String messageId;
+  final String agentId;
+  final int seq;
+  final String kind;       // toolCall | thinking | instruction
+  final String? toolCallId;
+  final String label;
+  final String inputJson;
+  final String? outputJson;
+  final String status;     // running | success | error
+  final int createdAt;
+  final int? completedAt;
+
+  static MessageEventDto fromMap(Map<Object?, Object?> m) => MessageEventDto(
+        id: m['id'] as String,
+        messageId: m['messageId'] as String,
+        agentId: m['agentId'] as String,
+        seq: m['seq'] as int,
+        kind: m['kind'] as String,
+        toolCallId: m['toolCallId'] as String?,
+        label: m['label'] as String,
+        inputJson: (m['inputJson'] as String?) ?? '',
+        outputJson: m['outputJson'] as String?,
+        status: m['status'] as String,
+        createdAt: m['createdAt'] as int,
+        completedAt: m['completedAt'] as int?,
       );
 }
 

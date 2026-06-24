@@ -12,15 +12,17 @@ import com.aiagent.local_db.entity.*
         ServiceConfigEntity::class,
         AgentEntity::class,
         MessageEntity::class,
+        MessageEventEntity::class,
         McpServerEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun serviceConfigDao(): ServiceConfigDao
     abstract fun agentDao(): AgentDao
     abstract fun messageDao(): MessageDao
+    abstract fun messageEventDao(): MessageEventDao
     abstract fun mcpServerDao(): McpServerDao
 
     companion object {
@@ -33,7 +35,10 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ai_agent_client.db",
-                ).build().also { INSTANCE = it }
+                )
+                    // 内测期不做历史迁移：schema 变更直接重建库
+                    .fallbackToDestructiveMigration()
+                    .build().also { INSTANCE = it }
             }
     }
 }

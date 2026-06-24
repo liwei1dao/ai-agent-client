@@ -106,6 +106,23 @@ class LocalDbPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                         null
                     }
 
+                    // ── MessageEvent ───────────────────────────────────────
+                    "getMessageEventsByAgent" -> {
+                        val args = call.arguments as Map<*, *>
+                        val agentId = args["agentId"] as String
+                        val limit = (args["limit"] as Number).toInt()
+                        db.messageEventDao().getByAgent(agentId, limit).map { e ->
+                            mapOf(
+                                "id" to e.id, "messageId" to e.messageId,
+                                "agentId" to e.agentId, "seq" to e.seq, "kind" to e.kind,
+                                "toolCallId" to e.toolCallId, "label" to e.label,
+                                "inputJson" to e.inputJson, "outputJson" to e.outputJson,
+                                "status" to e.status, "createdAt" to e.createdAt,
+                                "completedAt" to e.completedAt,
+                            )
+                        }
+                    }
+
                     // ── McpServer ──────────────────────────────────────────
                     "upsertMcpServer" -> {
                         val args = call.arguments as Map<*, *>

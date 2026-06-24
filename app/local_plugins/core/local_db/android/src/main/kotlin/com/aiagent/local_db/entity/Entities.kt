@@ -48,6 +48,33 @@ data class MessageEntity(
 )
 
 @Entity(
+    tableName = "message_events",
+    foreignKeys = [
+        ForeignKey(
+            entity = MessageEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["messageId"],
+            onDelete = ForeignKey.CASCADE,
+        )
+    ],
+    indices = [Index("messageId"), Index("agentId")],
+)
+data class MessageEventEntity(
+    @PrimaryKey val id: String,
+    val messageId: String,            // 所属 assistant 消息
+    val agentId: String,              // 冗余：便于按 agent 批量查
+    val seq: Int,                     // 同一消息内多事件顺序
+    val kind: String,                 // toolCall | thinking | instruction
+    val toolCallId: String?,          // LLM 给的 tool_call id
+    val label: String,                // 工具名 / "思考中"
+    val inputJson: String,            // 参数 / 思考文本（流式累加）
+    val outputJson: String?,          // 工具返回 / 结果（一次写入）
+    val status: String,               // running | success | error
+    val createdAt: Long,
+    val completedAt: Long?,
+)
+
+@Entity(
     tableName = "mcp_servers",
     foreignKeys = [
         ForeignKey(

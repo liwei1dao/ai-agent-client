@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -540,10 +541,21 @@ class _DesktopAssistantOverlayState extends State<DesktopAssistantOverlay>
                       )
                     : KeyedSubtree(
                         key: ValueKey(avatar.key),
-                        child: avatar.isRive
-                            ? RiveAnimation.asset(avatar.asset,
-                                fit: BoxFit.contain)
-                            : Lottie.asset(
+                        child: avatar.isUserImage
+                            // 用户生成形象：百炼图生图产出的本地 PNG，复用桌宠
+                            // 现有的光环/漂浮/呼吸/说话律动（外层动效与形象解耦）。
+                            ? Image.file(
+                                File(avatar.asset),
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.smart_toy,
+                                    size: 64,
+                                    color: Color(0xFF6C5CE7)),
+                              )
+                            : avatar.isRive
+                                ? RiveAnimation.asset(avatar.asset,
+                                    fit: BoxFit.contain)
+                                : Lottie.asset(
                                 avatar.asset,
                                 fit: BoxFit.contain,
                                 repeat: true,

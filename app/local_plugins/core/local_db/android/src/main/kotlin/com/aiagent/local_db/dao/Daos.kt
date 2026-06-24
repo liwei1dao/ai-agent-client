@@ -52,6 +52,33 @@ interface MessageDao {
 }
 
 @Dao
+interface MessageEventDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: MessageEventEntity)
+
+    /// 流式累加 inputJson（工具参数 delta / thinking delta）
+    @Query("UPDATE message_events SET inputJson = inputJson || :delta WHERE id = :id")
+    suspend fun appendInput(id: String, delta: String)
+
+    /// 收尾：写入结果 + 终态
+    @Query(
+        """UPDATE message_events SET outputJson = :outputJson, status = :status,
+           completedAt = :completedAt WHERE id = :id"""
+    )
+    suspend fun complete(id: String, outputJson: String?, status: String, completedAt: Long)
+
+    /// 取某 agent 最近 limit 条事件（按消息时间倒序），上层按 messageId 分组、seq 升序挂回
+    @Query(
+        """SELECT * FROM message_events WHERE agentId = :agentId
+           ORDER BY createdAt DESC LIMIT :limit"""
+    )
+    suspend fun getByAgent(agentId: String, limit: Int): List<MessageEventEntity>
+
+    @Query("SELECT * FROM message_events WHERE messageId = :messageId ORDER BY seq ASC")
+    suspend fun getByMessage(messageId: String): List<MessageEventEntity>
+}
+
+@Dao
 interface McpServerDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: McpServerEntity)

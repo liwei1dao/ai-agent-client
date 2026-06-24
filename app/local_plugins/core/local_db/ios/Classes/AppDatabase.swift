@@ -64,6 +64,25 @@ public final class AppDatabase {
                 t.column("createdAt", .integer).notNull()
             }
         }
+        migrator.registerMigration("v2") { db in
+            try db.create(table: "message_events") { t in
+                t.column("id", .text).primaryKey()
+                t.column("messageId", .text).notNull()
+                    .references("messages", onDelete: .cascade)
+                t.column("agentId", .text).notNull()       // 冗余：按 agent 批量查
+                t.column("seq", .integer).notNull()
+                t.column("kind", .text).notNull()          // toolCall | thinking | instruction
+                t.column("toolCallId", .text)
+                t.column("label", .text).notNull()
+                t.column("inputJson", .text).notNull()
+                t.column("outputJson", .text)
+                t.column("status", .text).notNull()        // running | success | error
+                t.column("createdAt", .integer).notNull()
+                t.column("completedAt", .integer)
+            }
+            try db.create(index: "idx_message_events_messageId", on: "message_events", columns: ["messageId"])
+            try db.create(index: "idx_message_events_agentId", on: "message_events", columns: ["agentId"])
+        }
         return migrator
     }
 
@@ -165,6 +184,54 @@ public final class AppDatabase {
     }
 
     // ─────────────────────────────────────────────────
+    // MARK: — MessageEvent
+    // ─────────────────────────────────────────────────
+
+    func insertMessageEvent(_ row: MessageEventRecord) throws {
+        try dbQueue.write { db in try row.insert(db) }
+    }
+
+    /// 流式累加 inputJson（工具参数 delta / thinking delta）
+    func appendMessageEventInput(id: String, delta: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE message_events SET inputJson = inputJson || ? WHERE id = ?",
+                arguments: [delta, id]
+            )
+        }
+    }
+
+    /// 收尾：写入结果 + 终态
+    func completeMessageEvent(id: String, outputJson: String?, status: String, completedAt: Int64) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE message_events SET outputJson = ?, status = ?, completedAt = ? WHERE id = ?",
+                arguments: [outputJson, status, completedAt, id]
+            )
+        }
+    }
+
+    func getMessageEventsByAgent(agentId: String, limit: Int) throws -> [MessageEventRecord] {
+        try dbQueue.read { db in
+            try MessageEventRecord.fetchAll(
+                db,
+                sql: "SELECT * FROM message_events WHERE agentId = ? ORDER BY createdAt DESC LIMIT ?",
+                arguments: [agentId, limit]
+            )
+        }
+    }
+
+    func getMessageEventsByMessage(messageId: String) throws -> [MessageEventRecord] {
+        try dbQueue.read { db in
+            try MessageEventRecord.fetchAll(
+                db,
+                sql: "SELECT * FROM message_events WHERE messageId = ? ORDER BY seq ASC",
+                arguments: [messageId]
+            )
+        }
+    }
+
+    // ─────────────────────────────────────────────────
     // MARK: — McpServer
     // ─────────────────────────────────────────────────
 
@@ -238,6 +305,22 @@ struct MessageRecord: Codable, FetchableRecord, PersistableRecord {
     var status: String
     var createdAt: Int64
     var updatedAt: Int64
+}
+
+struct MessageEventRecord: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "message_events"
+    var id: String
+    var messageId: String
+    var agentId: String
+    var seq: Int
+    var kind: String
+    var toolCallId: String?
+    var label: String
+    var inputJson: String
+    var outputJson: String?
+    var status: String
+    var createdAt: Int64
+    var completedAt: Int64?
 }
 
 struct McpServerRecord: Codable, FetchableRecord, PersistableRecord {

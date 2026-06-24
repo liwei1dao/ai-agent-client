@@ -9,6 +9,7 @@ class LocalDbBridge {
   static const _kServiceConfigs = 'local_db.service_configs';
   static const _kAgents = 'local_db.agents';
   static const _kMessagesPrefix = 'local_db.messages.';
+  static const _kMessageEventsPrefix = 'local_db.message_events.';
   static const _kMcpServersPrefix = 'local_db.mcp_servers.';
 
   static final LocalDbBridge _instance = LocalDbBridge._();
@@ -72,6 +73,7 @@ class LocalDbBridge {
     list.removeWhere((m) => m['id'] == id);
     await _writeList(p, _kAgents, list);
     await p.remove('$_kMessagesPrefix$id');
+    await p.remove('$_kMessageEventsPrefix$id');
     await p.remove('$_kMcpServersPrefix$id');
   }
 
@@ -85,6 +87,7 @@ class LocalDbBridge {
   Future<void> deleteMessages(String agentId) async {
     final p = await _p;
     await p.remove('$_kMessagesPrefix$agentId');
+    await p.remove('$_kMessageEventsPrefix$agentId');
   }
 
   Future<List<MessageDto>> getMessages(String agentId, {int limit = 50}) async {
@@ -151,6 +154,67 @@ class LocalDbBridge {
         'createdAt': m.createdAt,
         'updatedAt': m.updatedAt,
       };
+
+  // ── MessageEvent ─────────────────────────────────────────────────────────
+
+  Future<void> insertMessageEvent(MessageEventDto dto) async {
+    final p = await _p;
+    final key = '$_kMessageEventsPrefix${dto.agentId}';
+    final list = _readList(p, key);
+    list.removeWhere((m) => m['id'] == dto.id);
+    list.add(dto.toMap());
+    await _writeList(p, key, list);
+  }
+
+  /// 流式累加 inputJson（工具参数 delta / thinking delta）
+  Future<void> appendMessageEventInput(
+    String agentId,
+    String eventId,
+    String delta,
+  ) async {
+    final p = await _p;
+    final key = '$_kMessageEventsPrefix$agentId';
+    final list = _readList(p, key);
+    for (final m in list) {
+      if (m['id'] == eventId) {
+        m['inputJson'] = '${m['inputJson'] ?? ''}$delta';
+      }
+    }
+    await _writeList(p, key, list);
+  }
+
+  /// 收尾：写入结果 + 终态
+  Future<void> completeMessageEvent(
+    String agentId,
+    String eventId,
+    String? outputJson,
+    String status,
+    int completedAt,
+  ) async {
+    final p = await _p;
+    final key = '$_kMessageEventsPrefix$agentId';
+    final list = _readList(p, key);
+    for (final m in list) {
+      if (m['id'] == eventId) {
+        m['outputJson'] = outputJson;
+        m['status'] = status;
+        m['completedAt'] = completedAt;
+      }
+    }
+    await _writeList(p, key, list);
+  }
+
+  Future<List<MessageEventDto>> getMessageEventsByAgent(
+    String agentId, {
+    int limit = 200,
+  }) async {
+    final p = await _p;
+    final list = _readList(p, '$_kMessageEventsPrefix$agentId')
+        .map(MessageEventDto.fromMap)
+        .toList();
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list.take(limit).toList();
+  }
 
   // ── McpServer ──────────────────────────────────────────────────────────
 
@@ -287,6 +351,66 @@ class MessageDto {
         status: m['status'] as String,
         createdAt: m['createdAt'] as int,
         updatedAt: m['updatedAt'] as int,
+      );
+}
+
+class MessageEventDto {
+  const MessageEventDto({
+    required this.id,
+    required this.messageId,
+    required this.agentId,
+    required this.seq,
+    required this.kind,
+    this.toolCallId,
+    required this.label,
+    required this.inputJson,
+    this.outputJson,
+    required this.status,
+    required this.createdAt,
+    this.completedAt,
+  });
+
+  final String id;
+  final String messageId;
+  final String agentId;
+  final int seq;
+  final String kind;       // toolCall | thinking | instruction
+  final String? toolCallId;
+  final String label;
+  final String inputJson;
+  final String? outputJson;
+  final String status;     // running | success | error
+  final int createdAt;
+  final int? completedAt;
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'messageId': messageId,
+        'agentId': agentId,
+        'seq': seq,
+        'kind': kind,
+        'toolCallId': toolCallId,
+        'label': label,
+        'inputJson': inputJson,
+        'outputJson': outputJson,
+        'status': status,
+        'createdAt': createdAt,
+        'completedAt': completedAt,
+      };
+
+  static MessageEventDto fromMap(Map<Object?, Object?> m) => MessageEventDto(
+        id: m['id'] as String,
+        messageId: m['messageId'] as String,
+        agentId: m['agentId'] as String,
+        seq: m['seq'] as int,
+        kind: m['kind'] as String,
+        toolCallId: m['toolCallId'] as String?,
+        label: m['label'] as String,
+        inputJson: (m['inputJson'] as String?) ?? '',
+        outputJson: m['outputJson'] as String?,
+        status: m['status'] as String,
+        createdAt: m['createdAt'] as int,
+        completedAt: m['completedAt'] as int?,
       );
 }
 

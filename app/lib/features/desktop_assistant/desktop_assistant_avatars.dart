@@ -9,6 +9,7 @@ class DesktopAssistantAvatar {
     required this.key,
     required this.asset,
     required this.label,
+    this.isFile = false,
   });
 
   /// 持久化用的稳定标识。
@@ -20,8 +21,15 @@ class DesktopAssistantAvatar {
   /// 设置界面展示的名字。
   final String label;
 
+  /// 用户自定义生成形象：[asset] 是文件系统**绝对路径**（用 Image.file 加载），
+  /// 而非打包 assets。内置形象恒为 false。
+  final bool isFile;
+
   /// 资源是否为 Rive（.riv）；否则按 Lottie（.json）渲染。
   bool get isRive => asset.endsWith('.riv');
+
+  /// 是否为用户生成形象（百炼图生图产出的本地 PNG），渲染走 Image.file。
+  bool get isUserImage => isFile;
 }
 
 const List<DesktopAssistantAvatar> kDesktopAssistantAvatars = [
@@ -78,8 +86,20 @@ const String kDefaultDesktopAssistantAvatar = 'cutebot';
 /// 形象——所以渲染前必须先判 `key == kHiddenAvatarKey`，不要直接拿去解析。
 const String kHiddenAvatarKey = '__none__';
 
-/// 按 key 取形象；找不到回退到第一个。
+/// 用户自定义生成形象的 key 前缀；key 形如 `user:<文件绝对路径>`。
+///
+/// overlay 是独立 engine、读不到主 app 的存储，但文件系统路径是共享的，
+/// 所以把绝对路径直接编码进 key，shareData 推过来即可用 Image.file 加载。
+/// （生产可改为 `user:<id>` + 本地索引表，PoC 阶段路径编码最省事。）
+const String kUserAvatarPrefix = 'user:';
+
+/// 按 key 取形象；`user:` 前缀走用户生成图，否则查内置清单、找不到回退第一个。
 DesktopAssistantAvatar desktopAssistantAvatarByKey(String? key) {
+  if (key != null && key.startsWith(kUserAvatarPrefix)) {
+    final path = key.substring(kUserAvatarPrefix.length);
+    return DesktopAssistantAvatar(
+        key: key, asset: path, label: '我的形象', isFile: true);
+  }
   for (final a in kDesktopAssistantAvatars) {
     if (a.key == key) return a;
   }

@@ -297,6 +297,40 @@ class ChatAgentSession : NativeAgent {
                 return@launch
             }
 
+            // ── 过程事件（工具调用 / thinking / instruction）落库 helper ──
+            // 与 UI 的 MessageEvent 对称：start(running) → appendInput(流式) → complete(终态)。
+            var eventSeq = 0
+            var thinkingEventId: String? = null
+            fun persistEventStart(eid: String, kind: String, label: String, toolCallId: String?) {
+                val s = eventSeq++
+                val ts = System.currentTimeMillis()
+                scope.launch {
+                    runCatching {
+                        db.messageEventDao().insert(
+                            MessageEventEntity(
+                                id = eid, messageId = assistantId, agentId = config.agentId,
+                                seq = s, kind = kind, toolCallId = toolCallId, label = label,
+                                inputJson = "", outputJson = null, status = "running",
+                                createdAt = ts, completedAt = null,
+                            )
+                        )
+                    }
+                }
+            }
+            fun persistEventAppend(eid: String, delta: String) {
+                scope.launch { runCatching { db.messageEventDao().appendInput(eid, delta) } }
+            }
+            fun persistEventComplete(eid: String, output: String?, status: String) {
+                val ts = System.currentTimeMillis()
+                scope.launch { runCatching { db.messageEventDao().complete(eid, output, status, ts) } }
+            }
+            // thinking 没有 id，用单变量追踪当前 running 行；遇到正文/工具/收尾即闭合。
+            fun closeThinking() {
+                val tid = thinkingEventId ?: return
+                thinkingEventId = null
+                persistEventComplete(tid, null, "success")
+            }
+
             // ── LLM 推理（流式）+ 句级 TTS 队列 ──
             transitionTo(State.LLM)
             db.messageDao().updateStatus(assistantId, "streaming", System.currentTimeMillis())

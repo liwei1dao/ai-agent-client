@@ -98,6 +98,21 @@ public class LocalDbPlugin: NSObject, FlutterPlugin {
             try db.deleteMessagesByAgent(agentId: args["agentId"] as! String)
             return nil
 
+        // ── MessageEvent ──────────────────────────────────────────────────
+        case "getMessageEventsByAgent":
+            let agentId = args["agentId"] as! String
+            let limit = args["limit"] as! Int
+            return try db.getMessageEventsByAgent(agentId: agentId, limit: limit).map { e in
+                [
+                    "id": e.id, "messageId": e.messageId, "agentId": e.agentId,
+                    "seq": e.seq, "kind": e.kind,
+                    "toolCallId": e.toolCallId as Any, "label": e.label,
+                    "inputJson": e.inputJson, "outputJson": e.outputJson as Any,
+                    "status": e.status, "createdAt": e.createdAt,
+                    "completedAt": e.completedAt as Any,
+                ] as [String: Any]
+            }
+
         // ── McpServer ────────────────────────────────────────────────────
         case "upsertMcpServer":
             try db.upsertMcpServer(McpServerRecord(
