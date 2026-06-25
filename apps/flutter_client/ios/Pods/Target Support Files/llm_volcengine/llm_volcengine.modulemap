@@ -1,0 +1,6 @@
+framework module llm_volcengine {
+  umbrella header "llm_volcengine-umbrella.h"
+
+  export *
+  module * { export * }
+}

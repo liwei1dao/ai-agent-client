@@ -1,0 +1,6 @@
+framework module translation_azure {
+  umbrella header "translation_azure-umbrella.h"
+
+  export *
+  module * { export * }
+}

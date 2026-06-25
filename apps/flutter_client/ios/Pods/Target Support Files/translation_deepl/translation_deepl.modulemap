@@ -1,0 +1,6 @@
+framework module translation_deepl {
+  umbrella header "translation_deepl-umbrella.h"
+
+  export *
+  module * { export * }
+}

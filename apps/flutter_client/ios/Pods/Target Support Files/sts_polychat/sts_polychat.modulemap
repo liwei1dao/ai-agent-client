@@ -1,0 +1,6 @@
+framework module sts_polychat {
+  umbrella header "sts_polychat-umbrella.h"
+
+  export *
+  module * { export * }
+}

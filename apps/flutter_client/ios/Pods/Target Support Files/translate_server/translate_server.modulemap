@@ -1,0 +1,6 @@
+framework module translate_server {
+  umbrella header "translate_server-umbrella.h"
+
+  export *
+  module * { export * }
+}

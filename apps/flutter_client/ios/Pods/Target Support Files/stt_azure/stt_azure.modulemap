@@ -1,0 +1,6 @@
+framework module stt_azure {
+  umbrella header "stt_azure-umbrella.h"
+
+  export *
+  module * { export * }
+}

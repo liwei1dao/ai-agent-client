@@ -1,0 +1,6 @@
+framework module device_manager {
+  umbrella header "device_manager-umbrella.h"
+
+  export *
+  module * { export * }
+}

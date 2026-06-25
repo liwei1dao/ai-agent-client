@@ -1,0 +1,27 @@
+{
+  "name": "tts_azure",
+  "version": "0.1.0",
+  "summary": "Azure Text-to-Speech plugin",
+  "homepage": "https://example.com",
+  "license": {
+    "type": "MIT"
+  },
+  "authors": {
+    "AI Agent": "dev@example.com"
+  },
+  "source": {
+    "path": "."
+  },
+  "source_files": "Classes/**/*",
+  "platforms": {
+    "ios": "16.0"
+  },
+  "dependencies": {
+    "Flutter": [],
+    "MicrosoftCognitiveServicesSpeech-iOS": [
+      "~> 1.43"
+    ]
+  },
+  "swift_versions": "5.9",
+  "swift_version": "5.9"
+}

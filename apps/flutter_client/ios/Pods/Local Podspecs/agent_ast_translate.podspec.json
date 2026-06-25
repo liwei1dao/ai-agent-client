@@ -1,0 +1,25 @@
+{
+  "name": "agent_ast_translate",
+  "version": "0.1.0",
+  "summary": "AST translate agent plugin (iOS).",
+  "homepage": "https://example.com",
+  "license": {
+    "type": "MIT"
+  },
+  "authors": {
+    "AI Agent": "dev@example.com"
+  },
+  "source": {
+    "path": "."
+  },
+  "source_files": "Classes/**/*",
+  "platforms": {
+    "ios": "16.0"
+  },
+  "dependencies": {
+    "Flutter": [],
+    "ai_plugin_interface": []
+  },
+  "swift_versions": "5.9",
+  "swift_version": "5.9"
+}

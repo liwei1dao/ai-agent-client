@@ -1,0 +1,6 @@
+framework module ast_volcengine {
+  umbrella header "ast_volcengine-umbrella.h"
+
+  export *
+  module * { export * }
+}

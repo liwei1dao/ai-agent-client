@@ -1,0 +1,6 @@
+framework module agents_server {
+  umbrella header "agents_server-umbrella.h"
+
+  export *
+  module * { export * }
+}

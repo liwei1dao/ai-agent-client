@@ -1,0 +1,6 @@
+framework module ast_polychat {
+  umbrella header "ast_polychat-umbrella.h"
+
+  export *
+  module * { export * }
+}

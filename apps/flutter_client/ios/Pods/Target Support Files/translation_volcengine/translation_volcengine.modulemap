@@ -1,0 +1,6 @@
+framework module translation_volcengine {
+  umbrella header "translation_volcengine-umbrella.h"
+
+  export *
+  module * { export * }
+}

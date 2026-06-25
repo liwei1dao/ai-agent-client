@@ -1,0 +1,6 @@
+framework module agent_chat {
+  umbrella header "agent_chat-umbrella.h"
+
+  export *
+  module * { export * }
+}

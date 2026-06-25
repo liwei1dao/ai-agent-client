@@ -1,0 +1,25 @@
+{
+  "name": "translation_deepl",
+  "version": "0.1.0",
+  "summary": "DeepL translation plugin (iOS stub).",
+  "homepage": "https://example.com",
+  "license": {
+    "type": "MIT"
+  },
+  "authors": {
+    "AI Agent": "dev@example.com"
+  },
+  "source": {
+    "path": "."
+  },
+  "source_files": "Classes/**/*",
+  "platforms": {
+    "ios": "16.0"
+  },
+  "dependencies": {
+    "Flutter": [],
+    "ai_plugin_interface": []
+  },
+  "swift_versions": "5.9",
+  "swift_version": "5.9"
+}

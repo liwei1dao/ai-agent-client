@@ -1,0 +1,6 @@
+framework module translation_aliyun {
+  umbrella header "translation_aliyun-umbrella.h"
+
+  export *
+  module * { export * }
+}
