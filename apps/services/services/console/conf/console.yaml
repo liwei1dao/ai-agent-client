@@ -1,0 +1,50 @@
+# 后台控制面服务配置（本地开发）
+type: "console"
+version: 1.0
+
+sys:
+  log:
+    FileName: "./log/console.log"
+    Loglevel: 5
+    MaxAgeTime: 7
+    IsDebug: true
+
+  postgres:
+    Dsn: "postgresql://postgres.zqwfawlmlxjpgqlyigii:li13451234&&wei@aws-1-us-west-2.pooler.supabase.com:6543/postgres?sslmode=require"
+
+  redis:
+    Addr: ["127.0.0.1:6379"]
+    Password: ""
+    DB: 3
+    TLS: false
+    KeyPrefix: "Console"
+
+  nats:
+    URL: "nats://127.0.0.1:4222"
+    Name: "console"
+    MaxReconnects: 5
+    ReconnectWait: 2
+
+  cos:
+    SecretID: ""
+    SecretKey: ""
+    AppId: "1253517901"
+    Region: "ap-guangzhou"
+    BucketName: "deepsound-1253517901"
+    BucketURL: "https://deepsound-1253517901.cos.ap-guangzhou.myqcloud.com"
+
+modules:
+  console:
+    HTTP:
+      Addr: ":8080"
+    StaticDir: "./consoleweb"
+    TokenKey: "console-dev-secret-key-2024"
+    AdminAccount: "admin"
+    AdminPassword: "123456"
+    SiteName: "云言 SaaS 管理平台"
+    Stat:
+      Subject: "stats.event"
+      Stream: "STATS"
+      Durable: "console-stats"
+      Timezone: "Asia/Shanghai"
+      RecvLogCap: 2000

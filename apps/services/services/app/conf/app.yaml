@@ -1,0 +1,46 @@
+# app 业务服务配置（本地开发）
+type: "app"
+version: 1.0
+
+sys:
+  log:
+    FileName: "./log/app.log"
+    Loglevel: 5
+    MaxAgeTime: 7
+    IsDebug: true
+
+  postgres:
+    Dsn: "postgresql://postgres.zqwfawlmlxjpgqlyigii:li13451234&&wei@aws-1-us-west-2.pooler.supabase.com:6543/postgres?sslmode=require"
+
+  redis:
+    Addr: ["127.0.0.1:6379"]
+    Password: ""
+    DB: 3
+    TLS: false
+    KeyPrefix: "App"
+
+  # 以下三块按需填写真实凭证；未配置则对应登录方式运行时返回错误。
+  sms:
+    AppId: ""
+    SecretId: ""
+    SecretKey: ""
+    SignName: ""
+    Template1: "" # 国内模板
+    Template2: "" # 国际模板
+
+  email:
+    EmailType: 0 # 0=QQ 1=Gmail 2=腾讯企业邮（见 sys/email/options.go）
+    FromEmail: "noreply@example.com"
+    FromName: "AI Agent"
+    Password: "REPLACE_ME"
+
+  wechat:
+    AppID: ""
+    AppSecret: ""
+
+modules:
+  app:
+    HTTP:
+      Addr: ":8090"
+    TokenKey: "app-dev-secret-key-2024"
+    CodeTTL: 300

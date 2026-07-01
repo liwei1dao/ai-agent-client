@@ -85,13 +85,17 @@ app.*.map.json
 *.g.dart
 .claude/
 
-# Payment / signing private keys — NEVER commit (Apple .p8, WeChat Pay, etc.)
+# Secrets / credentials — NEVER commit (private keys, service accounts, certs)
 *.p8
 *.p12
 *.pfx
 **/apiclient_key.pem
 **/apiclient_cert.pem
 **/sys/pay/**/*.pem
+# GCP / Google service-account credential JSON
+**/sys/google/*-*.json
+**/*service_account*.json
+**/*serviceaccount*.json
 
 # Compiled Go server binary (build artifact)
 apps/services/console

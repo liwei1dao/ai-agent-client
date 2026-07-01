@@ -1,0 +1,163 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "移动灵犀聊天服务（咪咕灵犀），独立部署，对外提供普通聊天接口（支持流式 SSE / 非流式）。",
+        "title": "Migu API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/chat": {
+            "post": {
+                "description": "普通聊天接口，内部对接咪咕灵犀。\nstream=false：返回完整 JSON（ChatResponse），结构化音乐卡片在 cards 字段；\nstream=true：返回 SSE 流，每帧一个 ChatChunk（音乐卡片在 card 字段），结束以 data: [DONE]。\n鉴权：服务端配置了 ApiKey 时需带请求头 Authorization: Bearer \u003ckey\u003e。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json",
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "Migu"
+                ],
+                "summary": "咪咕灵犀聊天",
+                "parameters": [
+                    {
+                        "description": "聊天请求",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/migu.ChatRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "非流式完整响应；流式时为 SSE 流（data: {ChatChunk} ... data: [DONE]）",
+                        "schema": {
+                            "$ref": "#/definitions/migu.ChatResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "鉴权失败",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "earphone_modules_migu.Message": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "description": "文本内容",
+                    "type": "string"
+                },
+                "role": {
+                    "description": "user / assistant / system",
+                    "type": "string"
+                }
+            }
+        },
+        "migu.ChatRequest": {
+            "type": "object",
+            "properties": {
+                "deviceId": {
+                    "description": "设备ID（可选，亦可用 X-Device-Id 头）",
+                    "type": "string"
+                },
+                "history": {
+                    "description": "历史对话（可选）",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/earphone_modules_migu.Message"
+                    }
+                },
+                "message": {
+                    "description": "本次问话（必填）",
+                    "type": "string"
+                },
+                "sessionId": {
+                    "description": "会话ID（可选，亦可用 X-Session-Id 头）",
+                    "type": "string"
+                },
+                "stream": {
+                    "description": "是否流式",
+                    "type": "boolean"
+                }
+            }
+        },
+        "migu.ChatResponse": {
+            "type": "object",
+            "properties": {
+                "cards": {
+                    "description": "全部结构化卡片（音乐等）",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/migu.Content"
+                    }
+                },
+                "content": {
+                    "description": "拼接后的完整文本",
+                    "type": "string"
+                },
+                "finishReason": {
+                    "description": "结束原因",
+                    "type": "string"
+                },
+                "reasoning": {
+                    "description": "拼接后的完整思考",
+                    "type": "string"
+                },
+                "recommendPrompts": {
+                    "description": "全部追问提示词",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reqId": {
+                    "type": "string"
+                },
+                "sessionId": {
+                    "type": "string"
+                }
+            }
+        },
+        "migu.Content": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

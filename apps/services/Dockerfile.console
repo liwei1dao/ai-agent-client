@@ -1,0 +1,43 @@
+# console 服务镜像：后台控制面（独立单例服务，不接 ETCD/RPCX 集群）
+# 构建上下文：apps/services/
+
+# ============ Stage 1: Builder ============
+FROM golang:1.25-alpine AS builder
+
+ENV GOPROXY=https://goproxy.cn,direct \
+    CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=amd64
+
+WORKDIR /src
+
+# 预热依赖缓存
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+COPY . .
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -ldflags "-s -w" -o /out/console ./services/console/
+
+# ============ Stage 2: Runtime ============
+FROM alpine:3.20
+
+RUN apk add --no-cache tzdata ca-certificates && \
+    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+COPY --from=builder /out/console /opt/console/console
+COPY entrypoint.console.sh       /opt/console/entrypoint.sh
+
+RUN chmod +x /opt/console/entrypoint.sh /opt/console/console && \
+    mkdir -p /app
+
+# 工作目录由宿主机 deploy/console/ 挂入，内含 confs/console.yaml log/
+WORKDIR /app
+
+EXPOSE 8080
+
+ENTRYPOINT ["/opt/console/entrypoint.sh"]
