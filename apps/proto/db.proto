@@ -1,0 +1,371 @@
+syntax = "proto3";
+option go_package = ".;pb";
+import "enum.proto";
+
+//用户渠道
+enum UserChannel {
+    UNKNOWN = 0;  //未知
+    CHINA_HUAWEI = 1;  //中国-华为
+    CHINA_XIAOMI = 2;  //中国-小米
+    CHINA_OPPO = 3;    //中国-OPPO
+    CHINA_VIVO = 4;    //中国-VIVO
+    CHINA_HONOR = 5;   //中国-荣耀
+    OFFICIAL = 100;     //官方包
+    GLOBAL_APPLE = 101;  //全球-苹果
+    GLOBAL_GOOGLE = 102;  //全球-谷歌
+}
+
+enum Codetype {
+    AUTHCODE = 0;  //认证码
+    DEVICECODE = 1; //设备码
+}
+
+//用户数据
+message DBUser {
+    string uid = 1;                                //@go_tags(`gorm:"uid:50;primaryKey" json:"uid"`) 用户ID
+    string mail = 2;                               //@go_tags(`gorm:"mail:50;index" json:"mail"`) 邮箱
+    string phone = 3;                              //@go_tags(`gorm:"phone:50;index" json:"phone"`) 手机号
+    string name = 5;                               //@go_tags(`gorm:"name:50" json:"name"`) 用户名
+    string avatar = 8;                             //@go_tags(`gorm:"avatar" json:"avatar"`) 玩家头像
+    string phonemodel = 10;                        //@go_tags(`json:"phonemodel"`) 手机型号
+    string phonemac = 11;                          //@go_tags(`gorm:"phonemac:50;index" json:"phonemac"`) 手机硬件id
+    string account = 12;                           //@go_tags(`gorm:"account:50;index" json:"account"`) 登录帐号
+    string password = 13;                          //@go_tags(`json:"password"`) 密码登录
+    int64 lastsgintime = 20;                       //@go_tags(`gorm:"lastsgintime" json:"lastsgintime"`) 最后登录四件
+    int64 createtime = 21;                         //@go_tags(`gorm:"createtime" json:"createtime"`) 注册时间
+    string language = 22;                          //@go_tags(`gorm:"language" json:"language"`) 语言
+    string servicetag = 23;                        //@go_tags(`gorm:"servicetag" json:"servicetag"`) 服务所属区
+    UserChannel channel = 24;                      //@go_tags(`gorm:"channel" json:"channel"`) 用户渠道
+    string version = 25;                           //@go_tags(`gorm:"version" json:"version"`) 版本
+    UserState State = 26;                          //@go_tags(`gorm:"State" json:"State"`) 状态
+    int64 canceltime = 27;                          //@go_tags(`gorm:"canceltime" json:"canceltime"`) 注销时间(0 未注销)
+    string wxopenid = 30;                           //@go_tags(`gorm:"wxopenid:50;index" json:"wxopenid"`) 微信openid
+    string googleopenid = 31;                       //@go_tags(`gorm:"googleopenid:50;index" json:"googleopenid"`) 谷歌openid
+    string facebookopenid = 32;                     //@go_tags(`gorm:"facebookopenid:50;index" json:"facebookopenid"`) FaceBook
+    string appleopenid = 33;                        //@go_tags(`gorm:"appleopenid:50;index" json:"appleopenid"`) 
+
+    bool isgiveaway =  36;                         //@go_tags(`gorm:"isgiveaway" json:"isgiveaway"`) 是否是第一次绑定 
+    int32 gender = 37;                             //@go_tags(`gorm:"gender" json:"gender"` 性别 1-男 2-女
+    string country_code = 38;                      //@go_tags(`gorm:"country_code" json:"country_code"`   // 国家编码
+    string continent_code = 39;                    //@go_tags(`gorm:"continent_code" json:"continent_code"`        // 国家
+
+    int32 viplv = 40;                               //@go_tags(`gorm:"viplv:50" json:"viplv"`) viplv
+    int64 vipexptime = 41;                          //@go_tags(`gorm:"vipexptime" json:"vipexptime"`) 会员过期时间
+    int64 aichatintegral = 42;                      //@go_tags(`gorm:"aichatintegral" json:"aichatintegral"`) ai聊天积分
+    int64 aichattotalintegral = 43;                 //@go_tags(`gorm:"aichattotalintegral" json:"aichattotalintegral"`) ai聊天总积分
+    int64 tradeintegral = 44;                       //@go_tags(`gorm:"tradeintegral" json:"tradeintegral"`) 翻译积分
+    int64 tradetotalintegral = 45;                  //@go_tags(`gorm:"tradetotalintegral" json:"tradetotalintegral"`) 翻译总积分
+    int64 meetintegral = 46;                        //@go_tags(`gorm:"meetintegral" json:"meetintegral"`) 会议积分
+    int64 meettotalintegral = 47;                   //@go_tags(`gorm:"meettotalintegral" json:"meettotalintegral"`) 会议总积分
+    bool isactivatecode = 48;                       //@go_tags(`gorm:"isactivatecode" json:"isactivatecode"`) 是否已使用过激活码（厂家公码）每账号一生限领一次
+    uint32 lastbindproductid = 49;                  //@go_tags(`gorm:"lastbindproductid" json:"lastbindproductid"`) 最后绑定的产品ID（充值/消耗按此产品归属统计）
+}
+
+//用户设备数据
+message DBUserDivice {
+    uint64 id = 1;                                  //@go_tags(`gorm:"id:50;primaryKey;autoIncrement json:"id"`) id 
+    string uid = 2;                                 //@go_tags(`gorm:"uid:50;index" json:"uid"`) 用户ID
+    uint32 productid = 3;                           //@go_tags(`gorm:"productid:50;index" json:"productid"`) 产品ID
+    DeviceType devicetype = 4;                      //@go_tags(`gorm:"devicetype:50;index" json:"devicetype"`) 设备类型
+    string devicename = 5;                          //@go_tags(`gorm:"devicename:50" json:"devicename"`) 设备名称
+    string devicemac = 6;                           //@go_tags(`gorm:"devicemac:50;index" json:"devicemac"`) 设备地址 
+    string license = 7;                             //@go_tags(`gorm:"license:50;index" json:"license"`) 认证码
+    string cmei = 8;                                //@go_tags(`gorm:"cmei:50;index" json:"cmei"`) cmei码
+    string version = 9;                             //@go_tags(`gorm:"version:50" json:"version"`) 版本
+    string lxsetting = 10;                           //@go_tags(`gorm:"lxsetting:256" json:"lxsetting"`) 蓝训设置
+}
+
+//用户画像数据结构
+message DBUserPortrait{
+    string uid = 1;                                 //@go_tags(`gorm:"uid:50;primaryKey" json:"uid"`) 用户ID
+    string name = 2;
+    int32 gender = 3;   
+    string age = 4;
+    string city = 5;
+    string homeaddr = 6;
+    
+}
+  
+//智能体数据
+message DBAgent {
+    string id = 1;                                      //@go_tags(`gorm:"id:50;primaryKey" json:"id"`) 智能体id
+    string name = 2;                                    //@go_tags(`gorm:"name:50" json:"name"`) 智能体名称
+    string avatarUrl = 3;                               //@go_tags(`gorm:"avatarUrl:50" json:"avatarUrl"`) 头像
+    string description = 4;                             //@go_tags(`gorm:"description" json:"description"`) 智能体描述
+    string tag = 5;                                     //@go_tags(`gorm:"tag" json:"tag"`)  类型 多个用逗号分隔
+    bool enable = 6;                                    //@go_tags(`gorm:"enable" json:"enable"`)  是否启用
+    bool isOnline = 7;                                  //@go_tags(`gorm:"isOnline" json:"isOnline"`)  是否在线
+    string welcomeMessage = 8;                          //@go_tags(`gorm:"welcomeMessage" json:"welcomeMessage"`)  文字欢迎消息
+    string voiceWelcomeMessage = 9;                     //@go_tags(`gorm:"voiceWelcomeMessage" json:"voiceWelcomeMessage"`)  声音欢迎消息
+    string systemPrompt = 10;                           //@go_tags(`gorm:"systemPrompt" json:"systemPrompt"`)  提示词
+    string languages = 11;                              //@go_tags(`gorm:"languages" json:"languages"`) 支持语言 多个用逗号分隔 zh-CN,en-US
+    AgentSource source = 12;                            //@go_tags(`gorm:"source;index" json:"source"`) Agent来源 0:内置 1:PolyChat 2:阿里云 3:火山
+    string serviceData = 13;                            //@go_tags(`gorm:"serviceData" json:"serviceData"`) 服务数据 JSON 存放各平台所需的接入参数
+    string roleId = 14;                                 //@go_tags(`gorm:"roleId:50;index" json:"roleId"`) 角色ID
+    string voice = 15;                                  //@go_tags(`gorm:"voice" json:"voice"`) 音色配置 多个用逗号分隔 平台音色id
+    string voices = 16;                                 //@go_tags(`gorm:"voices" json:"voices"`) 音色配置 多个用逗号分隔 平台音色id
+    int32 sort = 17;                                    //@go_tags(`gorm:"sort;index" json:"sort"`) 排序权重 值越小越靠前
+}
+
+//mcp 服务列表
+message DBMcpServer {
+    string id = 1;                                      //@go_tags(`gorm:"id:50;primaryKey" json:"id"`) mcp服务id
+    string name = 2;                                    //@go_tags(`gorm:"name:50" json:"name"`) mcp服务名称
+    Region region = 3;                                  //@go_tags(`gorm:"region;index" json:"region"`) 配置组
+    string description = 4;                             //@go_tags(`gorm:"description" json:"description"`) mcp服务名称
+    string url = 5;                                     //@go_tags(`gorm:"url" json:"url"`) 地址
+    MCPServerType stype = 6;                             //@go_tags(`gorm:"stype" json:"type"`) 服务类型
+    string tools = 7;                                   //@go_tags(`gorm:"tools" json:"tools"`) 启用工具 空表示 全部启用
+    bool enable = 8;                                    //@go_tags(`gorm:"enable" json:"enable"`) 是否启用
+}
+
+//app 配置数据
+message DBGlobalConfigItem{
+    uint64 id = 1;                                       //@go_tags(`gorm:"primaryKey;autoIncrement json:"group"`) 配置组   
+    Region region = 2;                                   //@go_tags(`gorm:"region;index json:"region"`) 区域枚举，用于根据区域适配服务配置   
+    string group = 3;                                    //@go_tags(`gorm:"group:50;index" json:"group"`) 配置组
+    string key = 4;                                     
+    string value = 5;                                   
+    string description = 6;                              
+}
+
+//app 配置数据
+message DBAppConfigItem{
+    uint64 id = 1;                                       //@go_tags(`gorm:"primaryKey;autoIncrement json:"group"`) 配置组   
+    string group = 3;                                    //@go_tags(`gorm:"group:50;index" json:"group"`) 配置组
+    string key = 4;                                     
+    string value = 5;                                   
+    string description = 6;                              
+}
+
+//厂家数据管理
+message DBFactory{
+    uint32 id = 1;                                       //@go_tags(`gorm:"id;primaryKey;autoIncrement" json:"id"`) 厂家id 
+    string factory = 2;                                  //@go_tags(`gorm:"factory" json:"factory"`) 工厂名称
+    string factoryflag = 3;                              //@go_tags(`gorm:"factoryflag" json:"factoryflag"`) 厂家标识
+    string description = 4;                              //@go_tags(`gorm:"description" json:"description"`) 描述
+    string contactmails = 5;                             //@go_tags(`gorm:"contactmails" json:"contactmails"`) 联系人邮箱 xxx@qq.com,xxx@gmail.com
+    uint32 probatch = 6;                                 //@go_tags(`gorm:"probatch" json:"probatch"`) 当前生产批次
+    string productlists = 7;                             //@go_tags(`gorm:"productlists" json:"productlists"`) 产品列表 1,2,3
+}
+
+//厂家出货单
+message DBFactoryDeliveryNote{
+    uint64 id = 1;                                       //@go_tags(`gorm:"id;primaryKey;autoIncrement json:"id"`) id 
+    int64 ts =2;                                         //@go_tags(`gorm:"ts;index" json:"ts"`) 时间戳  
+    uint32 factoryid = 3;                                //@go_tags(`gorm:"factoryid;index" json:"factoryid"`) 厂家id 
+    uint32 productid = 4;                                //@go_tags(`gorm:"productid;index" json:"productid"`) 设备类型
+    uint32 probatch = 5;                                  //@go_tags(`gorm:"probatch:50;index" json:"probatch"`) 批次 1,2,3
+    string startmac = 6;                                 //@go_tags(`gorm:"startmac:50;index" json:"startmac"`) 开始设备地址
+    string endmac = 7;                                   //@go_tags(`gorm:"endmac:50;index" json:"endmac"`) 结束设备地址
+    uint32 devicetnum = 8;                                //@go_tags(`gorm:"devicetnum;index" json:"devicetnum"`) 设备数量                               
+}
+
+//工厂产品
+message DBProduct{
+    uint32 id = 1;                                       //@go_tags(`gorm:"id;primaryKey;autoIncrement" json:"id"`) 设备编码 
+    uint32 factoryid = 2;                                //@go_tags(`gorm:"factoryid" json:"factoryid"`) 工厂
+    DeviceType devicetype = 3;                           //@go_tags(`gorm:"devicetype" json:"devicetype"`) 设备类型
+    string devicename = 4;                               //@go_tags(`gorm:"devicename" json:"devicename"`) 设备名称
+    string productimage = 5;                             //@go_tags(`gorm:"productimage" json:"productimage"`) 产品图片
+    string scanuuid = 6;                                 //@go_tags(`gorm:"scanuuid" json:"scanuuid"`) 设备扫描唯一id
+    string version = 7;                                  //@go_tags(`gorm:"version" json:"version"`) 版本
+    string updatedescription = 9;                        //@go_tags(`gorm:"updatedescription" json:"updatedescription"`) 描述
+    string updatepackageaddress = 10;                    //@go_tags(`gorm:"updatepackageaddress" json:"updatepackageaddress"`) 更新包地址=url
+    uint32 versionid = 11;                               //@go_tags(`gorm:"versionid" json:"versionid"`) 版本id
+    bool iscanbindagain = 12;                            //@go_tags(`gorm:"iscanbindagain" json:"iscanbindagain"`) 是否可以反复下发奖励
+    uint32 bindrewardvpitime = 13;                       //@go_tags(`gorm:"bindrewardvpitime" json:"bindrewardvpitime"`) 是否奖励vip时间
+    uint32 bindrewardtranslate = 14;                     //@go_tags(`gorm:"bindrewardtranslate" json:"bindrewardtranslate"`) 绑定奖励翻译次数
+    uint32 bindrewardmeeting = 15;                       //@go_tags(`gorm:"bindrewardmeeting" json:"bindrewardmeeting"`) 绑定奖励会议次数
+    bool iscontinuouschat = 16;                          //@go_tags(`gorm:"iscontinuouschat" json:"iscontinuouschat"`) 是否连续对话
+    bool eqenable = 17;                                  //@go_tags(`gorm:"eqenable" json:"eqenable"`) EQ是否启用
+    bool keyenable = 18;                                 //@go_tags(`gorm:"keyenable" json:"keyenable"`) 按键是否启用
+    bool workmodeenable = 19;                            //@go_tags(`gorm:"workmodeenable" json:"workmodeenable"`) 工作模式是否启用
+    bool callmodeenable = 20;                            //@go_tags(`gorm:"callmodeenable" json:"callmodeenable"`) 通话模式是否启用
+    bool ledenable = 21;                                 //@go_tags(`gorm:"ledenable" json:"ledenable"`) 闪灯开关是否启用
+    bool finddeviceenable = 22;                          //@go_tags(`gorm:"finddeviceenable" json:"finddeviceenable"`) 查找设备开关是否启用
+    bool noisereductionenable = 23;                      //@go_tags(`gorm:"noisereductionenable" json:"noisereductionenable"`) 降噪开关是否启用 
+    bool shutdownenable = 24;                            //@go_tags(`gorm:"shutdownenable" json:"shutdownenable"`) 定时关机开关是否启用
+    bool showcasebattery = 25;                           //@go_tags(`gorm:"showcasebattery" json:"showcasebattery"`) 是否显示仓盒电量
+    bool wakeupenable = 26;                              //@go_tags(`gorm:"wakeupenable" json:"wakeupenable"`) 唤醒控制开关是否启用
+    bool broadcastpeertranslate = 27;                    //@go_tags(`gorm:"broadcastpeertranslate" json:"broadcastpeertranslate"`) 是否播报对方翻译内容
+    string channel = 28;                                 //@go_tags(`gorm:"channel" json:"channel"`) 产品渠道方 official/mobile
+    string channelextra = 29;                            //@go_tags(`gorm:"channelextra" json:"channelextra"`) 渠道附加数据(JSON字符串)
+    bool hideaiassistant = 30;                           //@go_tags(`gorm:"hideaiassistant" json:"hideaiassistant"`) 是否隐藏AI助手功能
+    uint32 devicecodecount = 31;                         //@go_tags(`gorm:"devicecodecount" json:"devicecodecount"`) 每副产品生产的设备码数量(0或1=单份,2=双份)
+    uint32 bassfilter = 32;                              //@go_tags(`gorm:"bassfilter" json:"bassfilter"`) 过滤低音音频参数(0-1000)
+}
+   
+
+message DBProductVersion{
+    uint32 id = 1;                                       //@go_tags(`gorm:"id;primaryKey;autoIncrement" json:"id"`) 版本id
+    uint32 productid = 2;                                //@go_tags(`gorm:"productid;index" json:"productid"`) 产品id
+    string version = 3;                                  //@go_tags(`gorm:"version;index" json:"version"`) 版本
+    string description = 4;                              //@go_tags(`gorm:"description" json:"description"`) 描述
+    string updatepackageaddress = 5;                     //@go_tags(`gorm:"updatepackageaddress" json:"updatepackageaddress"`) 更新包地址
+}
+
+//设备管理
+message DBChannelApp{
+    int32 channel = 1;                                   //@go_tags(`gorm:"channel;primaryKey" json:"channel"`) 渠道 
+    string version = 2;                                  //@go_tags(`gorm:"version" json:"version"`) 版本
+    string description = 3;                              //@go_tags(`gorm:"description" json:"description"`) 描述      
+    string address = 4;                                  //@go_tags(`gorm:"address" json:"address"`) 下载地址
+    bool tourists = 5;                                   //@go_tags(`gorm:"tourists" json:"tourists"`) 是否开启游客登录
+    bool allowskipdevicebinding = 6;                     //@go_tags(`gorm:"allowskipdevicebinding" json:"allowskipdevicebinding"`) 是否允许跳过设备绑定
+    string paychannels = 7;                              //@go_tags(`gorm:"paychannels" json:"paychannels"`) 支付渠道 wxpay,alipay,paypal,google,apple
+}
+
+
+//授权码数据
+message DBFactoryDevics {
+    string code = 1;                                        //@go_tags(`gorm:"code;primaryKey" json:"code"`) 授权码ID
+    Codetype codetype = 2;                                  //@go_tags(`gorm:"codetype" json:"codetype"`) 授权码类型 0:认证码 1:设备码
+    uint32 factoryid = 3;                                   //@go_tags(`gorm:"factoryid;index" json:"factoryid"`) 厂家id
+    uint32 productid = 4;                                   //@go_tags(`gorm:"productid;index:idx_product_mac" json:"productid"`) 产品id
+    uint32 probatch = 5;                                     //@go_tags(`gorm:"probatch:50;index" json:"probatch"`) 批次
+    uint32 number = 6;                                      //@go_tags(`gorm:"number" json:"number"`) 授权码数量
+    int64 createtime = 7;                                   //@go_tags(`gorm:"createtime" json:"createtime"`) 创建时间
+    int64 usedtime = 9;                                     //@go_tags(`gorm:"usedtime" json:"usedtime"`) 使用时间
+    int32 status = 10;                                       //@go_tags(`gorm:"status:index" json:"status"`) 状态 0:未使用 1:已使用 2:已过期
+    string uid = 11;                                        //@go_tags(`gorm:"uid:50;index" json:"uid"`) 用户ID
+    string devicemac = 12;                                   //@go_tags(`gorm:"devicemac;index:idx_product_mac" json:"devicemac"`) 地址
+    int32 disabled = 13;                                     //@go_tags(`gorm:"disabled;index" json:"disabled"`) 封禁状态 0:正常 -1:禁用
+}
+
+
+//厂家公码（一厂家可有多码，每码独立启停且独立配置奖励；新用户扫码领奖励）
+message DBFactoryPublicCode {
+    string code = 1;                                        //@go_tags(`gorm:"column:code;size:32;primaryKey" json:"code"`) 公码（主键）
+    uint32 factoryid = 2;                                   //@go_tags(`gorm:"factoryid;index" json:"factoryid"`) 厂家id
+    uint32 productid = 3;                                   //@go_tags(`gorm:"productid;index" json:"productid"`) 关联产品id（仅作分类标识，奖励读本表字段）
+    string remark = 4;                                      //@go_tags(`gorm:"remark" json:"remark"`) 备注（如批次/渠道说明）
+    int32 status = 5;                                       //@go_tags(`gorm:"status;index" json:"status"`) 状态 0:启用 1:停用
+    uint32 maxuses = 6;                                     //@go_tags(`gorm:"maxuses" json:"maxuses"`) 最大核销人数 0=不限
+    uint32 useduses = 7;                                    //@go_tags(`gorm:"useduses" json:"useduses"`) 已核销人数
+    int64 expiretime = 8;                                   //@go_tags(`gorm:"expiretime" json:"expiretime"`) 失效时间戳 0=永久
+    uint32 bindrewardvpitime = 9;                           //@go_tags(`gorm:"bindrewardvpitime" json:"bindrewardvpitime"`) 奖励VIP天数
+    uint32 bindrewardtranslate = 10;                        //@go_tags(`gorm:"bindrewardtranslate" json:"bindrewardtranslate"`) 奖励翻译分钟数
+    uint32 bindrewardmeeting = 11;                          //@go_tags(`gorm:"bindrewardmeeting" json:"bindrewardmeeting"`) 奖励会议分钟数
+    int64 createtime = 12;                                  //@go_tags(`gorm:"createtime" json:"createtime"`) 创建时间
+    int64 updatetime = 13;                                  //@go_tags(`gorm:"updatetime" json:"updatetime"`) 更新时间
+}
+
+//授权码数据
+message DBAuthCode {
+    string code = 1;                                        //@go_tags(`gorm:"code;primaryKey" json:"code"`) 授权码ID
+    uint32 factoryid = 2;                                    //@go_tags(`gorm:"factoryid;index" json:"factoryid"`) 厂家id
+    uint32 productid = 3;                                   //@go_tags(`gorm:"productid;index:idx_product_mac" json:"productid"`) 产品id
+    uint32 probatch = 4;                                     //@go_tags(`gorm:"probatch:50;index" json:"probatch"`) 生产批次
+    uint32 number = 5;                                       //@go_tags(`gorm:"number" json:"number"`) 授权码序号
+    int64 createtime = 6;                                   //@go_tags(`gorm:"createtime" json:"createtime"`) 创建时间
+    int64 expiretime = 7;                                   //@go_tags(`gorm:"expiretime" json:"expiretime"`) 过期时间
+    int64 usedtime = 8;                                     //@go_tags(`gorm:"usedtime" json:"usedtime"`) 使用时间
+    int32 status = 9;                                       //@go_tags(`gorm:"status:index" json:"status"`) 状态 0:未使用 1:已使用 2:已过期
+    string uid = 10;                                        //@go_tags(`gorm:"uid:50;index" json:"uid"`) 用户ID
+    string devicemac = 11;                                  //@go_tags(`gorm:"devicemac:50;index:idx_product_mac" json:"devicemac"`) 设备地址
+}
+
+
+//本地化商品名称
+message DBGoodsLocal {
+    string lang = 1;                                    //@go_tags(`gorm:"lang" json:"lang"`) 语言
+    string name = 2;                                    //@go_tags(`gorm:"name" json:"name"`) 产品名称
+    string currency = 3;                                    //@go_tags(`gorm:"currency" json:"currency"`) 货币符号
+    double price = 6;                                    //@go_tags(`gorm:"price" json:"price"`) 产品价格
+}
+
+//支付商品
+message DBGoods{
+    string id = 1;                                      //@go_tags(`gorm:"id;primaryKey" json:"id"`) 产品id
+    bool enable = 2;                                    //@go_tags(`gorm:"enable" json:"enable"`) 是否启用
+    string name = 3;                                    //@go_tags(`gorm:"name" json:"name"`) 产品名称
+    string localname = 4;                               //@go_tags(`gorm:"localname" json:"localname"`) 产品本地名称 采用json存储 {"zh-CN":{"name":"中文名称","currency":"¥","price":100}}
+    int32 price = 6;                                    //@go_tags(`gorm:"price" json:"price"`) 产品价格
+    UsageType usagetype = 7;                            //@go_tags(`gorm:"usagetype" json:"usagetype"`) 产品类型 0:普通产品 1:会员产品
+    int64 ainum = 8;                                    //@go_tags(`gorm:"ainum" json:"ainum"`) AI资源点            
+    int64 meetnum = 9;                                  //@go_tags(`gorm:"meetnum" json:"meetnum"`) 会议使用量资源点
+    int64 tradenum = 10;                                //@go_tags(`gorm:"tradenum" json:"tradenum"`) 翻译资源点
+    int32 viptime = 11;                                 //@go_tags(`gorm:"viptime" json:"viptime"`) 会员时间
+}
+
+//语音包管理
+message DBWakeupVoice{
+    uint32 id = 1;                                      //@go_tags(`gorm:"id;primaryKey;autoIncrement" json:"id"`) 唤醒语音id
+    bool enable = 2;                                    //@go_tags(`gorm:"enable" json:"enable"`) 是否启用
+    string name = 3;                                    //@go_tags(`gorm:"name" json:"name"`) 唤醒语音名称
+    string desc = 4;                                    //@go_tags(`gorm:"desc" json:"desc"`) 唤醒语音描述
+    string version = 5;                                 //@go_tags(`gorm:"version;index" json:"version"`) 版本
+    string packagaddress = 6;                           //@go_tags(`gorm:"packagaddress" json:"packagaddress"`) 唤醒语音地址    
+}
+
+//用户日志
+message DBUserUseLog {
+    uint64 id = 1;                                       //@go_tags(`gorm:"id;primaryKey;autoIncrement" json:"id"`) 积分日志id
+    string uid = 2;                                      //@go_tags(`gorm:"uid:50;index" json:"uid"`) 用户ID
+    int64 ts = 3;                                        //@go_tags(`gorm:"ts;index" json:"ts"`) 记录时间
+    UserLogType logtype = 4;                             //@go_tags(`gorm:"logtype;index" json:"logtype"`) 日志类型
+    int64 addvipday = 5;                                 //@go_tags(`gorm:"viptime" json:"addvipday"`) 会员时间
+    int64 addagentintegral = 6;                          //@go_tags(`gorm:"addagentintegral" json:"addagentintegral"`)  智能体资源点
+    int64 addtradesecond  = 7;                           //@go_tags(`gorm:"addtradesecond" json:"addtradesecond"`)    翻译资源点使用时常        
+    int64 addmeetsecond = 8;                             //@go_tags(`gorm:"addmeetsecond" json:"addmeetsecond"`) 会议使用时常
+    string extra = 9;                                    //@go_tags(`gorm:"extra" json:"extra"`) 附加数据    
+}
+
+//用户统计数据
+message DBUserStatistics{
+    string uid = 1;                                     //@go_tags(`gorm:"uid:50;primaryKey" json:"uid"`) 用户ID
+    int64 aichatnum = 2;                                //@go_tags(`gorm:"aichatnum" json:"aichatnum"`) AI聊天次数
+    int64 aichatuptoken = 3;                            //@go_tags(`gorm:"aichatuptoken" json:"aichatuptoken"`) AI聊天上报token
+    int64 aichatdowntoken = 4;                          //@go_tags(`gorm:"aichatdowntoken" json:"aichatdowntoken"`) AI聊天下行token 
+    int64 meetnum = 5;                                  //@go_tags(`gorm:"meetnum" json:"meetnum"`) 会议使用量资源点
+    int64 meettime = 6;                                 //@go_tags(`gorm:"meettime" json:"meettime"`) 会议使用时常
+    int64 trademodel1num = 7;                           //@go_tags(`gorm:"trademodel1num" json:"trademodel1num"`) 翻译模式1次数
+    int64 trademodel1time = 8;                          //@go_tags(`gorm:"trademodel1time" json:"trademodel1time"`) 翻译模式1时常    
+    int64 trademodel2num = 9;                           //@go_tags(`gorm:"trademodel2num" json:"trademodel2num"`) 翻译模式2次数
+    int64 trademodel2time = 10;                         //@go_tags(`gorm:"trademodel2time" json:"trademodel2time"`) 翻译模式2时常    
+    int32 trademodel3num = 11;                          //@go_tags(`gorm:"trademodel3num" json:"trademodel3num"`) 翻译模式3次数
+    int64 trademodel3time = 12;                         //@go_tags(`gorm:"trademodel3time" json:"trademodel3time"`) 翻译模式3时常    
+    int32 trademodel4num = 13;                          //@go_tags(`gorm:"trademodel4num" json:"trademodel4num"`) 翻译模式4次数
+    int64 trademodel4time = 14;                         //@go_tags(`gorm:"trademodel4time" json:"trademodel4time"`) 翻译模式4时常    
+    int32 trademodel5num = 15;                          //@go_tags(`gorm:"trademodel5num" json:"trademodel5num"`) 翻译模式5次数
+    int32 tradewordcount = 16;                          //@go_tags(`gorm:"tradewordcount" json:"tradewordcount"`) 翻译文本长度
+}
+
+// App综合统计（日/月/年三张表共用同一结构）
+message DBAppStat {
+    uint64 id = 1;                                      //@go_tags(`gorm:"id;primaryKey;autoIncrement" json:"id"`) 主键
+    string stat_date = 2;                               //@go_tags(`gorm:"type:varchar(20);uniqueIndex" json:"stat_date"`) 统计日期 日:2006-01-02 月:2006-01 年:2006
+    // 支付统计
+    int64 pay_amount = 3;                               //@go_tags(`gorm:"pay_amount" json:"pay_amount"`) 支付金额(分)
+    int32 order_count = 22;                             //@go_tags(`gorm:"order_count" json:"order_count"`) 创建订单数
+    int32 pay_count = 4;                                //@go_tags(`gorm:"pay_count" json:"pay_count"`) 有效订单数（已支付）
+    int32 failed_order_count = 23;                      //@go_tags(`gorm:"failed_order_count" json:"failed_order_count"`) 失败订单数
+    int32 pay_user_count = 5;                           //@go_tags(`gorm:"pay_user_count" json:"pay_user_count"`) 付费用户数
+    // 发放资源统计
+    int64 add_vip_days = 6;                             //@go_tags(`gorm:"add_vip_days" json:"add_vip_days"`) 发放VIP天数
+    int64 add_ai_integral = 7;                          //@go_tags(`gorm:"add_ai_integral" json:"add_ai_integral"`) 发放AI积分
+    int64 add_trade_second = 8;                         //@go_tags(`gorm:"add_trade_second" json:"add_trade_second"`) 发放翻译时长(秒)
+    int64 add_meet_second = 9;                          //@go_tags(`gorm:"add_meet_second" json:"add_meet_second"`) 发放会议时长(秒)
+    // AI聊天消耗统计
+    int64 ai_chat_count = 10;                           //@go_tags(`gorm:"ai_chat_count" json:"ai_chat_count"`) AI聊天次数
+    int64 ai_up_token = 11;                             //@go_tags(`gorm:"ai_up_token" json:"ai_up_token"`) AI上行token
+    int64 ai_down_token = 12;                           //@go_tags(`gorm:"ai_down_token" json:"ai_down_token"`) AI下行token
+    // 翻译消耗统计
+    int64 trade_count = 13;                             //@go_tags(`gorm:"trade_count" json:"trade_count"`) 翻译次数
+    int64 trade_time = 14;                              //@go_tags(`gorm:"trade_time" json:"trade_time"`) 翻译时长消耗(秒)
+    int64 trade_words = 15;                             //@go_tags(`gorm:"trade_words" json:"trade_words"`) 翻译字数
+    // 会议消耗统计
+    int64 meet_count = 16;                              //@go_tags(`gorm:"meet_count" json:"meet_count"`) 会议次数
+    int64 meet_time = 17;                               //@go_tags(`gorm:"meet_time" json:"meet_time"`) 会议时长消耗(秒)
+    // 用户统计
+    int32 new_user_count = 18;                          //@go_tags(`gorm:"new_user_count" json:"new_user_count"`) 新增注册用户数
+    int32 login_count = 19;                             //@go_tags(`gorm:"login_count" json:"login_count"`) 登录次数
+    int32 active_user_count = 24;                       //@go_tags(`gorm:"active_user_count" json:"active_user_count"`) 活跃用户数（当期有登录行为）
+    int64 total_user_count = 25;                        //@go_tags(`gorm:"total_user_count" json:"total_user_count"`) 累计用户总数（快照）
+    int32 vip_user_count = 26;                          //@go_tags(`gorm:"vip_user_count" json:"vip_user_count"`) 当期新增VIP用户数
+    // 设备统计
+    int32 bind_device_count = 20;                       //@go_tags(`gorm:"bind_device_count" json:"bind_device_count"`) 绑定设备数（激活）
+    int32 active_device_count = 27;                     //@go_tags(`gorm:"active_device_count" json:"active_device_count"`) 活跃设备数（当期有使用）
+    int64 update_time = 21;                             //@go_tags(`gorm:"update_time" json:"update_time"`) 更新时间
+}

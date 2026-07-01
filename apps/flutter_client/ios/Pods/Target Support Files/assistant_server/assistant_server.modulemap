@@ -1,6 +1,0 @@
-framework module assistant_server {
-  umbrella header "assistant_server-umbrella.h"
-
-  export *
-  module * { export * }
-}

@@ -1,6 +1,0 @@
-framework module sts_volcengine {
-  umbrella header "sts_volcengine-umbrella.h"
-
-  export *
-  module * { export * }
-}

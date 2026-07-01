@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>全局配置 — UniHelper 管理后台</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sider">
+    <div class="logo"><span class="logo-mark">🤖</span> UniHelper 后台</div>
+    <nav class="menu">
+      <div class="menu-group-title">配置中心</div>
+      <a class="menu-item" href="services.html"><span class="mi-icon">🧩</span> 服务配置</a>
+      <a class="menu-item" href="agents.html"><span class="mi-icon">🤝</span> Agent 配置</a>
+      <a class="menu-item" href="mcp.html"><span class="mi-icon">🔌</span> MCP 配置</a>
+      <a class="menu-item active" href="global-config.html"><span class="mi-icon">⚙️</span> 全局配置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="header">
+      <div class="crumb">配置中心 / <b>全局配置</b></div>
+      <div class="header-right">
+        <span class="bell">🔔</span>
+        <div class="user-chip"><span class="avatar">超</span> <span style="color:var(--text-2)">admin ▾</span></div>
+      </div>
+    </header>
+
+    <div class="content">
+      <div class="page-title-bar">
+        <div>
+          <h2 class="page-title">全局配置</h2>
+          <p class="page-sub">系统级键值配置（对接 <code>api_getglobalconfigs</code>），变更经 NATS 下发到所有业务服务</p>
+        </div>
+        <button class="btn primary">＋ 新建配置项</button>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <div class="input-affix" style="width:260px">
+            <input class="input" placeholder="搜索 key / 描述">
+            <span class="suffix">🔍</span>
+          </div>
+          <div style="flex:1"></div>
+          <select class="select" style="width:150px"><option>全部分组</option><option>系统</option><option>计费</option><option>功能开关</option></select>
+        </div>
+
+        <table class="tbl">
+          <thead>
+            <tr><th style="width:200px">Key</th><th>Value</th><th style="width:110px">类型</th><th>描述</th><th style="width:140px">操作</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="cell-id">site_name</td>
+              <td class="cell-strong">UniHelper 助理</td>
+              <td><span class="tag gray">string</span></td>
+              <td>站点显示名称</td>
+              <td><div class="row-actions"><span class="btn text link">编辑</span><span class="div"></span><span class="btn text link danger">删除</span></div></td>
+            </tr>
+            <tr>
+              <td class="cell-id">free_quota_daily</td>
+              <td class="cell-strong">100</td>
+              <td><span class="tag blue">number</span></td>
+              <td>免费用户每日调用额度</td>
+              <td><div class="row-actions"><span class="btn text link">编辑</span><span class="div"></span><span class="btn text link danger">删除</span></div></td>
+            </tr>
+            <tr>
+              <td class="cell-id">enable_voice_pet</td>
+              <td><span class="switch on"></span></td>
+              <td><span class="tag green">bool</span></td>
+              <td>桌面悬浮助理开关</td>
+              <td><div class="row-actions"><span class="btn text link">编辑</span><span class="div"></span><span class="btn text link danger">删除</span></div></td>
+            </tr>
+            <tr>
+              <td class="cell-id">default_llm_svc</td>
+              <td class="cell-strong">volc_ark_llm</td>
+              <td><span class="tag gray">string</span></td>
+              <td>默认 LLM 服务 ID</td>
+              <td><div class="row-actions"><span class="btn text link">编辑</span><span class="div"></span><span class="btn text link danger">删除</span></div></td>
+            </tr>
+            <tr>
+              <td class="cell-id">maintenance_mode</td>
+              <td><span class="switch off"></span></td>
+              <td><span class="tag green">bool</span></td>
+              <td>维护模式（开启后客户端只读）</td>
+              <td><div class="row-actions"><span class="btn text link">编辑</span><span class="div"></span><span class="btn text link danger">删除</span></div></td>
+            </tr>
+            <tr>
+              <td class="cell-id">sms_template_login</td>
+              <td class="cell-strong" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">您的验证码是 {code}，5 分钟内有效…</td>
+              <td><span class="tag gray">string</span></td>
+              <td>登录短信模板</td>
+              <td><div class="row-actions"><span class="btn text link">编辑</span><span class="div"></span><span class="btn text link danger">删除</span></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

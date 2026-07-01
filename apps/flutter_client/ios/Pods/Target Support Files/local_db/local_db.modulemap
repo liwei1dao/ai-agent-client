@@ -1,6 +1,0 @@
-framework module local_db {
-  umbrella header "local_db-umbrella.h"
-
-  export *
-  module * { export * }
-}

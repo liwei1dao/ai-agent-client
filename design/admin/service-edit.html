@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新建服务 — UniHelper 管理后台</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<!-- 在服务列表上叠加一层抽屉（Drawer），演示新建/编辑服务 -->
+<div class="layout" style="position:relative;">
+
+  <aside class="sider">
+    <div class="logo"><span class="logo-mark">🤖</span> UniHelper 后台</div>
+    <nav class="menu">
+      <div class="menu-group-title">配置中心</div>
+      <a class="menu-item active" href="services.html"><span class="mi-icon">🧩</span> 服务配置</a>
+      <a class="menu-item" href="agents.html"><span class="mi-icon">🤝</span> Agent 配置</a>
+      <a class="menu-item" href="mcp.html"><span class="mi-icon">🔌</span> MCP 配置</a>
+      <a class="menu-item" href="global-config.html"><span class="mi-icon">⚙️</span> 全局配置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="header">
+      <div class="crumb">配置中心 / 服务配置 / <b>新建服务</b></div>
+      <div class="header-right">
+        <span class="bell">🔔</span>
+        <div class="user-chip"><span class="avatar">超</span> <span style="color:var(--text-2)">admin ▾</span></div>
+      </div>
+    </header>
+    <div class="content" style="filter:brightness(.99)">
+      <div class="page-title-bar"><div><h2 class="page-title">服务配置</h2></div></div>
+      <div class="card"><div class="toolbar"><div class="segmented"><div class="seg active">全部</div></div></div>
+        <div style="height:240px"></div></div>
+    </div>
+  </div>
+
+  <!-- ============ 抽屉 ============ -->
+  <div class="drawer-mask"></div>
+  <div class="drawer">
+    <div class="drawer-head">
+      <h3>新建服务</h3>
+      <a href="services.html" class="close">✕</a>
+    </div>
+
+    <div class="drawer-body">
+      <div class="alert info">
+        <span>ℹ️</span>
+        <span>服务对应后端 <code>third_svc_config</code>。标记 <b>🔒 加密</b> 的字段将以 AES-256-GCM 落库，API 返回时脱敏为 <code>[encrypted]</code>。</span>
+      </div>
+
+      <div class="section-title">基本信息</div>
+
+      <div class="form-row inline">
+        <div class="form-col">
+          <label class="form-label"><span class="req">*</span>服务名称</label>
+          <input class="input focused" value="火山方舟 · Doubao">
+        </div>
+        <div class="form-col">
+          <label class="form-label"><span class="req">*</span>服务 ID<span class="opt">唯一，建议英文小写</span></label>
+          <input class="input" value="volc_ark_llm">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label"><span class="req">*</span>类别<span class="opt">可多选，对应 categories（逗号分隔）</span></label>
+        <div class="chk-group">
+          <label class="chk on"><span class="box">✓</span> LLM</label>
+          <label class="chk"><span class="box"></span> STT</label>
+          <label class="chk"><span class="box"></span> TTS</label>
+          <label class="chk"><span class="box"></span> AST</label>
+          <label class="chk"><span class="box"></span> STS</label>
+          <label class="chk"><span class="box"></span> 翻译 MT</label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">描述<span class="opt">选填</span></label>
+        <textarea class="textarea" placeholder="服务用途说明…">默认 LLM 供应商，走火山方舟接口</textarea>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">启用</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="switch on"></span>
+          <span style="color:var(--text-3);font-size:13px">关闭后业务侧不再下发此服务</span>
+        </div>
+      </div>
+
+      <div class="section-title">服务字段 <span style="font-weight:normal;color:var(--text-3)">（fields[]，由业务侧按 key 读取）</span></div>
+
+      <div class="kv-head">
+        <div>字段 Key</div>
+        <div>默认值 / 用途</div>
+        <div>加密</div>
+        <div></div>
+      </div>
+
+      <div class="kv-row">
+        <input class="input" value="api_key" placeholder="key">
+        <div class="input-affix">
+          <input class="input" value="ak-••••••••••••3f9c" placeholder="default value">
+          <span class="suffix">👁</span>
+        </div>
+        <div style="text-align:center"><span class="switch on" style="transform:scale(.8)"></span></div>
+        <div class="kv-del">✕</div>
+      </div>
+      <div class="kv-row">
+        <input class="input" value="secret_key" placeholder="key">
+        <div class="input-affix">
+          <input class="input" value="sk-••••••••••••a12b" placeholder="default value">
+          <span class="suffix">👁</span>
+        </div>
+        <div style="text-align:center"><span class="switch on" style="transform:scale(.8)"></span></div>
+        <div class="kv-del">✕</div>
+      </div>
+      <div class="kv-row">
+        <input class="input" value="endpoint" placeholder="key">
+        <input class="input" value="https://ark.cn-beijing.volces.com/api/v3" placeholder="default value">
+        <div style="text-align:center"><span class="switch off" style="transform:scale(.8)"></span></div>
+        <div class="kv-del">✕</div>
+      </div>
+      <div class="kv-row">
+        <input class="input" value="model" placeholder="key">
+        <input class="input" value="doubao-pro-32k" placeholder="default value">
+        <div style="text-align:center"><span class="switch off" style="transform:scale(.8)"></span></div>
+        <div class="kv-del">✕</div>
+      </div>
+      <div class="kv-row">
+        <input class="input" value="region" placeholder="key">
+        <input class="input" value="cn-beijing" placeholder="default value">
+        <div style="text-align:center"><span class="switch off" style="transform:scale(.8)"></span></div>
+        <div class="kv-del">✕</div>
+      </div>
+
+      <div class="add-field">＋ 添加字段</div>
+
+      <div class="form-row" style="margin-top:24px">
+        <button class="btn">🔌 测试连接</button>
+        <span style="color:var(--success);font-size:13px;margin-left:12px">● 已就绪，可保存</span>
+      </div>
+    </div>
+
+    <div class="drawer-foot">
+      <a href="services.html" class="btn">取消</a>
+      <a href="services.html" class="btn primary">保存服务</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

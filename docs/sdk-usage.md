@@ -1,6 +1,6 @@
 # AI Agent SDK 使用文档
 
-**项目名称**：AI Agent Client SDK
+**项目名称**：UniHelper SDK（原 AI Agent Client SDK）
 **版本**：v0.1.0
 **日期**：2026-05-10
 **适用读者**：接入本 SDK 的下游业务方开发者

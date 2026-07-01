@@ -1,0 +1,221 @@
+syntax = "proto3";
+option go_package = ".;pb";
+
+enum SginTyoe {
+    // 邮箱登录
+	// @Description 邮箱登录 
+	// @example
+    Mail = 0;      //手机登录
+    // 手机登录
+	// @Description 手机登录 
+	// @example
+    Phone = 1;      //手机登录
+    // 微信登录
+	// @Description 微信登录 
+	// @example
+    WXChat = 2;     //微信登录
+    // google登录
+	// @Description google登录 
+	// @example
+    Google = 3;     //google登录
+    // facebook登录
+	// @Description facebook登录 
+	// @example
+    FaceBook = 4;     //facebook登录
+    // firebase 登录
+	// @Description 
+	// @example
+    Apple = 5;    //Apple 登陆
+    // 游客登录
+	// @Description 
+	// @example
+    Tourists = 6;    //游客登录
+}
+
+enum UserState {
+    // 未知状态
+    // @Description 未知状态
+    // @example
+    Normal = 0;     //正常状态
+    // 禁用状态
+    // @Description 禁用状态
+    // @example
+    Disabled = 1;     //禁用状态
+    // 已注销状态（自助注销，可重新登录复活）
+    // @Description 已注销状态
+    // @example
+    Cancelled = 2;    //已注销状态
+}
+
+//设备类型
+enum DeviceType {
+    // 未知设备
+    // @Description 未知设备 
+    // @example
+    DeviceTypeUnknown = 0;     //未知设备
+    // 经典蓝牙耳机
+    // @Description 经典蓝牙耳机 
+    // @example
+    Classic_bluetooth_Headset = 1;              //经典蓝牙耳机
+    // Ble蓝牙耳机
+    // @Description Ble蓝牙耳机 
+    // @example
+    BLE_Bluetooth_Double_Headset = 2;           //Ble蓝牙耳机 双端
+    // Ble蓝牙耳机
+    // @Description Ble蓝牙耳机 
+    // @example
+    BLE_Bluetooth_Single_Headset = 3;           //Ble蓝牙耳机 单端
+    // 智能录音笔
+    // @Description 智能录音笔 
+    // @example
+    Smart_Voice_Recorder = 4;          //智能录音笔
+    // 智能眼镜
+    // @Description 智能眼镜
+    // @example
+    SmartEye = 5;
+    // 激活码卡片
+    // @Description 激活码卡片
+    // @example
+    ActivationCard = 6;          //激活码卡片
+}
+
+//使用量类型
+enum UsageType {
+    /// 未知使用量类型
+    UsageNull = 0;
+    // 翻译
+    // @Description 翻译 
+    // @example
+    Trade = 1;     //翻译
+    // 会议
+    // @Description 会议 
+    // @example
+    Meet = 2;     //会议
+    // 智能体
+    // @Description 智能体
+    // @example
+    AI = 3;     //智能体
+    // 购买VIP时长
+    // @Description 购买VIP时长
+    // @example
+    VIP = 4;     //购买VIP时长
+}
+
+
+
+enum UserLogType {
+    // 未知日志类型
+    // @Description 未知日志类型 
+    // @example
+    UserLogTypeUnknown = 0;     //未知日志类型
+    // 重置购买日志类型
+    // @Description 重置购买日志类型 
+    // @example
+    Pay = 1;     //重置购买日志类型 
+    // 活动奖励日志类型
+    // @Description 活动奖励日志类型 
+    // @example
+    ActivityReward = 2;     //活动奖励日志类型
+    // 管理员赠送日志类型
+    // @Description 管理员赠送日志类型 
+    // @example
+    AdminGive = 3;     //管理员赠送日志类型
+    /// 用户消耗
+    // @Description 用户消耗 
+    // @example
+    UserConsume = 4;     //用户消耗
+}
+
+//MCP服务类型
+// @Description MCP服务类型
+// @example
+enum MCPServerType {
+    Http = 0;
+    SEE = 1;
+}
+
+//智能体来源
+// @Description 智能体来源
+// @example
+enum AgentSource {
+    // 内置智能体
+    // @Description 内置智能体
+    // @example
+    AgentSourceBuiltin = 0;     //内置智能体
+    // PolyChat 平台智能体
+    // @Description PolyChat 平台智能体
+    // @example
+    AgentSourcePolyChat = 1;    //PolyChat 平台
+    // 阿里云平台智能体
+    // @Description 阿里云平台智能体
+    // @example
+    AgentSourceAliyun = 2;      //阿里云平台
+    // 火山平台智能体
+    // @Description 火山平台智能体
+    // @example
+    AgentSourceVolcano = 3;     //火山平台
+}
+
+// 区域枚举，用于根据区域适配服务配置
+enum Region {
+    // 未知区域
+    // @Description 未知区域
+    // @example
+    RegionUnknown = 0;          //未知区域
+    // 中国（独立处理）
+    // @Description 中国
+    // @example
+    RegionChina = 1;            //中国
+    // 美国（独立处理）
+    // @Description 美国
+    // @example
+    RegionUSA = 2;              //美国
+    // 东亚（日韩蒙等，不含中国）
+    // @Description 东亚
+    // @example
+    RegionEastAsia = 3;         //东亚
+    // 东南亚
+    // @Description 东南亚
+    // @example
+    RegionSoutheastAsia = 4;    //东南亚
+    // 南亚
+    // @Description 南亚
+    // @example
+    RegionSouthAsia = 5;        //南亚
+    // 西亚/中东
+    // @Description 西亚/中东
+    // @example
+    RegionMiddleEast = 6;       //西亚/中东
+    // 欧洲
+    // @Description 欧洲
+    // @example
+    RegionEurope = 7;           //欧洲
+    // 俄罗斯（独立处理）
+    // @Description 俄罗斯
+    // @example
+    RegionRussia = 8;           //俄罗斯
+    // 非洲
+    // @Description 非洲
+    // @example
+    RegionAfrica = 9;           //非洲
+    // 南美洲
+    // @Description 南美洲
+    // @example
+    RegionSouthAmerica = 10;    //南美洲
+    // 北美洲（加拿大、墨西哥等，不含美国）
+    // @Description 北美洲
+    // @example
+    RegionNorthAmerica = 11;    //北美洲
+    // 大洋洲
+    // @Description 大洋洲
+    // @example
+    RegionOceania = 12;         //大洋洲
+    // 巴西（独立处理）
+    // @Description 巴西
+    // @example
+    RegionBrazil = 13;          //巴西
+    // 印度（独立处理）
+    // @Description 印度
+    // @example
+    RegionIndia = 14;           //印度
+}

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 管理 — UniHelper 管理后台</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sider">
+    <div class="logo"><span class="logo-mark">🤖</span> UniHelper 后台</div>
+    <nav class="menu">
+      <div class="menu-group-title">配置中心</div>
+      <a class="menu-item" href="services.html"><span class="mi-icon">🧩</span> 服务配置</a>
+      <a class="menu-item active" href="agents.html"><span class="mi-icon">🤝</span> Agent 配置</a>
+      <a class="menu-item" href="mcp.html"><span class="mi-icon">🔌</span> MCP 配置</a>
+      <a class="menu-item" href="global-config.html"><span class="mi-icon">⚙️</span> 全局配置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="header">
+      <div class="crumb">配置中心 / <b>Agent 管理</b></div>
+      <div class="header-right">
+        <span class="bell">🔔</span>
+        <div class="user-chip"><span class="avatar">超</span> <span style="color:var(--text-2)">admin ▾</span></div>
+      </div>
+    </header>
+
+    <div class="content">
+      <div class="page-title-bar">
+        <div>
+          <h2 class="page-title">Agent 管理</h2>
+          <p class="page-sub">智能体定义（对接 <code>DBVoitransAgent</code>），按类型分为 chat / sts-chat / translate / ast-translate</p>
+        </div>
+        <a href="agent-create.html" class="btn primary">＋ 创建 Agent</a>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <div class="toolbar">
+          <div class="segmented">
+            <div class="seg active">全部</div>
+            <div class="seg">对话 chat</div>
+            <div class="seg">语音对话 sts</div>
+            <div class="seg">翻译 translate</div>
+            <div class="seg">端到端 ast</div>
+          </div>
+          <div style="flex:1"></div>
+          <div class="input-affix" style="width:240px">
+            <input class="input" placeholder="搜索 Agent 名 / ID">
+            <span class="suffix">🔍</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="agent-grid">
+
+        <div class="agent-card">
+          <div class="ac-top">
+            <div class="ac-avatar" style="background:#e6f4ff">🧑‍💼</div>
+            <div>
+              <div class="ac-name">通用助手</div>
+              <div class="ac-id">agt_general_chat</div>
+            </div>
+          </div>
+          <div class="ac-desc">日常问答与任务处理的通用对话智能体，支持工具调用与多轮记忆。</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="tag blue">agent_chat</span>
+            <span class="tag gray">🌐 中 / 英 / 日</span>
+            <span class="tag gold">3 变量</span>
+          </div>
+          <div class="ac-foot">
+            <span class="dot on" style="font-size:13px;color:var(--text-2)">已启用</span>
+            <div class="row-actions">
+              <a class="btn text link" href="agent-create.html">编辑</a>
+              <span class="btn text link danger">删除</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="agent-card">
+          <div class="ac-top">
+            <div class="ac-avatar" style="background:#f6ffed">🎧</div>
+            <div>
+              <div class="ac-name">语音陪聊</div>
+              <div class="ac-id">agt_voice_companion</div>
+            </div>
+          </div>
+          <div class="ac-desc">实时语音到语音对话，低延迟陪伴型智能体，适合耳机/音箱场景。</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="tag green">agent_sts_chat</span>
+            <span class="tag gray">🌐 中 / 英</span>
+            <span class="tag gold">2 变量</span>
+          </div>
+          <div class="ac-foot">
+            <span class="dot on" style="font-size:13px;color:var(--text-2)">已启用</span>
+            <div class="row-actions">
+              <a class="btn text link" href="agent-create.html">编辑</a>
+              <span class="btn text link danger">删除</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="agent-card">
+          <div class="ac-top">
+            <div class="ac-avatar" style="background:#fffbe6">🌍</div>
+            <div>
+              <div class="ac-name">同传翻译官</div>
+              <div class="ac-id">agt_translate_pro</div>
+            </div>
+          </div>
+          <div class="ac-desc">三段式翻译（ASR→MT→TTS）智能体，覆盖会议与通话翻译。</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="tag gold">agent_translate</span>
+            <span class="tag gray">🌐 12 种语言</span>
+            <span class="tag gold">4 变量</span>
+          </div>
+          <div class="ac-foot">
+            <span class="dot on" style="font-size:13px;color:var(--text-2)">已启用</span>
+            <div class="row-actions">
+              <a class="btn text link" href="agent-create.html">编辑</a>
+              <span class="btn text link danger">删除</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="agent-card">
+          <div class="ac-top">
+            <div class="ac-avatar" style="background:#e6fffb">⚡</div>
+            <div>
+              <div class="ac-name">极速直译</div>
+              <div class="ac-id">agt_ast_fast</div>
+            </div>
+          </div>
+          <div class="ac-desc">端到端语音直译（AST），免中间文本，延迟更低，音色保留。</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="tag cyan">agent_ast_translate</span>
+            <span class="tag gray">🌐 中 ⇄ 英</span>
+            <span class="tag gold">2 变量</span>
+          </div>
+          <div class="ac-foot">
+            <span class="dot off" style="font-size:13px;color:var(--text-2)">已停用</span>
+            <div class="row-actions">
+              <a class="btn text link" href="agent-create.html">编辑</a>
+              <span class="btn text link danger">删除</span>
+            </div>
+          </div>
+        </div>
+
+        <a href="agent-create.html" class="agent-card ghost">
+          <div style="font-size:28px">＋</div>
+          <div>创建新 Agent</div>
+        </a>
+
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

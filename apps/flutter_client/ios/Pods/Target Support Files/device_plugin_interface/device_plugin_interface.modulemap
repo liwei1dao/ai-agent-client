@@ -1,6 +1,0 @@
-framework module device_plugin_interface {
-  umbrella header "device_plugin_interface-umbrella.h"
-
-  export *
-  module * { export * }
-}

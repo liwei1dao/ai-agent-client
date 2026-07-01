@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>创建 Agent — UniHelper 管理后台</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sider">
+    <div class="logo"><span class="logo-mark">🤖</span> UniHelper 后台</div>
+    <nav class="menu">
+      <div class="menu-group-title">配置中心</div>
+      <a class="menu-item" href="services.html"><span class="mi-icon">🧩</span> 服务配置</a>
+      <a class="menu-item active" href="agents.html"><span class="mi-icon">🤝</span> Agent 配置</a>
+      <a class="menu-item" href="mcp.html"><span class="mi-icon">🔌</span> MCP 配置</a>
+      <a class="menu-item" href="global-config.html"><span class="mi-icon">⚙️</span> 全局配置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="header">
+      <div class="crumb">配置中心 / Agent 管理 / <b>创建 Agent</b></div>
+      <div class="header-right">
+        <span class="bell">🔔</span>
+        <div class="user-chip"><span class="avatar">超</span> <span style="color:var(--text-2)">admin ▾</span></div>
+      </div>
+    </header>
+
+    <div class="content">
+      <div class="page-title-bar">
+        <div>
+          <h2 class="page-title">创建 Agent</h2>
+          <p class="page-sub">定义一个智能体（<code>DBVoitransAgent</code>），保存后下发给客户端使用</p>
+        </div>
+        <a href="agents.html" class="btn">‹ 返回列表</a>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 320px; gap:20px; align-items:start;">
+
+        <!-- 左：表单 -->
+        <div class="card card-pad">
+
+          <div class="section-title">① 选择类型</div>
+          <div class="radio-cards" style="grid-template-columns:repeat(2,1fr)">
+            <div class="radio-card selected">
+              <div class="rc-title"><span class="tag blue">chat</span> 文本对话</div>
+              <div class="rc-desc">agent_chat · 多轮问答 + 工具调用，最常用</div>
+            </div>
+            <div class="radio-card">
+              <div class="rc-title"><span class="tag green">sts-chat</span> 语音对话</div>
+              <div class="rc-desc">agent_sts_chat · 实时语音到语音陪聊</div>
+            </div>
+            <div class="radio-card">
+              <div class="rc-title"><span class="tag gold">translate</span> 三段式翻译</div>
+              <div class="rc-desc">agent_translate · ASR→MT→TTS 同传</div>
+            </div>
+            <div class="radio-card">
+              <div class="rc-title"><span class="tag cyan">ast-translate</span> 端到端直译</div>
+              <div class="rc-desc">agent_ast_translate · 语音直译，低延迟</div>
+            </div>
+          </div>
+
+          <div class="section-title">② 基本信息</div>
+          <div class="form-row inline">
+            <div class="form-col">
+              <label class="form-label"><span class="req">*</span>Agent 名称</label>
+              <input class="input focused" placeholder="例如：通用助手" value="通用助手">
+            </div>
+            <div class="form-col">
+              <label class="form-label"><span class="req">*</span>Agent ID<span class="opt">唯一标识</span></label>
+              <input class="input" placeholder="agt_xxx" value="agt_general_chat">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">头像 URL<span class="opt">avatar_url，选填</span></label>
+            <div style="display:flex;gap:12px;align-items:center">
+              <div class="ac-avatar" style="background:#e6f4ff;width:40px;height:40px;flex:0 0 40px">🧑‍💼</div>
+              <input class="input" placeholder="https://cdn.example.com/avatar.png" value="https://cdn.../general.png">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">描述</label>
+            <textarea class="textarea" placeholder="一句话说明这个 Agent 的能力…">日常问答与任务处理的通用对话智能体，支持工具调用与多轮记忆。</textarea>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label"><span class="req">*</span>支持语言<span class="opt">supported_languages[]</span></label>
+            <div class="chk-group">
+              <label class="chk on"><span class="box">✓</span> 中文</label>
+              <label class="chk on"><span class="box">✓</span> English</label>
+              <label class="chk on"><span class="box">✓</span> 日本語</label>
+              <label class="chk"><span class="box"></span> 한국어</label>
+              <label class="chk"><span class="box"></span> Français</label>
+              <label class="chk"><span class="box"></span> Español</label>
+              <label class="chk"><span class="box"></span> + 更多</label>
+            </div>
+          </div>
+
+          <div class="section-title">③ 变量 <span style="font-weight:normal;color:var(--text-3)">（variables[]，运行时由用户/客户端填入）</span></div>
+
+          <div class="kv-head" style="grid-template-columns:1fr 90px 70px 1.4fr 36px">
+            <div>变量名</div><div>类型</div><div>必填</div><div>默认值 / 描述</div><div></div>
+          </div>
+
+          <div class="kv-row" style="grid-template-columns:1fr 90px 70px 1.4fr 36px">
+            <input class="input" value="user_name">
+            <select class="select"><option>string</option><option>number</option><option>bool</option></select>
+            <div style="text-align:center"><span class="switch on" style="transform:scale(.8)"></span></div>
+            <input class="input" placeholder="默认值 / 描述" value="用户昵称">
+            <div class="kv-del">✕</div>
+          </div>
+          <div class="kv-row" style="grid-template-columns:1fr 90px 70px 1.4fr 36px">
+            <input class="input" value="persona">
+            <select class="select"><option>string</option></select>
+            <div style="text-align:center"><span class="switch off" style="transform:scale(.8)"></span></div>
+            <input class="input" value="温柔体贴的助理">
+            <div class="kv-del">✕</div>
+          </div>
+          <div class="kv-row" style="grid-template-columns:1fr 90px 70px 1.4fr 36px">
+            <input class="input" value="temperature">
+            <select class="select"><option>number</option></select>
+            <div style="text-align:center"><span class="switch off" style="transform:scale(.8)"></span></div>
+            <input class="input" value="0.7">
+            <div class="kv-del">✕</div>
+          </div>
+
+          <div class="add-field">＋ 添加变量</div>
+
+          <div class="section-title">④ 绑定服务 <span style="font-weight:normal;color:var(--text-3)">（从已配置服务里选）</span></div>
+          <div class="form-row inline">
+            <div class="form-col">
+              <label class="form-label">LLM 服务</label>
+              <select class="select"><option>火山方舟 · Doubao（volc_ark_llm）</option><option>阿里云 · 通义千问</option></select>
+            </div>
+            <div class="form-col">
+              <label class="form-label">语音/TTS 服务<span class="opt">选填</span></label>
+              <select class="select"><option>火山引擎 · 语音合成（volc_tts）</option><option>无</option></select>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:28px;padding-top:18px;border-top:1px solid var(--split)">
+            <a href="agents.html" class="btn">取消</a>
+            <button class="btn">存为草稿</button>
+            <a href="agents.html" class="btn primary">创建 Agent</a>
+          </div>
+        </div>
+
+        <!-- 右：实时预览 -->
+        <div class="card card-pad" style="position:sticky;top:88px">
+          <div class="section-title" style="margin-top:0">预览</div>
+          <div class="agent-card" style="box-shadow:none;border:1px solid var(--split)">
+            <div class="ac-top">
+              <div class="ac-avatar" style="background:#e6f4ff">🧑‍💼</div>
+              <div>
+                <div class="ac-name">通用助手</div>
+                <div class="ac-id">agt_general_chat</div>
+              </div>
+            </div>
+            <div class="ac-desc">日常问答与任务处理的通用对话智能体，支持工具调用与多轮记忆。</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <span class="tag blue">agent_chat</span>
+              <span class="tag gray">🌐 中 / 英 / 日</span>
+              <span class="tag gold">3 变量</span>
+            </div>
+          </div>
+          <div class="alert info" style="margin-top:16px;margin-bottom:0">
+            <span>ℹ️</span>
+            <span>当前 console 对 agent 为<b>只读代理</b>外部 agents_server。若需后台落库 CRUD，需新增 agent 配置表与接口。</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

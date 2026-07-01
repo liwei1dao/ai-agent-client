@@ -1,0 +1,27 @@
+syntax = "proto3";
+option go_package = ".;pb";
+import "errorcode.proto";
+
+message ErrorData {
+  ErrorCode Code = 1;
+  string Message = 2;
+}
+
+//RPC 默认请求和回应
+message Rpc_EmptyReq {}
+message Rpc_EmptyResp {}
+
+//网关Http 路由请求
+message Rpc_GatewayHttpRouteReq {
+  string MsgName = 1;
+  map<string,string> Meta = 2;
+  bytes Message = 3;
+}
+
+message Rpc_GatewayHttpRouteResp {
+  string ContentType = 1;
+  bytes Body = 2;
+  bool Encrypted = 3; //业务服务上报：该响应需要加密，实际加密动作由网关模块执行
+}
+
+

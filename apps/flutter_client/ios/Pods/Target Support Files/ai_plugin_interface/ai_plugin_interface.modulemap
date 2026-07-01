@@ -1,6 +1,0 @@
-framework module ai_plugin_interface {
-  umbrella header "ai_plugin_interface-umbrella.h"
-
-  export *
-  module * { export * }
-}

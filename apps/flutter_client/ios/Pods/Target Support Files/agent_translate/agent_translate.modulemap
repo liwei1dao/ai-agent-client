@@ -1,6 +1,0 @@
-framework module agent_translate {
-  umbrella header "agent_translate-umbrella.h"
-
-  export *
-  module * { export * }
-}

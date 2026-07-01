@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UniHelper 管理后台 — 设计稿总览</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body class="gallery-body">
+  <div class="gallery-head">
+    <h1>🤖 UniHelper 管理后台 · 设计稿</h1>
+    <p>
+      全能助手 App 的管理后台 · React + Vite + Ant Design 5 风格预览（纯静态 HTML）。
+      仅四个配置域：<b style="color:#fff">服务配置 · Agent 配置 · MCP 配置 · 全局配置</b>。
+      字段对齐后端 <code style="color:#79c0ff">third_svc_config</code> / <code style="color:#79c0ff">DBVoitransAgent</code>，接口走 <code style="color:#79c0ff">POST /web/api/api_* + JWT</code>。
+    </p>
+  </div>
+
+  <div class="gallery-grid">
+
+    <div class="frame-card">
+      <div class="fc-bar"><span class="t">登录</span><span class="n">login.html → api_login</span></div>
+      <div class="fc-view"><iframe src="login.html" loading="lazy"></iframe></div>
+      <a class="fc-open" href="login.html" target="_blank">打开整页 ↗</a>
+    </div>
+
+    <div class="frame-card">
+      <div class="fc-bar"><span class="t">服务配置 · 列表</span><span class="n">services.html → api_getsvcconfigs</span></div>
+      <div class="fc-view"><iframe src="services.html" loading="lazy"></iframe></div>
+      <a class="fc-open" href="services.html" target="_blank">打开整页 ↗</a>
+    </div>
+
+    <div class="frame-card">
+      <div class="fc-bar"><span class="t">服务配置 · 新建/编辑</span><span class="n">service-edit.html → api_addsvcconfig</span></div>
+      <div class="fc-view"><iframe src="service-edit.html" loading="lazy"></iframe></div>
+      <a class="fc-open" href="service-edit.html" target="_blank">打开整页 ↗</a>
+    </div>
+
+    <div class="frame-card">
+      <div class="fc-bar"><span class="t">Agent 配置 · 列表</span><span class="n">agents.html → api_getagents</span></div>
+      <div class="fc-view"><iframe src="agents.html" loading="lazy"></iframe></div>
+      <a class="fc-open" href="agents.html" target="_blank">打开整页 ↗</a>
+    </div>
+
+    <div class="frame-card">
+      <div class="fc-bar"><span class="t">Agent · 创建</span><span class="n">agent-create.html</span></div>
+      <div class="fc-view"><iframe src="agent-create.html" loading="lazy"></iframe></div>
+      <a class="fc-open" href="agent-create.html" target="_blank">打开整页 ↗</a>
+    </div>
+
+    <div class="frame-card">
+      <div class="fc-bar"><span class="t">MCP 配置</span><span class="n">mcp.html → api_getmcpservers</span></div>
+      <div class="fc-view"><iframe src="mcp.html" loading="lazy"></iframe></div>
+      <a class="fc-open" href="mcp.html" target="_blank">打开整页 ↗</a>
+    </div>
+
+    <div class="frame-card">
+      <div class="fc-bar"><span class="t">全局配置</span><span class="n">global-config.html → api_getglobalconfigs</span></div>
+      <div class="fc-view"><iframe src="global-config.html" loading="lazy"></iframe></div>
+      <a class="fc-open" href="global-config.html" target="_blank">打开整页 ↗</a>
+    </div>
+
+  </div>
+
+  <div style="padding:0 48px 60px; max-width:980px;">
+    <div style="background:#1a1d24;border:1px solid #2a2e38;border-radius:12px;padding:24px 28px;color:#c9d1d9">
+      <h3 style="margin:0 0 14px;color:#fff">页面 ↔ 后端接口对照</h3>
+      <table class="tbl" style="background:transparent">
+        <thead><tr style="background:transparent">
+          <th style="background:#20242d;color:#fff">页面</th>
+          <th style="background:#20242d;color:#fff">数据模型</th>
+          <th style="background:#20242d;color:#fff">接口（POST /web/api/）</th>
+        </tr></thead>
+        <tbody style="color:#8b949e">
+          <tr><td style="color:#c9d1d9">登录</td><td>console_account</td><td><code style="color:#79c0ff">api_login</code></td></tr>
+          <tr><td style="color:#c9d1d9">服务配置 · 列表</td><td>third_svc_config</td><td><code style="color:#79c0ff">api_getsvcconfigs</code></td></tr>
+          <tr><td style="color:#c9d1d9">服务配置 · 增改删</td><td>third_svc_config · SvcField[]</td><td><code style="color:#79c0ff">api_addsvcconfig / api_updatesvcconfig / api_delsvcconfig</code></td></tr>
+          <tr><td style="color:#c9d1d9">Agent 配置 · 列表</td><td>DBVoitransAgent（外部代理）</td><td><code style="color:#79c0ff">api_getagents</code> · 当前<b style="color:#f0a020">只读</b></td></tr>
+          <tr><td style="color:#c9d1d9">Agent 配置 · 创建</td><td>DBVoitransAgent · AgentVariable[]</td><td><b style="color:#f0a020">待后端新增 agent 配置表 + CRUD 接口</b></td></tr>
+          <tr><td style="color:#c9d1d9">MCP 配置</td><td>mcp_server</td><td><code style="color:#79c0ff">api_getmcpservers / api_addmcpserver / api_updatemcpserver</code></td></tr>
+          <tr><td style="color:#c9d1d9">全局配置</td><td>global_config</td><td><code style="color:#79c0ff">api_getglobalconfigs / api_addglobalconfig / api_updateglobalconfig</code></td></tr>
+        </tbody>
+      </table>
+      <p style="color:#8b949e;font-size:13px;margin:16px 0 0">
+        ⚠️ 注意：当前 <code style="color:#79c0ff">agents</code> 模块对外部 agents_server 仅做<b>只读代理</b>（getagents / getagenturl）。
+        “Agent 创建”落地需在 console 后端新增 agent 表与增删改接口；本设计稿已按可落库的字段结构铺好表单。
+      </p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # 接口规范文档 (API Specification)
 
-**项目名称**：AI Agent Client
+**项目名称**：UniHelper（原 AI Agent Client）
 **版本**：v1.3
 **日期**：2026-03-12
 **变更**：新增 ServiceConfig / ServiceLibrary 数据模型；更新 AgentConfig 以引用 serviceId 替代直接指定 Provider 类型

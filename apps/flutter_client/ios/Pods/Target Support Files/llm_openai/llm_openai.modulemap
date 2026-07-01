@@ -1,6 +1,0 @@
-framework module llm_openai {
-  umbrella header "llm_openai-umbrella.h"
-
-  export *
-  module * { export * }
-}

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>服务配置 — UniHelper 管理后台</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<div class="layout">
+
+  <!-- ============ 侧边栏 ============ -->
+  <aside class="sider">
+    <div class="logo"><span class="logo-mark">🤖</span> UniHelper 后台</div>
+    <nav class="menu">
+      <div class="menu-group-title">配置中心</div>
+      <a class="menu-item active" href="services.html"><span class="mi-icon">🧩</span> 服务配置</a>
+      <a class="menu-item" href="agents.html"><span class="mi-icon">🤝</span> Agent 配置</a>
+      <a class="menu-item" href="mcp.html"><span class="mi-icon">🔌</span> MCP 配置</a>
+      <a class="menu-item" href="global-config.html"><span class="mi-icon">⚙️</span> 全局配置</a>
+    </nav>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <div class="main">
+    <header class="header">
+      <div class="crumb">配置中心 / <b>服务配置</b></div>
+      <div class="header-right">
+        <span class="bell">🔔</span>
+        <div class="user-chip"><span class="avatar">超</span> <span style="color:var(--text-2)">admin ▾</span></div>
+      </div>
+    </header>
+
+    <div class="content">
+      <div class="page-title-bar">
+        <div>
+          <h2 class="page-title">服务配置</h2>
+          <p class="page-sub">管理 LLM / STT / TTS / AST 等第三方供应商服务（对接 <code>third_svc_config</code>）</p>
+        </div>
+        <a href="service-edit.html" class="btn primary">＋ 新建服务</a>
+      </div>
+
+      <!-- 统计 -->
+      <div class="stat-row">
+        <div class="stat"><div class="s-label">服务总数</div><div class="s-val">12</div></div>
+        <div class="stat"><div class="s-label">已启用</div><div class="s-val" style="color:var(--success)">9</div></div>
+        <div class="stat"><div class="s-label">含加密字段</div><div class="s-val">8</div></div>
+        <div class="stat"><div class="s-label">区域覆盖</div><div class="s-val">3 <small>条</small></div></div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <div class="segmented">
+            <div class="seg active">全部</div>
+            <div class="seg">LLM</div>
+            <div class="seg">STT</div>
+            <div class="seg">TTS</div>
+            <div class="seg">AST</div>
+          </div>
+          <div style="flex:1"></div>
+          <div class="input-affix" style="width:240px">
+            <input class="input" placeholder="搜索服务名 / ID">
+            <span class="suffix">🔍</span>
+          </div>
+          <button class="btn">⟳ 同步到区域</button>
+        </div>
+
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th style="width:60px">状态</th>
+              <th>服务名称</th>
+              <th>类别</th>
+              <th>服务 ID</th>
+              <th>字段</th>
+              <th>更新时间</th>
+              <th style="width:160px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="switch on"></span></td>
+              <td><div class="cell-strong">火山方舟 · Doubao</div><div class="cell-id">默认 LLM 供应商</div></td>
+              <td><span class="tag blue">LLM</span></td>
+              <td class="cell-id">volc_ark_llm</td>
+              <td><span class="tag gray">5 字段</span> <span class="tag gold">🔒 2</span></td>
+              <td>2026-06-24 18:20</td>
+              <td><div class="row-actions">
+                <a class="btn text link" href="service-edit.html">编辑</a><span class="div"></span>
+                <span class="btn text link">测试</span><span class="div"></span>
+                <span class="btn text link danger">删除</span>
+              </div></td>
+            </tr>
+            <tr>
+              <td><span class="switch on"></span></td>
+              <td><div class="cell-strong">阿里云 · 通义千问</div><div class="cell-id">备用 LLM</div></td>
+              <td><span class="tag blue">LLM</span></td>
+              <td class="cell-id">aliyun_qwen</td>
+              <td><span class="tag gray">4 字段</span> <span class="tag gold">🔒 1</span></td>
+              <td>2026-06-22 09:11</td>
+              <td><div class="row-actions">
+                <a class="btn text link" href="service-edit.html">编辑</a><span class="div"></span>
+                <span class="btn text link">测试</span><span class="div"></span>
+                <span class="btn text link danger">删除</span>
+              </div></td>
+            </tr>
+            <tr>
+              <td><span class="switch on"></span></td>
+              <td><div class="cell-strong">火山引擎 · 语音识别</div><div class="cell-id">流式 ASR</div></td>
+              <td><span class="tag green">STT</span></td>
+              <td class="cell-id">volc_asr</td>
+              <td><span class="tag gray">4 字段</span> <span class="tag gold">🔒 2</span></td>
+              <td>2026-06-20 14:02</td>
+              <td><div class="row-actions">
+                <a class="btn text link" href="service-edit.html">编辑</a><span class="div"></span>
+                <span class="btn text link">测试</span><span class="div"></span>
+                <span class="btn text link danger">删除</span>
+              </div></td>
+            </tr>
+            <tr>
+              <td><span class="switch on"></span></td>
+              <td><div class="cell-strong">火山引擎 · 语音合成</div><div class="cell-id">大模型 TTS</div></td>
+              <td><span class="tag purple">TTS</span></td>
+              <td class="cell-id">volc_tts</td>
+              <td><span class="tag gray">5 字段</span> <span class="tag gold">🔒 2</span></td>
+              <td>2026-06-20 14:00</td>
+              <td><div class="row-actions">
+                <a class="btn text link" href="service-edit.html">编辑</a><span class="div"></span>
+                <span class="btn text link">测试</span><span class="div"></span>
+                <span class="btn text link danger">删除</span>
+              </div></td>
+            </tr>
+            <tr>
+              <td><span class="switch on"></span></td>
+              <td><div class="cell-strong">Polychat 端到端翻译</div><div class="cell-id">语音直译 AST</div></td>
+              <td><span class="tag cyan">AST</span></td>
+              <td class="cell-id">polychat_ast</td>
+              <td><span class="tag gray">3 字段</span> <span class="tag gold">🔒 1</span></td>
+              <td>2026-06-18 11:30</td>
+              <td><div class="row-actions">
+                <a class="btn text link" href="service-edit.html">编辑</a><span class="div"></span>
+                <span class="btn text link">测试</span><span class="div"></span>
+                <span class="btn text link danger">删除</span>
+              </div></td>
+            </tr>
+            <tr>
+              <td><span class="switch off"></span></td>
+              <td><div class="cell-strong">OpenAI · GPT-4o</div><div class="cell-id">海外备用</div></td>
+              <td><span class="tag blue">LLM</span></td>
+              <td class="cell-id">openai_gpt4o</td>
+              <td><span class="tag gray">3 字段</span> <span class="tag gold">🔒 1</span></td>
+              <td>2026-05-30 22:45</td>
+              <td><div class="row-actions">
+                <a class="btn text link" href="service-edit.html">编辑</a><span class="div"></span>
+                <span class="btn text link">测试</span><span class="div"></span>
+                <span class="btn text link danger">删除</span>
+              </div></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="pagination">
+          <span style="color:var(--text-3); margin-right:auto;">共 12 条</span>
+          <span class="pg">‹</span>
+          <span class="pg active">1</span>
+          <span class="pg">2</span>
+          <span class="pg">›</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

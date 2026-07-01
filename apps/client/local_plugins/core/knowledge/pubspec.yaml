@@ -1,0 +1,11 @@
+name: knowledge
+description: >-
+  UniHelper 本地用户级知识库服务（core/knowledge）。md 文库为真源 + 本地派生索引，
+  端上嵌入、混合检索、用户级隔离；对管家/专员暴露检索，供 RAG 使用。核心零外部依赖。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+# 核心为纯 Dart、零运行时依赖。平台实现（sqlite-vec 索引 / ONNX 端上嵌入 /
+# PDF·OCR 解析）以独立包实现本包定义的端口后接入，不改本包。

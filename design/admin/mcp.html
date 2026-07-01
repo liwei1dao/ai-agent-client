@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP 服务 — UniHelper 管理后台</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sider">
+    <div class="logo"><span class="logo-mark">🤖</span> UniHelper 后台</div>
+    <nav class="menu">
+      <div class="menu-group-title">配置中心</div>
+      <a class="menu-item" href="services.html"><span class="mi-icon">🧩</span> 服务配置</a>
+      <a class="menu-item" href="agents.html"><span class="mi-icon">🤝</span> Agent 配置</a>
+      <a class="menu-item active" href="mcp.html"><span class="mi-icon">🔌</span> MCP 配置</a>
+      <a class="menu-item" href="global-config.html"><span class="mi-icon">⚙️</span> 全局配置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="header">
+      <div class="crumb">配置中心 / <b>MCP 服务</b></div>
+      <div class="header-right">
+        <span class="bell">🔔</span>
+        <div class="user-chip"><span class="avatar">超</span> <span style="color:var(--text-2)">admin ▾</span></div>
+      </div>
+    </header>
+
+    <div class="content">
+      <div class="page-title-bar">
+        <div>
+          <h2 class="page-title">MCP 服务</h2>
+          <p class="page-sub">Model Context Protocol 工具服务（对接 <code>api_getmcpservers</code>），供 Agent 调用外部工具</p>
+        </div>
+        <button class="btn primary">＋ 接入 MCP</button>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <div class="segmented"><div class="seg active">全部</div><div class="seg">远程 SSE</div><div class="seg">本地 stdio</div></div>
+          <div style="flex:1"></div>
+          <div class="input-affix" style="width:240px"><input class="input" placeholder="搜索 MCP 名称"><span class="suffix">🔍</span></div>
+        </div>
+
+        <table class="tbl">
+          <thead>
+            <tr><th style="width:56px">状态</th><th>名称</th><th>类型</th><th>地址 / 命令</th><th>工具数</th><th>更新时间</th><th style="width:140px">操作</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="switch on"></span></td>
+              <td><div class="cell-strong">高德地图</div><div class="cell-id">amap_mcp</div></td>
+              <td><span class="tag blue">远程 SSE</span></td>
+              <td class="cell-id">https://mcp.amap.com/sse</td>
+              <td><span class="tag gold">8 工具</span></td>
+              <td>2026-06-23 10:12</td>
+              <td><div class="row-actions"><span class="btn text link">编辑</span><span class="div"></span><span class="btn text link">工具</span><span class="div"></span><span class="btn text link danger">删除</span></div></td>
+            </tr>
+            <tr>
+              <td><span class="switch on"></span></td>
+              <td><div class="cell-strong">网页搜索</div><div class="cell-id">web_search_mcp</div></td>
+              <td><span class="tag blue">远程 SSE</span></td>
+              <td class="cell-id">https://mcp.example.com/search/sse</td>
+              <td><span class="tag gold">3 工具</span></td>
+              <td>2026-06-21 16:40</td>
+              <td><div class="row-actions"><span class="btn text link">编辑</span><span class="div"></span><span class="btn text link">工具</span><span class="div"></span><span class="btn text link danger">删除</span></div></td>
+            </tr>
+            <tr>
+              <td><span class="switch off"></span></td>
+              <td><div class="cell-strong">文件系统</div><div class="cell-id">filesystem_mcp</div></td>
+              <td><span class="tag purple">本地 stdio</span></td>
+              <td class="cell-id">npx -y @modelcontextprotocol/server-filesystem</td>
+              <td><span class="tag gold">11 工具</span></td>
+              <td>2026-06-15 09:05</td>
+              <td><div class="row-actions"><span class="btn text link">编辑</span><span class="div"></span><span class="btn text link">工具</span><span class="div"></span><span class="btn text link danger">删除</span></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

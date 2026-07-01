@@ -1,6 +1,0 @@
-framework module service_manager {
-  umbrella header "service_manager-umbrella.h"
-
-  export *
-  module * { export * }
-}

@@ -1,6 +1,6 @@
 # 原生插件开发指南
 
-**项目名称**：AI Agent Client
+**项目名称**：UniHelper（原 AI Agent Client）
 **版本**：v1.2
 **日期**：2026-03-11
 **变更**：插件改为 local_plugins/ 独立包结构，新增 ai_plugin_interface 共享接口包说明

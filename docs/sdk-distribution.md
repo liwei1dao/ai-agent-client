@@ -1,6 +1,6 @@
 # SDK 分发指南 (SDK Distribution)
 
-**项目名称**：AI Agent Client
+**项目名称**：UniHelper（原 AI Agent Client）
 **版本**：v1.0
 **日期**：2026-05-10
 **适用读者**：维护本仓库 `local_plugins/` 的开发者；接入本 SDK 的下游业务方

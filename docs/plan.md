@@ -1,6 +1,6 @@
 # 实现计划（Implementation Plan）
 
-**项目**：AI Agent Client
+**项目**：UniHelper（原 AI Agent Client）
 **版本**：v1.0
 **日期**：2026-03-13
 **参考架构**：[architecture.md](./architecture.md)

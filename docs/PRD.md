@@ -1,9 +1,11 @@
 # 产品需求文档 (PRD)
 
-**项目名称**：AI Agent Client
+**项目名称**：UniHelper（原 AI Agent Client）
 **版本**：v1.1
 **日期**：2026-03-12
 **状态**：草稿
+
+> 注：产品已升级定位为「面向用户的全能 AI 助手 UniHelper」。上位总纲见 [UniHelper.md](UniHelper.md)；本 PRD 将按其方向分模块演进。
 
 ---
 
@@ -52,7 +54,7 @@
 ### 3.1 模块总览（3-tab 导航）
 
 ```
-AI Agent Client（底部导航）
+UniHelper（底部导航）
 ├── 🤖 Agents（Agent 面板）[默认]
 │   ├── Agent 列表（卡片展示，按类型色标区分）
 │   ├── 添加/编辑 Chat Agent（选服务 + 系统提示词 + TTS 音色）

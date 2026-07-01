@@ -1,6 +1,0 @@
-framework module tts_azure {
-  umbrella header "tts_azure-umbrella.h"
-
-  export *
-  module * { export * }
-}

@@ -1,0 +1,90 @@
+syntax = "proto3";
+option go_package = ".;pb";
+
+enum ErrorCode {
+  Success = 0;                  //成功
+  GatewayException = 1;         //网关执行异常
+  NoFindService = 10;           //没有找到远程服务器
+  NoFindServiceHandleFunc = 11; //远程服务器未找到执行方法
+  RpcFuncExecutionError = 12;   //Rpc方法执行错误
+  CacheReadError = 13;          //缓存读取失败
+  SqlExecutionError = 14;       //数据库执行错误
+  ReqParameterError = 15;       //请求参数错误
+  SignError = 16;               //签名串错误
+  InsufficientPermissions = 17; //权限不足
+  NoLogin = 18;                 //未登录
+  UserSessionNobeing = 19;      //用户不存在
+  StateInvalid = 20;            //无效状态
+  DBError = 21;                 //数据库操作失败
+  SystemError = 22;             //通用错误
+  DecodeError = 23;             //加密串解码错误
+  TimestampTimeout = 24;        //加密串时间戳超时
+  PbError = 25;                 //pb错误
+  AgentUidEmpty = 26;           //AgentUid空
+  ConfigNoFound = 27;           //配置未找到
+  DecryptError = 28;            //解密错误
+  ClientError = 29;             //客户端错误
+  Exception = 100;              //程序执行异常
+  AgentBetExchangeError = 101;  //代理兑付错误
+  GameInMaintenance = 102;      //目标游戏维护中
+  NoCanBet = 103;               //不能下注
+  NoFindRoom = 104;             //未找到房间
+  AgentNofund = 105;            //渠道未注册
+  NetWorkError = 106;           //网络请求错误
+
+  //api 相关错误码
+  VerificationExpired = 1001;   //验证码已失效
+  MeetIntegralNotEnough = 1002; //会议积分不足
+  TradeIntegralNotEnough = 1003; //翻译积分不足
+  AIIntegralNotEnough = 1004;   //AI积分不足
+  VipExpired = 1005;            //VIP已过期
+  SubscriptionExpired = 1006;   //订阅已过期
+  ResourceNotEnough = 1007;     //资源不足（通用）
+
+  //设备相关错误码 2001-2009
+  DeviceUnBinded = 2002;        //设备未绑定
+  DeviceBinded = 2003;          //设备已绑定
+  DeviceBindedOther = 2004;     //设备已绑定其他用户
+  AuthorizeNoCanUse = 2005;     //授权码不可用
+  AuthorizeIllegal = 2006;      //授权码非法
+  ExceptionAccountVerification = 2007; //验证账号异常
+  NameInscriptionWords = 2008;  //名称包含铭感词
+  DeviceNoCanUse = 2009;        //设备不可用
+
+  //音乐相关错误码 2010-2012
+  MusicSearchError = 2010;      //音乐搜索失败
+  MusicNotFound = 2011;         //音乐未找到
+  MusicUrlError = 2012;         //获取音乐URL失败
+
+  //模板相关错误码 2013-2014
+  TemplateNotFound = 2013;      //模板不存在
+  TemplateLanguageNotSupported = 2014; //模板不支持该语言
+
+  //文件/存储相关错误码 2015-2016
+  FileUploadError = 2015;       //文件上传失败
+  FileNotFound = 2016;          //文件不存在
+
+  //智能体/AI工具相关错误码 2017-2019
+  AgentServerError = 2017;      //智能体服务器错误
+  AgentUrlError = 2018;         //获取智能体URL失败
+  SearchToolError = 2019;       //搜索工具错误
+
+  //外部服务相关错误码 2020-2022
+  TokenFetchError = 2020;       //Token获取失败
+  ExternalServiceError = 2021;  //外部服务错误
+  StorageError = 2022;          //存储服务错误
+
+  //任务状态相关错误码 2023
+  TaskStateError = 2023;        //任务状态错误
+
+  //支付相关错误码 3001-3006
+  PaymentError = 3001;          //支付错误
+  PayOrderNotFound = 3002;      //订单不存在
+  PayOrderStatusError = 3003;   //订单状态异常
+  PayCreateOrderFail = 3004;    //创建订单失败
+  PayNotifyDecryptFail = 3005;  //支付回调解密失败
+  ResourceDeliveryError = 3006; //资源发放失败
+
+  //会议记录相关错误码 4001-4005
+  AudioUrlEmpty = 4001;          //音频URL为空
+}

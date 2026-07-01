@@ -1,7 +1,9 @@
 # 架构设计文档
 
-**项目名称**：AI Agent Client
+**项目名称**：UniHelper（原 AI Agent Client）
 **版本**：v1.8
+
+> 注：UniHelper 的架构演进（Orchestrator 编排层、知识库 RAG 子系统、多模态 Provider 族、数据模型增量）见上位总纲 [UniHelper.md](UniHelper.md)。本文档描述的既有契约（AgentRuntime 事件体系、local_db、Provider Registry、MCP）继续有效。
 **日期**：2026-03-13
 **变更**：v1.8 — 完善 AgentRuntimeEventApi 事件体系：STT 拆分为 ListeningStarted/VadSpeechStart/VadSpeechEnd/PartialResult/FinalResult/ListeningStopped/Error 七类；LLM 新增 Thinking/FirstToken/ToolCallStart/ToolCallArguments/ToolCallResult/Done/Cancelled/Error；TTS 拆分为 SynthesisStart/SynthesisReady/PlaybackStart/PlaybackProgress/PlaybackDone/PlaybackInterrupted/Error；新增 §3.4 完整事件参考（时序图 + UI 效果 + 状态机对应关系）；明确 requestId 生成路径（文本模式 Flutter 生成，短语音/通话模式原生 STT 层生成）
 
