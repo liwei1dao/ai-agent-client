@@ -1,0 +1,13 @@
+name: agent_schedule
+description: >-
+  UniHelper 日程业务服务（SpecialistAgent）：自然语言创建日程 + 查询 + 到点提醒(onTrigger)。
+  纯 Dart、建在 agent_kernel 上；移动端原生按此镜像，可对接系统日历 / Google Calendar MCP。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  agent_kernel:
+    path: ../agent_kernel

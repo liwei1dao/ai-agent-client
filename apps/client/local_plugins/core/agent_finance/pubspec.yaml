@@ -1,0 +1,13 @@
+name: agent_finance
+description: >-
+  UniHelper 财务业务服务（SpecialistAgent）：记账（自然语言/语音，OCR 拍票留端口）、
+  月度收支统计、预算预警、月报与建议。纯 Dart、建在 agent_kernel 上。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  agent_kernel:
+    path: ../agent_kernel

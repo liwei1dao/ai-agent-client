@@ -1,0 +1,24 @@
+name: knowledge_native
+description: >-
+  UniHelper 知识库原生引擎（Android Kotlin / iOS Swift）。供纯原生 agents_server 在
+  后台/设备唤醒场景直接实例化调用（不经 Flutter）；同时提供 Flutter UI 桥。
+  逻辑忠实移植已验证的纯 Dart 包 knowledge（算法规范 + web/桌面运行时）。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: ai.unihelper.knowledge
+        pluginClass: KnowledgePlugin
+      ios:
+        pluginClass: KnowledgePlugin

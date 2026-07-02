@@ -1,0 +1,23 @@
+name: agent_kernel_native
+description: >-
+  UniHelper 多 Agent 团队编排内核（Android Kotlin / iOS Swift），供纯原生 agents_server
+  直接使用。逻辑镜像已跑绿的纯 Dart 包 agent_kernel（算法规范 + web/桌面运行时）。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: ai.unihelper.agentkernel
+        pluginClass: AgentKernelPlugin
+      ios:
+        pluginClass: AgentKernelPlugin

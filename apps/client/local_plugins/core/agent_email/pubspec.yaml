@@ -1,0 +1,13 @@
+name: agent_email
+description: >-
+  UniHelper 邮件业务服务（SpecialistAgent）：定时巡检 + 重要性判定 + 起草回复(需确认才发)。
+  纯 Dart、建在 agent_kernel 上；邮箱接入经 MailProvider 端口（IMAP/SMTP 或 Gmail）。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  agent_kernel:
+    path: ../agent_kernel

@@ -1,0 +1,9 @@
+name: agent_kernel
+description: >-
+  UniHelper 多 Agent 团队编排内核（管家 Manager + 专员 + 任务信封 + 路由 + WakeBus）。
+  纯 Dart、核心零依赖：算法规范 + web/桌面运行时；移动端原生(agents_server)按此镜像。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0

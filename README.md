@@ -31,6 +31,7 @@ docs/           设计文档（见下）
 - [docs/UniHelper-agents.md](docs/UniHelper-agents.md) —— **多 Agent 团队协作架构**（对外一个管家 + 对内专员团队、四种协作模式、A2A 协议）
 - [docs/UniHelper-agents-protocol.md](docs/UniHelper-agents-protocol.md) —— **多 Agent 接口协议草案**（专员注册/任务信封/A2A 事件/Pigeon API/调度·确认·唤醒协议/时序）
 - [docs/UniHelper-knowledge.md](docs/UniHelper-knowledge.md) —— **本地用户级知识库方案**（本地优先 RAG、存储/嵌入选型、团队共享、唤醒集成）
+- [docs/UniHelper-integrations-persistence.md](docs/UniHelper-integrations-persistence.md) —— **数据落地原生层 + 第三方连接授权**（Store 端口/local_db、连接中心 Connector、打通生活↔工作）
 - [design/client2.0/index.html](design/client2.0/index.html) —— App 界面效果图（可浏览器打开预览）
 - [docs/PRD.md](docs/PRD.md) —— 产品需求
 - [docs/architecture.md](docs/architecture.md) —— 架构设计

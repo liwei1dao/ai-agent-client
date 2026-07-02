@@ -1,0 +1,10 @@
+name: agent_integrations
+description: >-
+  UniHelper 第三方连接与授权中心（Connector + IntegrationRegistry）。统一授权
+  邮件/钉钉/企业微信/飞书/日历/MCP…，打通生活↔工作；连接→喂给业务服务端口。
+  纯 Dart、核心零依赖；凭据经 CredentialVault 端口本地加密存储。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0

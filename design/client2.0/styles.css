@@ -337,3 +337,56 @@
 .connect-btn.connected { background:#ECFDF5; color:#065F46; }
 .dev-row.on { border:1.5px solid #A7F3D0; }
 .scan-tip { font-size:10.5px; color:var(--text-2); text-align:center; padding:6px 10px; line-height:1.5; }
+
+/* ============================================================
+   知识库（我的→知识库） + 聊天来源卡（RAG）
+   ============================================================ */
+.kb-search { display:flex; align-items:center; gap:8px; height:38px; background:var(--surface); border:1.5px solid var(--border); border-radius:19px; padding:0 14px; font-size:13px; color:var(--text-2); }
+.kb-import { display:flex; gap:8px; }
+.kb-imp { flex:1; height:58px; border-radius:12px; background:var(--surface); box-shadow:0 2px 8px rgba(0,0,0,0.05); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; font-size:10.5px; color:var(--text); font-weight:700; }
+.kb-imp .i { font-size:19px; }
+.kb-doc { background:var(--surface); border-radius:12px; padding:11px 12px; display:flex; align-items:center; gap:11px; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
+.kb-doc .di { width:38px; height:38px; border-radius:10px; background:var(--primary-light); display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; }
+.kb-doc .dm { flex:1; min-width:0; }
+.kb-doc .dt { font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kb-doc .dd { font-size:10.5px; color:var(--text-2); margin-top:2px; }
+.kb-doc .dc { font-size:9px; font-weight:800; color:var(--primary-dark); background:var(--primary-light); padding:2px 7px; border-radius:8px; flex-shrink:0; }
+.kb-foot { font-size:10.5px; color:var(--text-2); text-align:center; padding:8px; display:flex; align-items:center; justify-content:center; gap:6px; }
+
+/* 聊天里的来源卡（RAG 引用） */
+.cite-card { margin-top:8px; background:var(--bg); border:1px solid var(--border); border-left:3px solid var(--news); border-radius:10px; padding:8px 10px; display:flex; align-items:center; gap:8px; }
+.cite-ic { font-size:16px; }
+.cite-main { flex:1; min-width:0; }
+.cite-t { font-size:11px; font-weight:800; color:var(--text); }
+.cite-s { font-size:9.5px; color:var(--text-2); margin-top:1px; }
+.cite-go { font-size:10px; font-weight:800; color:#0369A1; flex-shrink:0; }
+
+/* ============================================================
+   健康详情 / 生活计划详情
+   ============================================================ */
+.trend { display:flex; align-items:flex-end; gap:7px; height:78px; }
+.trend .col { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:5px; height:100%; }
+.trend .bar { width:62%; background:linear-gradient(180deg,#FCA5A5,#EF4444); border-radius:5px 5px 0 0; }
+.trend .lbl { font-size:9px; color:var(--text-2); }
+.metric-row { display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--border); }
+.metric-row:last-child { border-bottom:none; }
+.metric-row .mk { font-size:12.5px; color:var(--text); display:flex; gap:8px; align-items:center; }
+.metric-row .mv { font-size:13px; font-weight:800; color:var(--text); }
+.metric-row .mv .u { font-size:10px; font-weight:600; color:var(--text-2); }
+.goal-row { display:flex; flex-direction:column; gap:5px; }
+.goal-top { display:flex; justify-content:space-between; font-size:12px; color:var(--text); font-weight:600; }
+.goal-top .pct { color:var(--fin); font-weight:800; }
+
+/* ============================================================
+   连接与授权中心（第三方服务 · 生活↔工作生态）
+   ============================================================ */
+.conn-intro { font-size:11.5px; color:var(--text-2); background:var(--surface); border-radius:11px; padding:10px 12px; line-height:1.55; border-left:3px solid var(--primary); }
+.conn-item { background:var(--surface); border-radius:12px; padding:11px 13px; display:flex; align-items:center; gap:11px; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
+.conn-ic { width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:800; color:#fff; flex-shrink:0; }
+.conn-main { flex:1; min-width:0; }
+.conn-nm { font-size:13px; font-weight:700; color:var(--text); }
+.conn-sub { font-size:10.5px; color:var(--text-2); margin-top:2px; }
+.conn-btn { font-size:11px; font-weight:800; padding:5px 13px; border-radius:14px; flex-shrink:0; }
+.conn-btn.on { background:#ECFDF5; color:#065F46; }
+.conn-btn.off { background:var(--primary); color:#fff; }
+.conn-add { border:1.5px dashed var(--primary); color:var(--primary); border-radius:12px; padding:13px; text-align:center; font-size:12px; font-weight:700; }

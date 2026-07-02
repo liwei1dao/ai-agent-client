@@ -126,6 +126,24 @@
 - **MCP 工具**：对 LLM 暴露 `kb.search(query)`，让模型自行按需检索。
 - **设备唤醒场景**：KB 检索在**服务层**完成，设备唤醒问答（"我上次记的那个 Wi-Fi 密码是啥"）无需开 App 也能查并 TTS 播报（受隐私策略约束，敏感项可要求本机在手/语音确认）。
 
+### 7.1 集成落点：`KnowledgeBusinessService`（已随 knowledge_native 提供）
+
+原生引擎已封好业务服务面（`knowledge_native` 的 `service/KnowledgeBusinessService.kt` / `.swift`），agents_server 按其 Manager/MCP 接口适配两处即可：
+
+```
+agents_server（纯原生）
+├─ 管家(Manager) 每轮对话前：
+│    val ctx = svc.contextFor(userText, userId)     // 带引用的 RAG 上下文
+│    systemPrompt = base + (ctx ?? "")              // 注入 → 专员/LLM 拿到用户知识
+└─ LLM 工具表注册：
+     registerTool(svc.toolDescriptor())             // MCP 工具 kb.search 的 JSON 描述
+       onCall = { args -> svc.invokeTool(args, userId) }   // 模型自检索 → 返回带来源片段
+```
+
+- `contextFor()`：主动注入（管家路由前先喂知识），零往返。
+- `kb.search`（`toolDescriptor()`+`invokeTool()`）：被动按需（模型判断要查时自己调）。两者互补。
+- 只依赖引擎 + 平台内置 JSON，不感知 agents_server 具体类型；协议对齐见 [UniHelper-agents-protocol.md](UniHelper-agents-protocol.md)（§0.2 业务服务、§5 SpecialistAgent）。
+
 ---
 
 ## 8. UI（落在现有 4-Tab）
