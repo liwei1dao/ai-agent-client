@@ -1,0 +1,13 @@
+name: agent_lifeplan
+description: >-
+  UniHelper 生活计划业务服务（SpecialistAgent）：创建长期计划(储蓄/阅读/健身/减脂…)、
+  跟踪进度、复盘。纯 Dart、建在 agent_kernel 上；数据经 Store 端口落地。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  agent_kernel:
+    path: ../agent_kernel

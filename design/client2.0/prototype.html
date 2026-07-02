@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UniHelper · 可点原型</title>
+<link rel="stylesheet" href="../client/styles.css">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { display:flex; flex-direction:column; align-items:center; }
+  .view { display:none; height:100%; flex-direction:column; }
+  .view.active { display:flex; }
+  [data-go],[data-tab],[data-back]{ cursor:pointer; }
+  .proto-hint { font-size:12px; color:var(--text-2); margin-top:10px; }
+</style>
+</head>
+<body>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="n-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12 7.7L3 21l1.8-6A8.5 8.5 0 1 1 21 11.5z"/></symbol>
+  <symbol id="n-sub" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="n-life" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-6 4 13 3-9 1.5 2H21"/></symbol>
+  <symbol id="n-me" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></symbol>
+</svg>
+
+<div class="page-header">
+  <h1>UniHelper · 可点原型</h1>
+  <p>点击底栏切 Tab、点入口下钻、点 ‹ 返回，体验导航流</p>
+</div>
+
+<div class="phone-frame">
+  <div class="phone-shell"><div class="phone-screen">
+
+    <!-- ═══ 首页·聊天 ═══ -->
+    <section class="view active" id="v-home">
+      <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+      <div class="agent-top-bar">
+        <div class="agent-avatar">🤖</div>
+        <div class="agent-top-info">
+          <div class="agent-top-name-row">
+            <span class="agent-top-name">UniHelper</span>
+            <span class="dev-chip off" data-go="device"><span class="d"></span>🎧 未连接</span>
+          </div>
+          <div class="agent-top-status">在线 · 你的全能管家</div>
+        </div>
+        <div class="icon-btn" data-go="connections" title="连接与授权">🔗</div>
+        <div class="icon-btn" style="margin-left:6px;">⋯</div>
+      </div>
+      <div class="chat-sum">
+        <div class="chat-sum-seg">
+          <div class="cs-tab on">📋 今日待办 <span class="b">3</span></div>
+          <div class="cs-tab">⭐ 重要信息 <span class="b">2</span></div>
+        </div>
+        <div class="cs-body">
+          <span class="cs-pill"><span class="t">10:00</span> 周会</span>
+          <span class="cs-pill"><span class="t">15:00</span> 牙医</span>
+          <span class="cs-pill">交房租 ¥3,800</span>
+        </div>
+      </div>
+      <div class="chat-area">
+        <div class="push">
+          <div class="who">UniHelper · 主动推送</div>
+          <div class="push-card brief">
+            <div class="push-hd">🌅 晨间简报 <span class="tm">08:00</span></div>
+            <div class="push-bd">早上好，李伟！今天 5 件事，其中 3 项需留意：</div>
+            <div class="push-li">🔴 张总邮件「合同确认」需<b>今天</b>回复</div>
+            <div class="push-li dim">🟡 房租今天到期 ¥3,800</div>
+            <div class="push-act"><span class="push-mini">让我回复邮件</span><span class="push-mini">知道了</span></div>
+          </div>
+        </div>
+        <div class="push">
+          <div class="push-card news">
+            <div class="push-hd">📰 今日资讯 <span class="push-tag">咨询订阅</span><span class="tm">08:00</span></div>
+            <div class="push-li">· 新一代多模态模型发布，支持实时视频理解</div>
+            <div class="push-act"><span class="push-mini" data-go="knowledge">展开全部</span></div>
+          </div>
+        </div>
+        <div class="msg user"><div class="bubble user">帮我把牙医改到明天同一时间</div><div class="msg-time">9:36</div></div>
+        <div class="msg ai">
+          <div class="msg-sender">UniHelper <span style="font-size:9px;font-weight:800;color:#0F766E;background:#F0FDFA;padding:1px 6px;border-radius:7px;">🔀 日程</span></div>
+          <div class="bubble ai">已把「牙医预约」改到 <b>7月1日 15:00</b>，提醒同步更新 ✓</div>
+        </div>
+      </div>
+      <div class="mm-bar"><div class="mm-side">📎</div><div class="mm-voice-center">🎤 按住说话</div><div class="mm-side">⌨️</div></div>
+      <div class="bottom-nav">
+        <div class="nav-item active"><div class="nav-icon"><svg><use href="#n-chat"/></svg></div><div class="nav-label">首页</div><div class="nav-dot"></div></div>
+        <div class="nav-item" data-tab="subscribe"><div class="nav-icon"><svg><use href="#n-sub"/></svg></div><div class="nav-label">订阅</div></div>
+        <div class="nav-item" data-tab="life"><div class="nav-icon"><svg><use href="#n-life"/></svg></div><div class="nav-label">生活</div></div>
+        <div class="nav-item" data-tab="me"><div class="nav-icon"><svg><use href="#n-me"/></svg></div><div class="nav-label">我的</div></div>
+      </div>
+    </section>
+
+    <!-- ═══ 订阅 ═══ -->
+    <section class="view" id="v-subscribe">
+      <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+      <div class="top-bar"><div class="title">订阅</div><div class="add-service-btn">＋ 添加</div></div>
+      <div class="body-scroll">
+        <div class="sub-intro">管家会按下列订阅，定时/触发时把内容主动推送到「首页」聊天里。</div>
+        <div class="sub-item"><div class="sub-ic bg-news">📰</div><div class="sub-main"><div class="sub-name">咨询订阅</div><div class="sub-rule">每日 08:00 · AI / 财经 / 科技 · 5 条</div></div><div class="toggle"></div></div>
+        <div class="sub-item"><div class="sub-ic bg-sched">📅</div><div class="sub-main"><div class="sub-name">日程提醒</div><div class="sub-rule">到点提醒 · 默认提前 15 分钟</div></div><div class="toggle"></div></div>
+        <div class="sub-item"><div class="sub-ic bg-mail">📧</div><div class="sub-main"><div class="sub-name">邮件巡检</div><div class="sub-rule">每 30 分钟 · 仅重要邮件推送</div></div><div class="toggle"></div></div>
+        <div class="sub-item"><div class="sub-ic bg-fin">💰</div><div class="sub-main"><div class="sub-name">财务月报</div><div class="sub-rule">每月 1 日 09:00 · 含预算建议</div></div><div class="toggle"></div></div>
+        <div class="sub-item"><div class="sub-ic" style="background:linear-gradient(135deg,#EF4444,#F87171);">❤️</div><div class="sub-main"><div class="sub-name">健康提醒</div><div class="sub-rule">久坐 / 喝水 / 作息</div></div><div class="toggle off"></div></div>
+        <div class="sub-item"><div class="sub-ic bg-phone">📞</div><div class="sub-main"><div class="sub-name">来电翻译</div><div class="sub-rule">来电自动进入通话翻译（需授权）</div></div><div class="toggle off"></div></div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item" data-tab="home"><div class="nav-icon"><svg><use href="#n-chat"/></svg></div><div class="nav-label">首页</div></div>
+        <div class="nav-item active"><div class="nav-icon"><svg><use href="#n-sub"/></svg></div><div class="nav-label">订阅</div><div class="nav-dot"></div></div>
+        <div class="nav-item" data-tab="life"><div class="nav-icon"><svg><use href="#n-life"/></svg></div><div class="nav-label">生活</div></div>
+        <div class="nav-item" data-tab="me"><div class="nav-icon"><svg><use href="#n-me"/></svg></div><div class="nav-label">我的</div></div>
+      </div>
+    </section>
+
+    <!-- ═══ 生活 ═══ -->
+    <section class="view" id="v-life">
+      <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+      <div class="top-bar"><div><div class="title">生活</div><div class="subtitle">6月30日 周二 · 今日</div></div><div class="icon-btn">📅</div></div>
+      <div class="body-scroll">
+        <div class="life-card" data-go="schedule">
+          <div class="life-head">📅 今日日程 <span class="more">时间线 ›</span></div>
+          <div class="life-ev"><div class="lt">10:00</div><div class="lbar"></div><div class="lm"><div class="e1">部门周会</div><div class="e2">会议室 A · 1 小时</div></div></div>
+          <div class="life-ev"><div class="lt">15:00</div><div class="lbar"></div><div class="lm"><div class="e1">牙医预约</div><div class="e2">市中心口腔 · ⏰ 提前 1h</div></div></div>
+        </div>
+        <div class="life-card">
+          <div class="life-head">💰 本月消费 <span class="more">明细 ›</span></div>
+          <div class="life-spend"><span class="big">¥9,860</span><span class="sub">支出 · 预算执行 66%</span></div>
+          <div class="fin-prog"><i style="width:66%"></i></div>
+        </div>
+        <div class="life-card">
+          <div class="life-head">❤️ 健康 <span class="more">趋势 ›</span></div>
+          <div class="hl-stats">
+            <div class="hl"><div class="hv">6,200</div><div class="hk">步数</div></div>
+            <div class="hl"><div class="hv">7.2h</div><div class="hk">睡眠</div></div>
+            <div class="hl"><div class="hv">3/8</div><div class="hk">饮水</div></div>
+          </div>
+        </div>
+        <div class="life-card">
+          <div class="life-head">🎯 生活计划 <span class="more">全部 ›</span></div>
+          <div class="plan-row"><div class="pl-top"><span>6 月储蓄目标 ¥5,000</span><span class="pl-pct">82%</span></div><div class="plan-prog"><i style="width:82%"></i></div></div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item" data-tab="home"><div class="nav-icon"><svg><use href="#n-chat"/></svg></div><div class="nav-label">首页</div></div>
+        <div class="nav-item" data-tab="subscribe"><div class="nav-icon"><svg><use href="#n-sub"/></svg></div><div class="nav-label">订阅</div></div>
+        <div class="nav-item active"><div class="nav-icon"><svg><use href="#n-life"/></svg></div><div class="nav-label">生活</div><div class="nav-dot"></div></div>
+        <div class="nav-item" data-tab="me"><div class="nav-icon"><svg><use href="#n-me"/></svg></div><div class="nav-label">我的</div></div>
+      </div>
+    </section>
+
+    <!-- ═══ 我的 ═══ -->
+    <section class="view" id="v-me">
+      <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+      <div class="top-bar"><div class="title">我的</div></div>
+      <div class="hub-profile"><div class="av">李</div><div><div class="nm">李伟</div><div class="sub">记忆与偏好 · 12 条</div></div><div class="chev">›</div></div>
+      <div class="body-scroll">
+        <div class="sec-label">助手与能力</div>
+        <div class="hub-group">
+          <div class="hub-row"><div class="hic">🤖</div><div class="lab">助手管理</div><div class="val">7 个</div><div class="chev">›</div></div>
+          <div class="hub-row"><div class="hic">🧩</div><div class="lab">Agent / 技能配置</div><div class="chev">›</div></div>
+          <div class="hub-row"><div class="hic">🗄️</div><div class="lab">服务库</div><div class="val">8 个 Provider</div><div class="chev">›</div></div>
+          <div class="hub-row" data-go="knowledge"><div class="hic">📚</div><div class="lab">知识库</div><div class="val">12 文档</div><div class="chev">›</div></div>
+          <div class="hub-row" data-go="connections"><div class="hic">🔗</div><div class="lab">连接与授权</div><div class="chev">›</div></div>
+        </div>
+        <div class="sec-label">通用设置</div>
+        <div class="hub-group">
+          <div class="hub-row"><div class="hic">🎨</div><div class="lab">外观与主题</div><div class="val">跟随系统</div><div class="chev">›</div></div>
+          <div class="hub-row"><div class="hic">🛰️</div><div class="lab">后台与权限</div><div class="chev">›</div></div>
+          <div class="hub-row"><div class="hic">🔐</div><div class="lab">隐私与数据</div><div class="chev">›</div></div>
+          <div class="hub-row"><div class="hic">ℹ️</div><div class="lab">关于</div><div class="val">v2.0</div><div class="chev">›</div></div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item" data-tab="home"><div class="nav-icon"><svg><use href="#n-chat"/></svg></div><div class="nav-label">首页</div></div>
+        <div class="nav-item" data-tab="subscribe"><div class="nav-icon"><svg><use href="#n-sub"/></svg></div><div class="nav-label">订阅</div></div>
+        <div class="nav-item" data-tab="life"><div class="nav-icon"><svg><use href="#n-life"/></svg></div><div class="nav-label">生活</div></div>
+        <div class="nav-item active"><div class="nav-icon"><svg><use href="#n-me"/></svg></div><div class="nav-label">我的</div><div class="nav-dot"></div></div>
+      </div>
+    </section>
+
+    <!-- ═══ 设备扫描（下钻）═══ -->
+    <section class="view" id="v-device">
+      <div class="status-bar" style="background:#1E1B4B;"><span class="time" style="color:#fff;">9:41</span><div class="status-icons" style="color:#fff;">📶 🔋</div></div>
+      <div class="top-bar" style="background:var(--primary-dark);border-bottom:none;"><div style="display:flex;align-items:center;gap:8px;"><span style="font-size:20px;color:#fff;" data-back>‹</span><div class="title" style="color:#fff;">连接设备</div></div><div class="icon-btn" style="background:rgba(255,255,255,0.16);color:#fff;">↻</div></div>
+      <div class="scan-hero">
+        <div class="scan-radar"><div class="ring"></div><div class="ring"></div><div class="ring"></div><div class="core">🎧</div></div>
+        <div class="scan-title">正在扫描附近的设备…</div>
+        <div class="scan-sub">请确保设备已开机并处于配对模式</div>
+      </div>
+      <div class="scan-body">
+        <div class="sec-label">发现的设备</div>
+        <div class="dev-row"><div class="dev-ic">🎧</div><div class="dev-info"><div class="dev-nm">UniHelper Buds</div><div class="dev-meta"><span class="sig">📶 信号强</span><span>电量 82%</span></div></div><div class="connect-btn">连接</div></div>
+        <div class="dev-row"><div class="dev-ic">📿</div><div class="dev-info"><div class="dev-nm">智能吊坠 · Pendant</div><div class="dev-meta"><span class="sig">📶 信号中</span><span>上次连接 昨天</span></div></div><div class="connect-btn connecting">连接中…</div></div>
+        <div class="scan-tip">找不到设备？长按设备电源键 3 秒进入配对模式后重试</div>
+      </div>
+    </section>
+
+    <!-- ═══ 连接与授权（下钻）═══ -->
+    <section class="view" id="v-connections">
+      <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+      <div class="top-bar"><div style="display:flex;align-items:center;gap:8px;"><span style="font-size:20px;color:var(--text-2);" data-back>‹</span><div class="title">连接与授权</div></div><div class="icon-btn">＋</div></div>
+      <div class="body-scroll">
+        <div class="conn-intro">连接第三方服务，让管家打通你的<b>生活与工作</b>。🔒 授权信息本地加密存储。</div>
+        <div class="sec-label">通讯 / 邮件</div>
+        <div class="conn-item"><div class="conn-ic" style="background:linear-gradient(135deg,#F59E0B,#FBBF24)">📧</div><div class="conn-main"><div class="conn-nm">邮箱（IMAP/Gmail）</div><div class="conn-sub">已连接 · zhang@corp.com</div></div><span class="conn-btn on">管理</span></div>
+        <div class="sec-label">工作协同</div>
+        <div class="conn-item"><div class="conn-ic" style="background:#1E6FFF">钉</div><div class="conn-main"><div class="conn-nm">钉钉</div><div class="conn-sub">待办 / 日程 / 消息</div></div><span class="conn-btn off">连接</span></div>
+        <div class="conn-item"><div class="conn-ic" style="background:#2FA1FF">企</div><div class="conn-main"><div class="conn-nm">企业微信</div><div class="conn-sub">审批 / 会议 / 消息</div></div><span class="conn-btn off">连接</span></div>
+        <div class="conn-item"><div class="conn-ic" style="background:#00D6B9">飞</div><div class="conn-main"><div class="conn-nm">飞书</div><div class="conn-sub">文档 / 日程 / 消息</div></div><span class="conn-btn off">连接</span></div>
+        <div class="sec-label">日历 / 任务</div>
+        <div class="conn-item"><div class="conn-ic" style="background:linear-gradient(135deg,#14B8A6,#2DD4BF)">📅</div><div class="conn-main"><div class="conn-nm">系统日历</div><div class="conn-sub">已连接 · 双向同步</div></div><span class="conn-btn on">管理</span></div>
+        <div class="sec-label">更多</div>
+        <div class="conn-add">＋ 添加其他第三方服务（MCP / OAuth）</div>
+      </div>
+    </section>
+
+    <!-- ═══ 知识库（下钻）═══ -->
+    <section class="view" id="v-knowledge">
+      <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+      <div class="top-bar"><div style="display:flex;align-items:center;gap:8px;"><span style="font-size:20px;color:var(--text-2);" data-back>‹</span><div><div class="title">知识库</div><div class="subtitle">12 篇 · 本地</div></div></div><div class="add-service-btn">＋ 导入</div></div>
+      <div class="body-scroll">
+        <div class="kb-search">🔍 搜索知识库…</div>
+        <div class="kb-import"><div class="kb-imp"><span class="i">📄</span>文件</div><div class="kb-imp"><span class="i">🔗</span>网页</div><div class="kb-imp"><span class="i">📷</span>拍照 OCR</div></div>
+        <div class="sec-label">全部文档 · 12</div>
+        <div class="kb-doc"><div class="di">📄</div><div class="dm"><div class="dt">家庭网络配置</div><div class="dd">笔记 · 3 天前</div></div><span class="dc">4 块</span></div>
+        <div class="kb-doc"><div class="di">📕</div><div class="dm"><div class="dt">产品需求文档.pdf</div><div class="dd">导入 · 昨天</div></div><span class="dc">42 块</span></div>
+        <div class="kb-doc"><div class="di">🔗</div><div class="dm"><div class="dt">多模态模型综述（剪藏）</div><div class="dd">网页 · 上周</div></div><span class="dc">8 块</span></div>
+        <div class="kb-foot">🔒 本地占用 3.2 MB · 全程端上不上云</div>
+      </div>
+    </section>
+
+    <!-- ═══ 日程详情（下钻）═══ -->
+    <section class="view" id="v-schedule">
+      <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+      <div class="top-bar"><div style="display:flex;align-items:center;gap:8px;"><span style="font-size:20px;color:var(--text-2);" data-back>‹</span><div class="title">日程</div></div><div class="icon-btn">＋</div></div>
+      <div class="cal-strip">
+        <div class="cal-day"><span class="w">一</span><span class="n">29</span></div>
+        <div class="cal-day on"><span class="w">二</span><span class="n">30</span><span class="pip"></span></div>
+        <div class="cal-day"><span class="w">三</span><span class="n">1</span><span class="pip"></span></div>
+        <div class="cal-day"><span class="w">四</span><span class="n">2</span></div>
+        <div class="cal-day"><span class="w">五</span><span class="n">3</span><span class="pip"></span></div>
+        <div class="cal-day"><span class="w">六</span><span class="n">4</span></div>
+        <div class="cal-day"><span class="w">日</span><span class="n">5</span></div>
+      </div>
+      <div class="body-scroll">
+        <div class="sec-label">今天 · 3 个日程</div>
+        <div class="ev-item"><div class="ev-time"><span class="hh">10:00</span><span class="dur">1 小时</span></div><div class="ev-bar"></div><div class="ev-main"><div class="et">部门周会</div><div class="em">📍 会议室 A · 🔔 已设提醒</div></div></div>
+        <div class="ev-item"><div class="ev-time"><span class="hh">15:00</span><span class="dur">30 分</span></div><div class="ev-bar"></div><div class="ev-main"><div class="et">牙医预约</div><div class="em">📍 市中心口腔 · ⏰ 提前 1h</div></div></div>
+        <div class="ev-item"><div class="ev-time"><span class="hh">19:00</span><span class="dur">--</span></div><div class="ev-bar"></div><div class="ev-main"><div class="et">健身</div><div class="em">🔁 每周二、四</div></div></div>
+        <div class="act-row"><div class="act-btn">＋ 添加日程</div><div class="act-btn ghost">🎤 让助手安排</div></div>
+      </div>
+    </section>
+
+  </div></div>
+</div>
+<div class="proto-hint">🎧未连接→设备扫描 · 🔗/我的→连接授权 · 生活「时间线」→日程 · 我的「知识库」→知识库 · ‹返回</div>
+
+<script>
+  var stack = ['home'];
+  function render() {
+    document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+    var el = document.getElementById('v-' + stack[stack.length - 1]);
+    if (el) el.classList.add('active');
+  }
+  function tab(id) { stack = [id]; render(); }
+  function go(id) { stack.push(id); render(); }
+  function back() { if (stack.length > 1) stack.pop(); render(); }
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-tab],[data-go],[data-back]');
+    if (!t) return;
+    if (t.hasAttribute('data-back')) back();
+    else if (t.hasAttribute('data-tab')) tab(t.getAttribute('data-tab'));
+    else if (t.hasAttribute('data-go')) go(t.getAttribute('data-go'));
+  });
+  // 深链：prototype.html#connections 直达某屏
+  (function () {
+    var h = (location.hash || '').replace('#', '');
+    if (h && document.getElementById('v-' + h)) stack = [h];
+    render();
+  })();
+</script>
+
+</body>
+</html>

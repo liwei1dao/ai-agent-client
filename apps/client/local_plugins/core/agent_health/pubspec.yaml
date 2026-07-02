@@ -1,0 +1,13 @@
+name: agent_health
+description: >-
+  UniHelper 健康业务服务（SpecialistAgent）：记录步数/睡眠/饮水/体重等 + 目标提醒。
+  纯 Dart、建在 agent_kernel 上；数据经 Store 端口落地（默认内存，移动端 local_db/系统健康）。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  agent_kernel:
+    path: ../agent_kernel
