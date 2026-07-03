@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UniHelper · 调度沙盘</title>
+<style>
+:root{
+  --primary:#6C63FF; --primary-light:#EEF0FF; --primary-dark:#4A42D9;
+  --surface:#fff; --bg:#F0F2F8; --text:#1A1A2E; --text-2:#6B7280;
+  --border:#E5E7EB; --danger:#EF4444;
+  --news:#0EA5E9; --sched:#14B8A6; --mail:#F59E0B; --fin:#10B981; --health:#EC4899;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);padding:24px;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;justify-content:center}
+.col-title{font-size:13px;font-weight:800;color:var(--text-2);letter-spacing:.5px;margin-bottom:10px}
+
+/* ── 控制台 ── */
+.console{width:380px;display:flex;flex-direction:column;gap:14px}
+.panel{background:var(--surface);border-radius:16px;padding:16px;box-shadow:0 2px 14px rgba(0,0,0,.06)}
+.clock{display:flex;align-items:center;gap:12px}
+.clock .big{font-size:34px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.clock .day{font-size:11px;font-weight:800;color:#fff;background:var(--primary);padding:3px 9px;border-radius:9px}
+.clock .hint{font-size:10.5px;color:var(--text-2);margin-left:auto;text-align:right;line-height:1.5}
+.ctrls{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.btn{flex:1;min-width:96px;border:none;border-radius:11px;padding:10px 8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit}
+.btn.primary{background:var(--primary);color:#fff}
+.btn.primary:hover{background:var(--primary-dark)}
+.btn.ghost{background:var(--bg);color:var(--text)}
+.btn.ghost:hover{background:#E4E7F2}
+
+/* ── 订阅列表 ── */
+.sub{display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid var(--border)}
+.sub:last-child{border-bottom:none}
+.sub-ic{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;color:#fff;flex-shrink:0}
+.bg-news{background:var(--news)} .bg-mail{background:var(--mail)} .bg-sched{background:var(--sched)} .bg-health{background:var(--health)}
+.sub-main{flex:1;min-width:0}
+.sub-name{font-size:13px;font-weight:700}
+.sub-rule{font-size:10.5px;color:var(--text-2);margin-top:2px}
+.sub-next{font-size:10px;font-weight:700;color:var(--primary);margin-top:2px}
+.sub-next.fired{color:var(--fin)}
+.toggle{width:40px;height:23px;border-radius:12px;background:#CBD0DC;position:relative;cursor:pointer;flex-shrink:0;transition:.2s}
+.toggle.on{background:var(--primary)}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.toggle.on::after{left:19px}
+
+/* ── 日志 ── */
+.log{font-size:11px;line-height:1.7;max-height:150px;overflow-y:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-2)}
+.log .fire{color:var(--text)} .log .fire b{color:var(--primary-dark)}
+.log .idle{opacity:.55}
+
+/* ── 手机 ── */
+.phone{width:340px;height:716px;background:var(--surface);border-radius:36px;box-shadow:0 12px 40px rgba(0,0,0,.16);overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--border)}
+.ph-top{background:linear-gradient(135deg,var(--primary),#818CF8);color:#fff;padding:14px 16px 12px;display:flex;align-items:center;gap:9px}
+.ph-av{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:15px}
+.ph-tt{font-size:15px;font-weight:800}.ph-sub{font-size:10px;opacity:.85}
+.ph-clk{margin-left:auto;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
+.chat{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--bg)}
+.empty{margin:auto;text-align:center;color:var(--text-2);font-size:12px;line-height:1.8}
+.push .who{font-size:10px;color:var(--text-2);font-weight:700;margin:0 0 5px 2px}
+.push-card{background:var(--surface);border-radius:14px;padding:11px 12px;box-shadow:0 2px 10px rgba(0,0,0,.05);border-left:3px solid var(--border);animation:pop .25s ease}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.push-card.news{border-left-color:var(--news)} .push-card.mail{border-left-color:var(--mail)}
+.push-card.sched{border-left-color:var(--sched)} .push-card.health{border-left-color:var(--health)}
+.push-hd{font-size:12.5px;font-weight:800;display:flex;align-items:center;gap:6px}
+.push-hd .tag{font-size:9px;font-weight:800;padding:1px 7px;border-radius:8px;background:var(--bg);color:var(--text-2)}
+.push-hd .tm{margin-left:auto;font-size:10px;font-weight:700;color:var(--text-2)}
+.push-bd{font-size:11.5px;color:var(--text);margin-top:6px;line-height:1.5}
+.ph-nav{display:flex;border-top:1px solid var(--border);background:var(--surface)}
+.ph-nav .n{flex:1;text-align:center;padding:9px 0 11px;font-size:9.5px;color:var(--text-2)}
+.ph-nav .n.on{color:var(--primary);font-weight:800}
+.ph-nav .n .i{font-size:17px;display:block;margin-bottom:2px}
+.foot{width:100%;text-align:center;font-size:11px;color:var(--text-2);margin-top:6px;line-height:1.7}
+.foot code{background:#E4E7F2;padding:1px 6px;border-radius:5px;font-size:10.5px}
+</style>
+</head>
+<body>
+
+<div class="console">
+  <div class="col-title">调度控制台 · 模拟 agents_server 定时 tick</div>
+
+  <div class="panel">
+    <div class="clock">
+      <div class="big" id="clk">07:00</div>
+      <div class="day" id="day">第 1 天</div>
+      <div class="hint">推进模拟时钟<br>到点即触发对应服务</div>
+    </div>
+    <div class="ctrls">
+      <button class="btn primary" id="next">▶ 前进到下一次推送</button>
+      <button class="btn ghost" id="p30">＋30 分钟</button>
+      <button class="btn ghost" id="p2h">＋2 小时</button>
+      <button class="btn ghost" id="reset">重置</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="col-title" style="margin:0 0 6px">订阅（切开关 = Subscription.enabled）</div>
+    <div id="subs"></div>
+  </div>
+
+  <div class="panel">
+    <div class="col-title" style="margin:0 0 6px">tick 日志</div>
+    <div class="log" id="log"><div class="idle">— 尚未 tick —</div></div>
+  </div>
+
+  <div class="foot">
+    忠实复刻 <code>core/agent_scheduler/lib/src/scheduler.dart</code><br>
+    <code>isDue</code>（every 间隔 / dailyAt 到点 · 当天不重复）→ <code>onTrigger</code> → 推送
+  </div>
+</div>
+
+<div>
+  <div class="col-title">首页 · 主动推送落地</div>
+  <div class="phone">
+    <div class="ph-top">
+      <div class="ph-av">🤖</div>
+      <div><div class="ph-tt">UniHelper</div><div class="ph-sub">管家 · 主动推送</div></div>
+      <div class="ph-clk" id="phclk">07:00</div>
+    </div>
+    <div class="chat" id="chat">
+      <div class="empty" id="empty">早上好 👋<br>推进左侧时钟，<br>到点的订阅会把内容推到这里。</div>
+    </div>
+    <div class="ph-nav">
+      <div class="n on"><span class="i">💬</span>首页</div>
+      <div class="n"><span class="i">📡</span>订阅</div>
+      <div class="n"><span class="i">🌿</span>生活</div>
+      <div class="n"><span class="i">👤</span>我的</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── 调度引擎（对齐 scheduler.dart） ────────────────────────── */
+// now 用「自第1天 00:00 起的分钟数」表示，便于跨天。
+const DAY = 1440;
+function hm(mins){ const m=((mins%DAY)+DAY)%DAY; return String((m/60|0)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
+function dayOf(mins){ return (mins/DAY|0)+1; }
+
+const subs = [
+  { id:'news_daily', name:'咨询订阅', icon:'📰', cls:'news', kind:'dailyAt', hour:8, minute:0,
+    rule:'每日 08:00 · AI/财经/科技', enabled:true, lastRun:null,
+    push:()=>({hd:'📰 今日资讯', tag:'咨询订阅', bd:'新一代多模态模型发布，支持实时视频理解；A股高开…（5 条）'}) },
+  { id:'brief_daily', name:'晨间简报', icon:'🌅', cls:'sched', kind:'dailyAt', hour:7, minute:30,
+    rule:'每日 07:30 · 今日概览', enabled:true, lastRun:null,
+    push:()=>({hd:'🌅 晨间简报', tag:'日程', bd:'今天 5 件事，3 项需留意：张总合同需今天回复、房租到期 ¥3,800…'}) },
+  { id:'mail_poll', name:'邮件巡检', icon:'📧', cls:'mail', kind:'every', interval:30,
+    rule:'每 30 分钟 · 仅重要邮件', enabled:true, lastRun:null,
+    push:()=>({hd:'📧 重要邮件', tag:'邮件', bd:'张总「合同确认」需今天回复。要我起草回复吗？（草稿需你确认才发）'}) },
+  { id:'health_nudge', name:'健康提醒', icon:'💪', cls:'health', kind:'dailyAt', hour:20, minute:0,
+    rule:'每日 20:00 · 运动/喝水', enabled:true, lastRun:null,
+    push:()=>({hd:'💪 健康提醒', tag:'健康', bd:'今天还差 3,200 步达标，晚饭后散步 20 分钟就够啦。'}) },
+];
+
+// 与 Dart isDue 一一对应
+function isDue(s, now){
+  if(!s.enabled) return false;
+  if(s.kind==='every'){
+    return s.lastRun===null || (now - s.lastRun) >= s.interval;
+  } else {
+    const target = (dayOf(now)-1)*DAY + s.hour*60 + s.minute;   // 当天目标时刻
+    if(now < target) return false;
+    return s.lastRun===null || s.lastRun < target;
+  }
+}
+// 下一次会触发的时刻（用于「前进到下一次推送」）
+function nextFire(s, now){
+  if(!s.enabled) return Infinity;
+  if(isDue(s, now)) return now;
+  if(s.kind==='every') return s.lastRun===null ? now : s.lastRun + s.interval;
+  const today=(dayOf(now)-1)*DAY + s.hour*60 + s.minute;
+  return today>now ? today : today+DAY;   // 今天已过/已触发 → 明天
+}
+
+let now = 7*60;                 // 从第1天 07:00 开始
+let fired = 0;
+
+// tick：触发所有到点订阅，返回推送列表（对应 Scheduler.tick）
+function tick(){
+  const pushes=[];
+  for(const s of subs){
+    if(!isDue(s, now)) continue;
+    pushes.push({s, at:now, ...s.push()});
+    s.lastRun = now;
+  }
+  return pushes;
+}
+
+/* ── 渲染 ─────────────────────────────────────────────── */
+const $=id=>document.getElementById(id);
+function paintClock(){ $('clk').textContent=hm(now); $('phclk').textContent=hm(now); $('day').textContent='第 '+dayOf(now)+' 天'; }
+function paintSubs(){
+  $('subs').innerHTML = subs.map(s=>{
+    const nf = nextFire(s, now);
+    const nextTxt = !s.enabled ? '已停用'
+      : (s.lastRun!==null && !isDue(s,now) ? '下次 '+hm(nf)+(dayOf(nf)>dayOf(now)?'（明天）':'') : '待触发 '+hm(nf));
+    const firedCls = (s.lastRun!==null)?'fired':'';
+    return `<div class="sub">
+      <div class="sub-ic bg-${s.cls}">${s.icon}</div>
+      <div class="sub-main">
+        <div class="sub-name">${s.name}</div>
+        <div class="sub-rule">${s.rule}</div>
+        <div class="sub-next ${firedCls}">${s.lastRun!==null?'✓ 上次 '+hm(s.lastRun)+' · ':''}${nextTxt}</div>
+      </div>
+      <div class="toggle ${s.enabled?'on':''}" data-id="${s.id}"></div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('.toggle').forEach(t=>t.onclick=()=>{
+    const s=subs.find(x=>x.id===t.dataset.id); s.enabled=!s.enabled; paintSubs();
+  });
+}
+function addLog(html){
+  const l=$('log'); if(l.querySelector('.idle')) l.innerHTML='';
+  const d=document.createElement('div'); d.innerHTML=html; l.prepend(d);
+}
+function addPush(p){
+  if($('empty')) $('empty').remove();
+  const c=document.createElement('div'); c.className='push';
+  c.innerHTML=`<div class="who">UniHelper · 主动推送</div>
+    <div class="push-card ${p.s.cls}">
+      <div class="push-hd">${p.hd}<span class="tag">${p.tag}</span><span class="tm">${hm(p.at)}</span></div>
+      <div class="push-bd">${p.bd}</div>
+    </div>`;
+  $('chat').appendChild(c); $('chat').scrollTop=$('chat').scrollHeight;
+}
+function runTick(){
+  const ps=tick();
+  paintClock(); paintSubs();
+  if(ps.length){
+    ps.forEach(addPush);
+    addLog(`<span class="fire"><b>${hm(now)}</b> ▸ 触发 ${ps.map(p=>p.s.name).join('、')}（${++fired&&ps.length} 条推送）</span>`);
+  } else {
+    addLog(`<span class="idle">${hm(now)} · 无到点订阅</span>`);
+  }
+}
+
+/* ── 交互 ─────────────────────────────────────────────── */
+$('next').onclick=()=>{
+  const t=Math.min(...subs.map(s=>nextFire(s, now+1)));   // 严格前进
+  if(!isFinite(t)){ addLog('<span class="idle">无启用订阅</span>'); return; }
+  now=t; runTick();
+};
+$('p30').onclick=()=>{ now+=30; runTick(); };
+$('p2h').onclick=()=>{ now+=120; runTick(); };
+$('reset').onclick=()=>{
+  now=7*60; fired=0;
+  subs.forEach(s=>s.lastRun=null);
+  $('chat').innerHTML='<div class="empty" id="empty">早上好 👋<br>推进左侧时钟，<br>到点的订阅会把内容推到这里。</div>';
+  $('log').innerHTML='<div class="idle">— 尚未 tick —</div>';
+  paintClock(); paintSubs();
+};
+
+paintClock(); paintSubs();
+
+// #run：自动连点「前进到下一次推送」若干次，便于静态预览/截图
+if(location.hash==='#run'){ for(let i=0;i<5;i++) $('next').click(); }
+</script>
+</body>
+</html>
