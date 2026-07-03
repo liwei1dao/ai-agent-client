@@ -1,0 +1,13 @@
+name: agent_scheduler
+description: >-
+  UniHelper 调度引擎：按订阅(every/dailyAt)到点触发业务服务的 onTrigger，产出推送。
+  连接「订阅 Tab」→ 主动式服务 → 管家推送。纯 Dart，建在 agent_kernel 上。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  agent_kernel:
+    path: ../agent_kernel
