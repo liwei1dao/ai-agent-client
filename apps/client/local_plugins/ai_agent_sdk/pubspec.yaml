@@ -1,0 +1,38 @@
+name: ai_agent_sdk
+description: Umbrella package for the AI Agent SDK — re-exports the interface and container layers, and pulls in the default agent types and device vendors as transitive dependencies.
+publish_to: http://localhost:4000
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+  flutter: ">=3.3.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 接口层（消费方主要 import 的类型来源）
+  ai_plugin_interface: ^0.1.0
+  device_plugin_interface: ^0.1.0
+
+  # 容器层（用户调用的入口）
+  agents_server: ^0.1.0
+  service_manager: ^0.1.0
+  translate_server: ^0.1.0
+  assistant_server: ^0.1.0
+  device_manager: ^0.1.0
+
+  # Agent 类型插件——必须列为依赖，它们在 Flutter plugin attach
+  # 时会向 NativeAgentRegistry 自注册；不作为依赖业务方就启不动 agent
+  agent_chat: ^0.1.0
+  agent_sts_chat: ^0.1.0
+  agent_translate: ^0.1.0
+  agent_ast_translate: ^0.1.0
+
+  # 默认设备厂商（同样需要 native 自注册到 DeviceManager）
+  # 业务方不用杰理时可以在 pubspec.yaml 里 override 移除
+  device_jieli: ^0.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

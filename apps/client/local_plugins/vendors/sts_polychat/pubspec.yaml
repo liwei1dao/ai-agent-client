@@ -1,0 +1,33 @@
+name: sts_polychat
+description: PolyChat end-to-end Speech-to-Speech plugin via WebRTC
+publish_to: http://localhost:4000
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+  flutter: ">=3.3.0"
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aiagent.sts_polychat
+        pluginClass: StsPolychatPlugin
+      ios:
+        pluginClass: StsPolychatPlugin
+      web:
+        pluginClass: StsPolychatWeb
+        fileName: sts_polychat_web.dart
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  ai_plugin_interface: ^0.1.0
+  web: ^1.0.0
+  http: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

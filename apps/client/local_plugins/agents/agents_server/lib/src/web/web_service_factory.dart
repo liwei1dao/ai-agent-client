@@ -1,0 +1,96 @@
+import 'package:ai_plugin_interface/ai_plugin_interface.dart';
+import 'package:ast_polychat/ast_polychat_web.dart';
+import 'package:ast_volcengine/ast_volcengine.dart';
+import 'package:llm_openai/llm_openai.dart';
+import 'package:mcp/mcp.dart';
+import 'package:sts_volcengine/sts_volcengine.dart';
+import 'package:sts_polychat/sts_polychat_web.dart';
+import 'package:stt_azure/stt_azure.dart';
+import 'package:translation_aliyun/translation_aliyun.dart';
+import 'package:translation_deepl/translation_deepl.dart';
+import 'package:translation_volcengine/translation_volcengine.dart';
+import 'package:tts_azure/tts_azure.dart';
+
+/// Maps vendor names to their web implementation classes. Mirrors the native
+/// `NativeServiceRegistry` on Android but lives entirely in Dart for the web.
+class WebServiceFactory {
+  static SttPlugin createStt(String vendor) {
+    switch (vendor) {
+      case 'azure':
+        return SttAzurePluginDart();
+      default:
+        throw UnimplementedError('STT vendor "$vendor" not available on web');
+    }
+  }
+
+  static TtsPlugin createTts(String vendor) {
+    switch (vendor) {
+      case 'azure':
+        return TtsAzurePluginDart();
+      default:
+        throw UnimplementedError('TTS vendor "$vendor" not available on web');
+    }
+  }
+
+  static LlmPlugin createLlm(String vendor) {
+    switch (vendor) {
+      case 'openai':
+        return LlmOpenaiPlugin();
+      default:
+        throw UnimplementedError('LLM vendor "$vendor" not available on web');
+    }
+  }
+
+  static StsPlugin createSts(String vendor) {
+    switch (vendor) {
+      case 'volcengine':
+      case 'doubao': // legacy alias
+      case 'bytedance':
+        return StsVolcenginePlugin();
+      case 'polychat':
+        return StsPolychatPluginWeb();
+      default:
+        throw UnimplementedError('STS vendor "$vendor" not available on web');
+    }
+  }
+
+  static AstPlugin createAst(String vendor) {
+    switch (vendor) {
+      case 'volcengine':
+      case 'doubao': // legacy alias
+      case 'bytedance':
+        return AstVolcenginePluginWeb();
+      case 'polychat':
+        return AstPolychatPluginWeb();
+      default:
+        throw UnimplementedError('AST vendor "$vendor" not available on web');
+    }
+  }
+
+  static TranslationPlugin createTranslation(String vendor) {
+    switch (vendor) {
+      case 'deepl':
+        return TranslationDeeplPlugin();
+      case 'aliyun':
+        return TranslationAliyunPlugin();
+      case 'volcengine':
+        return TranslationVolcenginePlugin();
+      default:
+        throw UnimplementedError(
+          'Translation vendor "$vendor" not available on web',
+        );
+    }
+  }
+
+  /// MCP transport 选择。当前仅 streamable_http；后续 SSE 旧版协议加在这里。
+  static McpPlugin createMcp(String transport) {
+    switch (transport) {
+      case 'streamable_http':
+      case 'http':
+        return McpHttpPlugin();
+      default:
+        throw UnimplementedError(
+            'MCP transport "$transport" not available on web');
+    }
+  }
+}

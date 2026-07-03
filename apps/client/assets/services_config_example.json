@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "services": [
+    {
+      "type": "llm",
+      "vendor": "openai",
+      "name": "GPT-4o",
+      "config": {
+        "apiKey": "sk-proj-xxxxxxxxxxxxxxxx",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-4o"
+      }
+    },
+    {
+      "type": "llm",
+      "vendor": "anthropic",
+      "name": "Claude Sonnet",
+      "config": {
+        "apiKey": "sk-ant-xxxxxxxxxxxxxxxx",
+        "baseUrl": "https://api.anthropic.com",
+        "model": "claude-sonnet-4-20250514"
+      }
+    },
+    {
+      "type": "llm",
+      "vendor": "doubao",
+      "name": "豆包 Pro",
+      "config": {
+        "apiKey": "your-ark-api-key",
+        "model": "ep-20241228xxxxxx",
+        "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+        "temperature": "0.7",
+        "maxTokens": "2048"
+      }
+    },
+    {
+      "type": "llm",
+      "vendor": "deepseek",
+      "name": "DeepSeek Chat",
+      "config": {
+        "apiKey": "sk-xxxxxxxxxxxxxxxx",
+        "baseUrl": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat"
+      }
+    },
+    {
+      "type": "llm",
+      "vendor": "tongyi",
+      "name": "通义千问 Max",
+      "config": {
+        "apiKey": "sk-xxxxxxxxxxxxxxxx",
+        "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-max"
+      }
+    },
+    {
+      "type": "stt",
+      "vendor": "azure",
+      "name": "Azure STT",
+      "config": {
+        "apiKey": "your-azure-speech-key",
+        "region": "eastasia"
+      }
+    },
+    {
+      "type": "tts",
+      "vendor": "azure",
+      "name": "Azure TTS",
+      "config": {
+        "apiKey": "your-azure-speech-key",
+        "region": "eastasia",
+        "voiceName": "zh-CN-XiaoxiaoNeural"
+      }
+    },
+    {
+      "type": "stt",
+      "vendor": "aliyun",
+      "name": "阿里云 STT",
+      "config": {
+        "appKey": "your-app-key",
+        "accessKeyId": "LTAI-xxxxxxxx",
+        "accessKeySecret": "your-secret"
+      }
+    },
+    {
+      "type": "translation",
+      "vendor": "deepl",
+      "name": "DeepL 翻译",
+      "config": {
+        "apiKey": "your-deepl-auth-key"
+      }
+    },
+    {
+      "type": "sts",
+      "vendor": "doubao",
+      "name": "豆包 STS",
+      "config": {
+        "appId": "your-app-id",
+        "accessToken": "your-access-token",
+        "appKey": "your-app-key",
+        "voiceType": "BV700_V2_streaming"
+      }
+    },
+    {
+      "type": "ast",
+      "vendor": "doubao",
+      "name": "火山 AST",
+      "config": {
+        "appKey": "your-app-key",
+        "accessKey": "your-access-key",
+        "resourceId": "volc.bigasr.auc"
+      }
+    },
+    {
+      "type": "mcp",
+      "vendor": "remote",
+      "name": "GitHub MCP",
+      "config": {
+        "url": "https://your-mcp-server.com/sse",
+        "transport": "sse",
+        "authHeader": "Bearer your-token"
+      }
+    }
+  ]
+}
