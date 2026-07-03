@@ -1,0 +1,14 @@
+name: agent_chat
+description: >-
+  UniHelper 对话内核（SpecialistAgent id=chat）：多轮会话记忆 + 知识库上下文注入 +
+  流式 LLM 回复。纯 Dart、建在 agent_kernel 上；LLM 经 LlmProvider 端口接入
+  （默认假实现可测，真模型后接）。这是管家路由的兜底对话，也是「强化对话」支柱的核心。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  agent_kernel:
+    path: ../agent_kernel
