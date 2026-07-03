@@ -1,0 +1,27 @@
+name: agent_demo
+description: >-
+  UniHelper 端到端演示：管家 Manager + 业务服务团队(日程/邮件/财务/健康/生活计划) +
+  知识库(ContextProvider) + 连接中心 + 服务级唤醒，串成一条可运行的线。纯 Dart。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  agent_kernel:
+    path: ../agent_kernel
+  agent_schedule:
+    path: ../agent_schedule
+  agent_email:
+    path: ../agent_email
+  agent_finance:
+    path: ../agent_finance
+  agent_health:
+    path: ../agent_health
+  agent_lifeplan:
+    path: ../agent_lifeplan
+  agent_integrations:
+    path: ../agent_integrations
+  knowledge:
+    path: ../knowledge
