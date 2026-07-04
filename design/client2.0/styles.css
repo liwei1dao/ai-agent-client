@@ -390,3 +390,26 @@
 .conn-btn.on { background:#ECFDF5; color:#065F46; }
 .conn-btn.off { background:var(--primary); color:#fff; }
 .conn-add { border:1.5px dashed var(--primary); color:var(--primary); border-radius:12px; padding:13px; text-align:center; font-size:12px; font-weight:700; }
+
+/* ============================================================
+   登录屏（邮箱验证码 + 第三方 Google/Apple 平台条件显示）
+   ============================================================ */
+.login-wrap { flex:1; display:flex; flex-direction:column; padding:0 28px; overflow-y:auto; }
+.login-top { height:110px; flex-shrink:0; }              /* 内容整体下移 */
+.login-logo { width:64px; height:64px; border-radius:18px; background:linear-gradient(135deg,var(--primary),#818CF8); display:flex; align-items:center; justify-content:center; font-size:32px; margin:0 auto 14px; box-shadow:0 8px 22px rgba(108,99,255,.35); }
+.login-title { text-align:center; font-size:20px; font-weight:800; color:var(--text); }
+.login-sub { text-align:center; font-size:12.5px; color:var(--text-2); margin:5px 0 26px; }
+.login-field { height:48px; border:1.5px solid var(--border); border-radius:12px; background:var(--surface); display:flex; align-items:center; padding:0 14px; gap:10px; margin-bottom:12px; font-size:14px; }
+.login-field .ph { flex:1; color:var(--text-2); }
+.login-code-btn { font-size:12px; font-weight:800; color:var(--primary); white-space:nowrap; }
+.login-btn { height:48px; border-radius:12px; background:var(--primary); color:#fff; font-size:15px; font-weight:800; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(108,99,255,.35); margin-top:6px; }
+.login-or { display:flex; align-items:center; gap:12px; color:var(--text-2); font-size:11px; margin:22px 0 14px; }
+.login-or::before,.login-or::after { content:''; flex:1; height:1px; background:var(--border); }
+.login-third { display:flex; justify-content:center; gap:18px; }
+.third-btn { width:52px; height:52px; border-radius:50%; border:1.5px solid var(--border); background:var(--surface); display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:800; }
+.third-g { color:#4285F4; }
+.third-a { color:#111; }
+.login-note { text-align:center; font-size:10.5px; color:var(--text-2); margin-top:auto; padding:16px 0 18px; line-height:1.5; }
+.plat-toggle { display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; width:160px; margin:14px auto 0; }
+.plat-toggle > div { flex:1; text-align:center; font-size:11px; padding:5px 0; cursor:pointer; color:var(--text-2); }
+.plat-toggle > div.on { background:var(--primary-light); color:var(--primary-dark); font-weight:700; }

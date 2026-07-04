@@ -31,8 +31,29 @@
 <div class="phone-frame">
   <div class="phone-shell"><div class="phone-screen">
 
+    <!-- ═══ 登录（默认入口）═══ -->
+    <section class="view active login-view" id="v-login">
+      <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
+      <div class="login-wrap">
+        <div class="login-top"></div>
+        <div class="login-logo">🤖</div>
+        <div class="login-title">UniHelper</div>
+        <div class="login-sub">你的全能 AI 助手 · 邮箱登录</div>
+        <div class="login-field"><span>📧</span><span class="ph">输入邮箱</span></div>
+        <div class="login-field"><span>🔑</span><span class="ph">验证码</span><span class="login-code-btn">获取验证码</span></div>
+        <div class="login-btn" data-tab="home">登录</div>
+        <div class="login-or">或使用第三方登录</div>
+        <div class="login-third">
+          <div class="third-btn third-g" id="btn-google" data-tab="home" title="Google（仅 Android）">G</div>
+          <div class="third-btn third-a" id="btn-apple" data-tab="home" title="Apple（仅 iOS）"></div>
+        </div>
+        <div class="plat-toggle"><div id="pt-ios" class="on" onclick="plat('ios')">预览 iOS</div><div id="pt-and" onclick="plat('and')">Android</div></div>
+        <div class="login-note">登录成功后本地缓存 token；下次启动自动取用户信息、直接进首页（跳过登录）。<br>Google 仅 Android 显示 · Apple 仅 iOS 显示。</div>
+      </div>
+    </section>
+
     <!-- ═══ 首页·聊天 ═══ -->
-    <section class="view active" id="v-home">
+    <section class="view" id="v-home">
       <div class="status-bar"><span class="time">9:41</span><div class="status-icons">📶 🔋</div></div>
       <div class="agent-top-bar">
         <div class="agent-avatar">🤖</div>
@@ -255,7 +276,13 @@
 <div class="proto-hint">🎧未连接→设备扫描 · 🔗/我的→连接授权 · 生活「时间线」→日程 · 我的「知识库」→知识库 · ‹返回</div>
 
 <script>
-  var stack = ['home'];
+  var stack = ['login'];
+  function plat(os) {
+    document.getElementById('pt-ios').classList.toggle('on', os === 'ios');
+    document.getElementById('pt-and').classList.toggle('on', os === 'and');
+    document.getElementById('btn-google').style.display = os === 'and' ? 'flex' : 'none';
+    document.getElementById('btn-apple').style.display = os === 'ios' ? 'flex' : 'none';
+  }
   function render() {
     document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
     var el = document.getElementById('v-' + stack[stack.length - 1]);
